@@ -1,8 +1,9 @@
-"""Close open paper signals at EOD and persist daily/weekly validation reports.
+"""Close open paper signals and publish a complete daily EOD report.
 
-This script is paper-trading only. It never places broker orders. Target/stop
-resolution is performed from future intraday bars first; otherwise an open
-signal is closed at the latest available intraday bar.
+Paper-trading only: no broker order is ever placed. The EOD report combines
+paper-trade outcomes with the latest completed monitor health snapshot so the
+Telegram report still explains what the bot scanned, what qualified, and what
+happened to today's paper signals.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from src.telegram_notify import TelegramNotifier
 from src.validation_store import ValidationStore
 
 DEFAULT_JOURNAL_PATH = "data/paper_trading_journal.jsonl"
+DEFAULT_STATUS_PATH = "data/monitor_status.json"
 DEFAULT_CRITERIA_PATH = "config/validation_criteria.json"
 IST = ZoneInfo("Asia/Kolkata")
 UTC = ZoneInfo("UTC")
@@ -70,7 +72,10 @@ def _validation_start() -> date | None:
 def _append_summary_once(store: ValidationStore, summary, report_type: str) -> bool:
     for record in store.summaries(report_type):
         payload = record["payload"]
-        if payload.get("period_start") == summary.period_start.isoformat() and payload.get("period_end") == summary.period_end.isoformat():
+        if (
+            payload.get("period_start") == summary.period_start.isoformat()
+            and payload.get("period_end") == summary.period_end.isoformat()
+        ):
             return False
     store.append_summary(summary, report_type=report_type)
     return True
@@ -87,6 +92,22 @@ def _write_report(summary, report_type: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_validation_report(summary, title=title), encoding="utf-8")
     return path
+
+
+def _load_latest_monitor_status(today: date) -> dict:
+    """Read the latest completed monitor snapshot if it belongs to today."""
+    path = Path(os.getenv("MONITOR_STATUS_PATH", DEFAULT_STATUS_PATH))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    try:
+        updated = _parse_datetime(payload.get("updated_at", "" )).astimezone(IST).date()
+    except (TypeError, ValueError):
+        return {}
+    return payload if updated == today and payload.get("status") == "OK" else {}
 
 
 def main() -> int:
@@ -110,15 +131,28 @@ def main() -> int:
                 closed += 1
             else:
                 no_data += 1
-                print(f"{signal.symbol}: outcome remains {outcome.outcome}; not recorded as terminal.")
+                print(
+                    f"{signal.symbol}: outcome remains {outcome.outcome}; "
+                    "not recorded as terminal."
+                )
         except Exception as exc:
             errors.append(f"{signal.symbol}: {exc}")
 
-    outcomes = [_outcome_from_payload(record["payload"]) for record in store.outcomes()]
-    today_outcomes = [item for item in outcomes if _payload_date(item.__dict__) == today]
+    outcomes = [
+        _outcome_from_payload(record["payload"])
+        for record in store.outcomes()
+    ]
+    today_outcomes = [
+        item for item in outcomes if _payload_date(item.__dict__) == today
+    ]
     daily = summarize_outcomes(today_outcomes, period_start=today, period_end=today)
     daily_added = _append_summary_once(store, daily, "daily")
-    _write_report(daily, "daily")
+    daily_report_path = _write_report(daily, "daily")
+
+    monitor = _load_latest_monitor_status(today)
+    scan = monitor.get("scan", {}) if isinstance(monitor.get("scan"), dict) else {}
+    rejection_breakdown = monitor.get("rejection_breakdown", {})
+    data_sources = monitor.get("data_sources", {})
 
     weekly_added = False
     if today.weekday() == 4:
@@ -126,30 +160,77 @@ def main() -> int:
         validation_start = _validation_start()
         summary_start = max(week_start, validation_start) if validation_start else week_start
         weekly_outcomes = [
-            item for item in outcomes
+            item
+            for item in outcomes
             if summary_start <= _payload_date(item.__dict__) <= week_end
         ]
-        weekly = summarize_outcomes(weekly_outcomes, period_start=summary_start, period_end=week_end)
+        weekly = summarize_outcomes(
+            weekly_outcomes,
+            period_start=summary_start,
+            period_end=week_end,
+        )
         weekly_added = _append_summary_once(store, weekly, "weekly")
         _write_report(weekly, "weekly")
 
+    scanned = scan.get("scanned", 0)
+    requested = scan.get("requested", 0)
+    actionable = scan.get("actionable", 0)
+    buy = scan.get("buy", 0)
+    sell = scan.get("sell", 0)
+    candidates = scan.get("candidate_count", 0)
+
     message_lines = [
-        "📊 Stockmarket Bot — EOD paper-trading report",
+        "📊 Stockmarket Bot — EOD paper-trading analysis",
         f"Date: {today.strftime('%d-%b-%Y')} IST",
+        "Mode: PAPER-TRADING (no real orders)",
+        "",
+        "🔎 Today's market scan",
+        f"Universe requested: {requested}",
+        f"Stocks scanned: {scanned}",
+        f"Technical candidates: {candidates}",
+        f"Actionable: {actionable} | BUY: {buy} | SELL: {sell}",
+        "",
+        "📈 Today's paper-trading outcome",
         f"Signals closed this EOD run: {closed}",
-        f"Daily signals: {daily.signals} | Target: {daily.target_count} | Stop: {daily.stop_count} | EOD close: {daily.eod_close_count}",
+        f"Daily signals: {daily.signals} | Target: {daily.target_count} | "
+        f"Stop: {daily.stop_count} | EOD close: {daily.eod_close_count}",
         f"Daily net P&L after estimated charges: ₹{daily.net_pnl:,.2f}",
         f"Daily profit factor: {'N/A' if daily.profit_factor is None else f'{daily.profit_factor:.2f}'}",
         f"Daily max drawdown: ₹{daily.max_drawdown:,.2f}",
         f"Daily report: {'updated' if daily_added else 'already recorded'}",
     ]
-    if today.weekday() == 4:
-        message_lines.append(f"Weekly report: {'updated' if weekly_added else 'already recorded'}")
+
+    if rejection_breakdown:
+        top = sorted(
+            ((str(name), int(count)) for name, count in rejection_breakdown.items()),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:5]
+        message_lines.append("")
+        message_lines.append("Filters: " + ", ".join(f"{name}={count}" for name, count in top))
+
+    if data_sources:
+        message_lines.append(
+            "Data sources: "
+            + ", ".join(f"{name}={count}" for name, count in data_sources.items())
+        )
+
+    if not monitor:
+        message_lines.append("")
+        message_lines.append(
+            "⚠️ No completed monitor snapshot was available for today. "
+            "The EOD report was still generated from the paper-trading journal."
+        )
+
     if no_data:
         message_lines.append(f"⚠️ Signals without terminal data: {no_data}")
     if errors:
         message_lines.append(f"⚠️ Data errors: {len(errors)}")
         message_lines.extend(errors[:3])
+
+    message_lines.append(f"Daily report file: {daily_report_path}")
+    if today.weekday() == 4:
+        message_lines.append(f"Weekly report: {'updated' if weekly_added else 'already recorded'}")
 
     report_message = "\n".join(message_lines)
     print(report_message)
