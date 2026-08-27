@@ -32,6 +32,18 @@ class TelegramNotifier:
     def configured(self) -> bool:
         return bool(self.bot_token and self.chat_id)
 
+    @staticmethod
+    def _telegram_detail(response: requests.Response) -> str:
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                description = payload.get("description") or payload.get("error")
+                if description:
+                    return str(description)[:500]
+        except ValueError:
+            pass
+        return response.text.strip()[:500] or "No response description"
+
     def send(self, message: str) -> bool:
         if not self.configured:
             return False
@@ -50,12 +62,17 @@ class TelegramNotifier:
                 timeout=self.timeout,
             )
             if not response.ok:
+                detail = self._telegram_detail(response)
                 raise TelegramNotificationError(
-                    f"Telegram returned HTTP {response.status_code}."
+                    f"Telegram returned HTTP {response.status_code}: {detail}"
                 )
-            payload = response.json()
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise TelegramNotificationError("Telegram returned a non-JSON response.") from exc
             if not payload.get("ok", False):
-                raise TelegramNotificationError("Telegram rejected the message.")
+                detail = payload.get("description") or "Telegram rejected the message."
+                raise TelegramNotificationError(str(detail)[:500])
             return True
         except requests.RequestException as exc:
             raise TelegramNotificationError(
