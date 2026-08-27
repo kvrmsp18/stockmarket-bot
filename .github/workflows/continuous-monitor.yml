@@ -1,10 +1,14 @@
 name: Continuous Intraday Monitor
 
-# Run analysis 24/7 (every hour), every day including holidays
-# Trades only during market hours (guarded by the code itself)
+# Run every 1 minute during market hours only (9:30-3:30 IST, weekdays)
+# GitHub minimum: 5 minutes. This is the fastest practical option on GitHub Actions.
 "on":
   schedule:
-    - cron: '0 * * * *'  # Every hour, 24/7, all days
+    # Every 1 minute during trading hours (9:30 AM - 3:30 PM IST)
+    # Cron format: minute hour day month day-of-week
+    # 4-9 in UTC = 9:30-3:30 IST (UTC+5:30)
+    # 1-5 = Mon-Fri
+    - cron: '*/1 4-9 * * 1-5'
   workflow_dispatch: {}  # Manual trigger from Actions tab
 
 concurrency:
@@ -17,7 +21,7 @@ permissions:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 2  # Keep this short — each cycle should finish in < 30 seconds
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +29,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt --quiet
 
       - name: Run one monitor cycle
         env:
@@ -41,7 +45,7 @@ jobs:
           DHAN_LIVE_TRADING_ENABLED: "false"
         run: python -m scripts.run_daily_cycle
 
-      - name: Commit updated journal and reports, if anything changed
+      - name: Commit updated journal and reports
         run: |
           git config user.name "stockmarket-bot"
           git config user.email "actions@users.noreply.github.com"
@@ -51,5 +55,5 @@ jobs:
             git commit -m "Update paper-trading journal [skip ci]"
             git push
           else
-            echo "No journal changes to commit."
+            echo "No changes to commit."
           fi
