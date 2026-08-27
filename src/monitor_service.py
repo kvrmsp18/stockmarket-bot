@@ -12,8 +12,8 @@ from .research_market_data import ResearchMarketDataProvider
 from .risk_management import RiskConfig
 from .stock_monitor import StockMonitorSnapshot, build_monitor_snapshot
 
-# No fixed small stock list. The research pipeline is responsible for resolving
-# the complete configured market universe when no explicit symbols are passed.
+# No fixed small stock list. The research pipeline resolves the complete
+# configured market universe when symbols are not explicitly supplied.
 BOT_RESEARCH_UNIVERSE: tuple[str, ...] = ()
 LIVE_MONITOR_PERIOD = "5d"
 LIVE_MONITOR_INTERVAL = "5m"
@@ -29,10 +29,7 @@ def run_stock_monitor(
     selected_quantities: Mapping[str, int] | None = None,
 ) -> tuple[ResearchScanResult, StockMonitorSnapshot]:
     """Run one complete read-only intraday scan."""
-    # Deliberately do not substitute a 26/29-stock hard-coded list. The
-    # research pipeline resolves the complete market universe when symbols is
-    # omitted; explicit symbols are retained only for tests/tooling.
-    universe = tuple(symbols) if symbols else None
+    universe = tuple(symbols) if symbols is not None else None
     cfg = research_config or ResearchPipelineConfig(
         period=LIVE_MONITOR_PERIOD,
         interval=LIVE_MONITOR_INTERVAL,
