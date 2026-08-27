@@ -1,0 +1,54 @@
+name: EOD Paper Trading Close
+
+# Close open paper signals after the NSE cash market session and publish
+# daily/weekly validation reports. 15:35 IST = 10:05 UTC.
+"on":
+  schedule:
+    - cron: '5 10 * * 1-5'
+  workflow_dispatch: {}
+
+concurrency:
+  group: eod-paper-close
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  eod-close:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - run: pip install -r requirements.txt --quiet
+
+      - name: Close paper signals and build reports
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+          DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
+          BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DHAN_LIVE_TRADING_ENABLED: "false"
+        run: python -m scripts.run_eod_close
+
+      - name: Commit EOD outcomes and reports
+        run: |
+          git config user.name "stockmarket-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/ reports/
+          if ! git diff --cached --quiet; then
+            git pull --rebase --autostash
+            git commit -m "Record EOD paper-trading results [skip ci]"
+            git push
+          else
+            echo "No new EOD records to commit."
+          fi
