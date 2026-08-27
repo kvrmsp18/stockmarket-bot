@@ -1,21 +1,12 @@
 name: Continuous Intraday Monitor
 
-# Paper-trading monitor: every 15 minutes during NSE market hours (9:15 AM-3:30 PM IST), weekdays.
-# GitHub Actions cron is UTC (IST = UTC+5:30), so the first and last boundary
-# are explicit and the middle window runs every 15 minutes.
+# GitHub Actions schedules are best-effort and can be delayed. Wake every
+# 5 minutes during market hours and execute only when the last recorded cycle
+# is at least 12 minutes old. This preserves an approximately 15-minute scan
+# cadence while giving delayed scheduled jobs a chance to catch up.
 "on":
   schedule:
-    - cron: '45 3 * * 1-5'
-    - cron: '*/15 4-9 * * 1-5'
-    - cron: '0 10 * * 1-5'
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'scripts/**'
-      - 'config/**'
-      - 'requirements.txt'
-      - '.github/workflows/continuous-monitor.yml'
+    - cron: '*/5 3-10 * * 1-5'
   workflow_dispatch: {}
 
 concurrency:
@@ -32,13 +23,64 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Decide whether a monitor cycle is due
+        id: due
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timedelta
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          ist = ZoneInfo("Asia/Kolkata")
+          now = datetime.now(ist)
+          start = now.replace(hour=9, minute=15, second=0, microsecond=0)
+          end = now.replace(hour=15, minute=30, second=0, microsecond=0)
+          due = False
+          reason = "outside market window"
+
+          if start <= now <= end and now.weekday() < 5:
+              status_path = Path("data/monitor_status.json")
+              last = None
+              if status_path.exists():
+                  try:
+                      payload = json.loads(status_path.read_text(encoding="utf-8"))
+                      value = payload.get("updated_at")
+                      if value:
+                          last = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                          if last.tzinfo is None:
+                              last = last.replace(tzinfo=ZoneInfo("UTC"))
+                          last = last.astimezone(ist)
+                  except Exception as exc:
+                      print(f"Could not read previous monitor status: {exc}")
+
+              if last is None:
+                  due = True
+                  reason = "no previous cycle recorded"
+              elif now - last >= timedelta(minutes=12):
+                  due = True
+                  reason = f"last cycle {(now-last).total_seconds()/60:.1f} minutes ago"
+              else:
+                  reason = f"last cycle {(now-last).total_seconds()/60:.1f} minutes ago; waiting"
+
+          print(f"IST now: {now.isoformat()}")
+          print(f"Cycle due: {due} ({reason})")
+          with open("$GITHUB_OUTPUT", "a", encoding="utf-8") as fh:
+              fh.write(f"due={'true' if due else 'false'}\n")
+          PY
+
       - uses: actions/setup-python@v6
+        if: steps.due.outputs.due == 'true'
         with:
           python-version: '3.12'
 
-      - run: pip install -r requirements.txt --quiet
+      - name: Install dependencies
+        if: steps.due.outputs.due == 'true'
+        run: pip install -r requirements.txt --quiet
 
       - name: Run one monitor cycle
+        if: steps.due.outputs.due == 'true'
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
@@ -54,20 +96,13 @@ jobs:
         run: python -m scripts.run_daily_cycle
 
       - name: Commit journal, reports and monitor health
-        if: always()
+        if: always() && steps.due.outputs.due == 'true'
         run: |
           set -e
           git config user.name "stockmarket-bot"
           git config user.email "actions@users.noreply.github.com"
-
-          # Sync first, while the working tree is still clean. This prevents
-          # git pull --rebase from unstaging the freshly generated monitor state.
           git pull --rebase --autostash
-
-          # Stage AFTER the pull so monitor_status.json and all generated
-          # journal/report files are definitely included in the commit.
           git add data/ reports/
-
           if ! git diff --cached --quiet; then
             git commit -m "Update paper-trading monitor state [skip ci]"
             git push
