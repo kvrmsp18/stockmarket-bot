@@ -2,17 +2,19 @@
 
 This script is paper-trading only. It never places broker orders. Target/stop
 resolution is performed from future intraday bars first; otherwise an open
-signal is closed at the latest available EOD bar.
+signal is closed at the latest available intraday bar.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from src.paper_trading_validation import (
+    PaperOutcome,
     PaperSignal,
     close_at_eod,
     render_validation_report,
@@ -24,32 +26,51 @@ from src.telegram_notify import TelegramNotifier
 from src.validation_store import ValidationStore
 
 DEFAULT_JOURNAL_PATH = "data/paper_trading_journal.jsonl"
+DEFAULT_CRITERIA_PATH = "config/validation_criteria.json"
 IST = ZoneInfo("Asia/Kolkata")
+UTC = ZoneInfo("UTC")
+
+
+def _parse_datetime(value: object) -> datetime:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _load_signals(store: ValidationStore) -> tuple[list[PaperSignal], set[str]]:
     signals: list[PaperSignal] = []
     for record in store.signals():
-        payload = record["payload"]
+        payload = dict(record["payload"])
+        payload["generated_at"] = _parse_datetime(payload["generated_at"])
         signals.append(PaperSignal(**payload))
     resolved_ids = {record["payload"]["signal_id"] for record in store.outcomes()}
     return signals, resolved_ids
 
 
-def _parse_signal_date(signal: PaperSignal) -> date:
-    value = signal.generated_at
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=ZoneInfo("UTC"))
-    return value.astimezone(IST).date()
+def _payload_date(payload: dict) -> date:
+    return _parse_datetime(payload["generated_at"]).astimezone(IST).date()
+
+
+def _outcome_from_payload(payload: dict) -> PaperOutcome:
+    value = dict(payload)
+    value["generated_at"] = _parse_datetime(value["generated_at"])
+    if value.get("exit_at"):
+        value["exit_at"] = _parse_datetime(value["exit_at"])
+    return PaperOutcome(**value)
+
+
+def _validation_start() -> date | None:
+    path = Path(os.getenv("VALIDATION_CRITERIA_PATH", DEFAULT_CRITERIA_PATH))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return date.fromisoformat(str(payload["validation_period_start"]))
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return None
 
 
 def _append_summary_once(store: ValidationStore, summary, report_type: str) -> bool:
     for record in store.summaries(report_type):
         payload = record["payload"]
-        if (
-            payload.get("period_start") == summary.period_start.isoformat()
-            and payload.get("period_end") == summary.period_end.isoformat()
-        ):
+        if payload.get("period_start") == summary.period_start.isoformat() and payload.get("period_end") == summary.period_end.isoformat():
             return False
     store.append_summary(summary, report_type=report_type)
     return True
@@ -57,13 +78,11 @@ def _append_summary_once(store: ValidationStore, summary, report_type: str) -> b
 
 def _write_report(summary, report_type: str) -> Path:
     if report_type == "daily":
-        name = f"{summary.period_start.isoformat()}.md"
-        path = Path("reports/daily") / name
+        path = Path("reports/daily") / f"{summary.period_start.isoformat()}.md"
         title = "Paper-Trading Daily Report"
     else:
         iso = summary.period_start.isocalendar()
-        name = f"{iso.year}-W{iso.week:02d}.md"
-        path = Path("reports/weekly") / name
+        path = Path("reports/weekly") / f"{iso.year}-W{iso.week:02d}.md"
         title = "Paper-Trading Weekly Report"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_validation_report(summary, title=title), encoding="utf-8")
@@ -91,36 +110,26 @@ def main() -> int:
                 closed += 1
             else:
                 no_data += 1
-                print(f"{signal.symbol}: outcome remains {outcome.outcome}; not recorded as a terminal result.")
+                print(f"{signal.symbol}: outcome remains {outcome.outcome}; not recorded as terminal.")
         except Exception as exc:
             errors.append(f"{signal.symbol}: {exc}")
 
-    outcomes = [
-        record["payload"]
-        for record in store.outcomes()
-    ]
-
-    # Build the daily summary from signals generated on today's IST date.
-    today_outcomes = [
-        _outcome_from_payload(payload)
-        for payload in outcomes
-        if _payload_date(payload) == today
-    ]
+    outcomes = [_outcome_from_payload(record["payload"]) for record in store.outcomes()]
+    today_outcomes = [item for item in outcomes if _payload_date(item.__dict__) == today]
     daily = summarize_outcomes(today_outcomes, period_start=today, period_end=today)
     daily_added = _append_summary_once(store, daily, "daily")
     _write_report(daily, "daily")
 
-    # The weekly summary is appended once, after Friday's EOD close. This avoids
-    # double-counting the same weekly period in the readiness gate.
     weekly_added = False
     if today.weekday() == 4:
         week_start, week_end = week_bounds(today)
+        validation_start = _validation_start()
+        summary_start = max(week_start, validation_start) if validation_start else week_start
         weekly_outcomes = [
-            _outcome_from_payload(payload)
-            for payload in outcomes
-            if week_start <= _payload_date(payload) <= week_end
+            item for item in outcomes
+            if summary_start <= _payload_date(item.__dict__) <= week_end
         ]
-        weekly = summarize_outcomes(weekly_outcomes, period_start=week_start, period_end=week_end)
+        weekly = summarize_outcomes(weekly_outcomes, period_start=summary_start, period_end=week_end)
         weekly_added = _append_summary_once(store, weekly, "weekly")
         _write_report(weekly, "weekly")
 
@@ -132,7 +141,7 @@ def main() -> int:
         f"Daily net P&L after estimated charges: ₹{daily.net_pnl:,.2f}",
         f"Daily profit factor: {'N/A' if daily.profit_factor is None else f'{daily.profit_factor:.2f}'}",
         f"Daily max drawdown: ₹{daily.max_drawdown:,.2f}",
-        f"Reports: daily={'updated' if daily_added else 'already recorded'}",
+        f"Daily report: {'updated' if daily_added else 'already recorded'}",
     ]
     if today.weekday() == 4:
         message_lines.append(f"Weekly report: {'updated' if weekly_added else 'already recorded'}")
@@ -142,9 +151,10 @@ def main() -> int:
         message_lines.append(f"⚠️ Data errors: {len(errors)}")
         message_lines.extend(errors[:3])
 
-    print("\n".join(message_lines))
+    report_message = "\n".join(message_lines)
+    print(report_message)
     try:
-        if notifier.send("\n".join(message_lines)[:3900]):
+        if notifier.send(report_message[:3900]):
             print("Telegram EOD report delivered.")
         else:
             print("Telegram is not configured; EOD report remains in GitHub reports.")
@@ -152,18 +162,6 @@ def main() -> int:
         print(f"Telegram EOD report failed: {exc}")
 
     return 0
-
-
-def _payload_date(payload: dict) -> date:
-    value = datetime.fromisoformat(str(payload["generated_at"]).replace("Z", "+00:00"))
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=ZoneInfo("UTC"))
-    return value.astimezone(IST).date()
-
-
-def _outcome_from_payload(payload: dict):
-    from src.paper_trading_validation import PaperOutcome
-    return PaperOutcome(**payload)
 
 
 if __name__ == "__main__":
