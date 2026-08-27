@@ -12,13 +12,12 @@
   "new_signals_frozen": 0,
   "rejection_breakdown": {
     "MARKET_CONTEXT_REJECTED": 4,
-    "MTF_DATA_ERROR": 2,
-    "NO_CANDIDATE": 20
+    "NO_CANDIDATE": 22
   },
   "scan": {
     "actionable": 0,
     "buy": 0,
-    "candidate_count": 2,
+    "candidate_count": 0,
     "data_errors": 0,
     "fundamental_errors": 0,
     "quality_failures": 0,
@@ -29,5 +28,5 @@
   },
   "status": "OK",
   "telegram_configured": true,
-  "updated_at": "2026-08-27T07:43:23.128001+00:00"
+  "updated_at": "2026-08-27T07:45:22.887053+00:00"
 }
