@@ -1,156 +1,138 @@
-"""Orchestration script: runs one complete monitor cycle and persists results.
+"""Run one complete paper-trading monitor cycle.
 
-This is the entry point for GitHub Actions (every 1 minute during trading hours).
-It fetches the full NSE stock universe dynamically, screens/ranks them via the
-research pipeline, freezes paper signals, and commits the journal to git.
-
-No order placement. No hardcoded stock lists.
+The GitHub Actions workflow supplies a fresh complete NSE cash-equity universe
+through BOT_MARKET_UNIVERSE on every cycle. This entry point must never fall
+back to a fixed stock list. Market-data scanning is intentionally delegated to
+scan_symbols without an injected provider so its bounded worker pool is used.
+No live orders are placed.
 """
 
-import json
+from __future__ import annotations
+
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Add repo root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.production_market_data import ProductionMarketDataProvider
-from src.research_pipeline import (
-    ResearchPipelineConfig,
-    ResearchPipelineError,
-    scan_symbols,
-)
-from src.stock_monitor import (
-    build_monitor_snapshot,
-    StockMonitorSnapshot,
-)
+from src.paper_trading_validation import PaperSignal
+from src.research_pipeline import ResearchPipelineConfig, ResearchPipelineError, scan_symbols
+from src.stock_monitor import build_monitor_snapshot
 from src.validation_store import ValidationStore
 
 
 def get_nse_stock_universe() -> list[str]:
-    """Fetch all NSE stocks dynamically (Nifty 500+ or full exchange).
-    
-    Returns a list of NSE equity symbols to screen.
-    In production, this would connect to NSE/Dhan master list.
-    For now, returns Nifty 500 as a reasonable universe.
+    """Read the fresh complete NSE universe supplied by the workflow.
+
+    A fixed or fallback stock list is deliberately forbidden. If the workflow
+    did not load a sufficiently large dynamic universe, fail safely rather than
+    silently scanning a partial market.
     """
-    # NIFTY 500 LIST - TO BE REPLACED WITH LIVE FETCH
-    nifty_500 = [
-        "RELIANCE", "TCS", "INFY", "HINDUNILVR", "ICICIBANK",
-        "SBIN", "WIPRO", "BAJAJFINSV", "LT", "ITC",
-        "MARUTI", "AXISBANK", "KOTAKBANK", "ONGC", "BAJAJPALM",
-        "BHARATI", "M&M", "NTPC", "TATASTEEL", "ADANIPORTS",
-        "JIOTASKS", "PIDILITIND", "TECHM", "GAIL", "EICHERMOT",
-        "SUNPHARMA", "HEROMOTOCO", "HDFCLIFE", "TATAMOTORS", "SBICARD",
-        "BHARATFORGE", "INDIGO", "POWERGRID", "BHEL", "DLF",
-        "BANKINDIA", "MOTHERSON", "UPL", "HAVELLS", "ESCORTS",
-        "SBILIFE", "INDIAMART", "LALPATHLAB", "PHARMEASY", "MOBILESUM",
-        "DMART", "PAGEIND", "MINDTREE", "TITAN", "MPHASIS",
-        "LCI", "SHRIRAMFS", "BPCL", "COALINDIA", "UNIONBANK",
-        "CHOLAFIN", "JSWSTEEL", "SIEMENS", "IGL", "ICICIPRULI",
-        "CGPOWER", "GMRINFRA", "IDFC", "BALRAMCHIN", "POLYCAB",
-        "IDBI", "CANARA", "LICHSGFIN", "CENTRUM", "INDIANB",
-        "IDFCBANK", "KIRLOSENG", "THERMAX", "CONCOR", "ENGINERCO",
-        "BEL", "DRREDDY", "HINDPETRO", "FEDERALBNK", "AUROPHARMA",
-        "GOODYEAR", "APLLTD", "KANSAINER", "PETRONET", "NHPC",
-        "TORNTPHARM", "VEDL", "KPTL", "EXIDEIND", "ASTRAL",
-        "GUJGASLTD", "ADANIGREEN", "ADANIPOWER", "HDFCBANK", "LTIM",
-        "TIMKEN", "BOMDYEING", "SUNPRIV", "KPITTECH", "JISLJALEQS",
-        "VIJAYHBANK", "MANAPPURAM", "GSKCONS", "RAMCOCEM", "GRAPHITE",
-    ]
-    
-    return nifty_500
-
-
-def run_daily_cycle():
-    """Execute one monitor cycle: scan → rank → freeze signals → commit."""
-    
-    try:
-        # Step 1: Fetch full NSE stock universe dynamically
-        print("[INFO] Fetching NSE stock universe...")
-        symbols = get_nse_stock_universe()
-        print(f"[INFO] Scanning {len(symbols)} stocks")
-        
-        # Step 2: Run the research pipeline (screening, ranking, validation)
-        print("[INFO] Running research pipeline...")
-        config = ResearchPipelineConfig()
-        config.validate()
-        
-        scan_result = scan_symbols(
-            symbols,
-            config=config,
-            provider=ProductionMarketDataProvider(timeout=12.0),
+    raw = os.getenv("BOT_MARKET_UNIVERSE", "").strip()
+    if not raw:
+        raise ResearchPipelineError(
+            "BOT_MARKET_UNIVERSE is missing; refusing to run a fixed/partial scan."
         )
-        
-        print(f"[INFO] Scan results:")
+
+    symbols: list[str] = []
+    seen: set[str] = set()
+    for item in raw.split(","):
+        symbol = item.strip().upper()
+        if symbol and symbol not in seen:
+            symbols.append(symbol)
+            seen.add(symbol)
+
+    if len(symbols) < 500:
+        raise ResearchPipelineError(
+            f"Dynamic NSE universe contains only {len(symbols)} symbols; refusing a partial scan."
+        )
+
+    return symbols
+
+
+def _reference_capital() -> float:
+    """Return a safe positive research capital value even when the GitHub var is blank."""
+    raw = os.getenv("BOT_RESEARCH_REFERENCE_CAPITAL", "").strip()
+    try:
+        value = float(raw) if raw else 1000.0
+    except (TypeError, ValueError):
+        value = 1000.0
+    return value if value > 0 else 1000.0
+
+
+def run_daily_cycle() -> int:
+    try:
+        print("[INFO] Loading fresh dynamic NSE cash-equity universe...")
+        symbols = get_nse_stock_universe()
+        print(f"[INFO] Dynamic NSE universe: {len(symbols)} symbols")
+        print("[INFO] Running complete-market 5-minute research scan with bounded parallel workers...")
+
+        config = ResearchPipelineConfig(
+            interval="5m",
+            account_equity=_reference_capital(),
+        )
+        config.validate()
+
+        # Do NOT inject ProductionMarketDataProvider here. scan_symbols uses
+        # one independent provider per worker when provider=None, which is the
+        # intended bounded-parallel production path.
+        scan_result = scan_symbols(symbols, config=config, provider=None)
+
+        print("[INFO] Scan results:")
+        print(f"  - Requested: {scan_result.requested_count}")
         print(f"  - Scanned: {scan_result.scanned_count}")
         print(f"  - Data errors: {scan_result.data_error_count}")
         print(f"  - Quality rejected: {scan_result.quality_failure_count}")
         print(f"  - Technical rejected: {scan_result.technical_rejection_count}")
+        print(f"  - Fundamental errors: {scan_result.fundamental_error_count}")
         print(f"  - Candidates generated: {scan_result.candidate_count}")
-        print(f"  - Actionable (ranked): {scan_result.actionable_count}")
+        print(f"  - Actionable: {scan_result.actionable_count}")
         print(f"  - BUY: {scan_result.buy_count}, SELL: {scan_result.sell_count}")
-        
-        # Step 3: Build monitor snapshot for dashboard
+
         print("[INFO] Building monitor dashboard snapshot...")
-        account_equity = float(
-            os.getenv("BOT_RESEARCH_REFERENCE_CAPITAL", "100000")
-        )
-        snapshot: StockMonitorSnapshot = build_monitor_snapshot(
+        snapshot = build_monitor_snapshot(
             scan_result,
-            account_equity=account_equity,
+            account_equity=_reference_capital(),
         )
-        
-        # Step 4: Freeze paper signals for actionable candidates
+
         print("[INFO] Freezing paper signals...")
         store = ValidationStore("data/paper_trading_journal.jsonl")
-        
         frozen_count = 0
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        
+        generated_at = datetime.now(timezone.utc)
+        today = generated_at.date().isoformat()
+        existing_today = {
+            record.get("payload", {}).get("symbol")
+            for record in store.signals()
+            if str(record.get("payload", {}).get("generated_at", "")).startswith(today)
+        }
+
         for row in snapshot.rows:
-            # Check if this symbol already has an open signal from earlier today
-            existing_signals = [
-                s for s in store.signals()
-                if s["payload"]["symbol"] == row.symbol
-                and s["payload"]["generated_at"].split("T")[0] == today
-            ]
-            
-            if existing_signals:
-                print(f"[SKIP] {row.symbol}: Signal already frozen today")
+            if row.symbol in existing_today:
+                print(f"[SKIP] {row.symbol}: signal already frozen today")
                 continue
-            
-            # Freeze the signal to the journal
-            signal_data = {
-                "symbol": row.symbol,
-                "exchange": row.exchange,
-                "direction": row.direction,
-                "entry": float(row.entry),
-                "stop_loss": float(row.stop_loss),
-                "target": float(row.target),
-                "quantity": int(row.ai_quantity),
-                "confidence": float(row.confidence),
-                "risk_reward": float(row.risk_reward),
-                "reason": str(row.reason),
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            
-            # Write to journal using ValidationStore
-            store.append_signal(signal_data)
+
+            signal = PaperSignal(
+                signal_id=f"{row.symbol}-{generated_at.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}",
+                symbol=row.symbol,
+                direction=row.direction,
+                generated_at=generated_at,
+                entry=float(row.entry),
+                stop_loss=float(row.stop_loss),
+                target=float(row.target),
+                quantity=int(row.ai_quantity),
+                confidence=float(row.confidence),
+                risk_reward=float(row.risk_reward),
+            )
+            store.append_signal(signal)
             frozen_count += 1
             print(f"[FREEZE] {row.symbol} {row.direction} @ {row.entry}")
-        
-        print(f"[INFO] Froze {frozen_count} signals")
-        
-        # Step 5: Report completion
+
+        print(f"[INFO] Froze {frozen_count} new paper signals")
         print("[INFO] Cycle complete")
-        print(f"[INFO] Actionable candidates: {snapshot.actionable_count}")
-        print(f"[INFO] Stocks scanned: {snapshot.scanned_count}")
-        
         return 0
-        
+
     except ResearchPipelineError as exc:
         print(f"[ERROR] Research pipeline failed: {exc}", file=sys.stderr)
         return 1
@@ -162,5 +144,4 @@ def run_daily_cycle():
 
 
 if __name__ == "__main__":
-    exit_code = run_daily_cycle()
-    sys.exit(exit_code)
+    sys.exit(run_daily_cycle())
