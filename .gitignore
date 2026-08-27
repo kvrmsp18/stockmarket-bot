@@ -1,0 +1,27 @@
+# --- Secrets: never commit these ---
+.env
+.dhan_access_token.json
+
+# --- Python ---
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# --- Streamlit ---
+.streamlit/secrets.toml
+
+# --- Editor/OS noise ---
+.vscode/
+.idea/
+.DS_Store
+
+# --- IMPORTANT: data/ is INTENTIONALLY NOT ignored. ---
+# GitHub Actions runners are ephemeral — nothing written during a run
+# survives to the next one unless it's committed back to the repo. The
+# continuous-monitor workflow commits data/paper_trading_journal.jsonl
+# (and reports/) at the end of every run specifically so the validation
+# record persists. If you later move to a real database, delete this
+# block and add data/ above.

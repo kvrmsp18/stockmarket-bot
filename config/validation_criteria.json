@@ -1,0 +1,24 @@
+{
+  "_note": "Every number below is a placeholder. Set these deliberately before the validation window starts, then leave them alone -- validation_gate.py refuses to evaluate a period against criteria locked after that period began. Only 'total_signals', 'win_rate_percent', 'profit_factor', 'max_drawdown', and 'no_data_rate_percent' are computable today, since they come from ValidationSummary. Anything about scan coverage or research-side data quality (stocks scanned, why candidates were filtered) isn't persisted anywhere yet -- see the accompanying note.",
+  "version": 1,
+  "locked_at": "2026-09-01T00:00:00+05:30",
+  "validation_period_start": "2026-09-01",
+  "criteria": {
+    "min_sample_size": {
+      "metric": "total_signals",
+      "minimum": 100
+    },
+    "min_risk_adjusted_performance": {
+      "metric": "profit_factor",
+      "minimum": 1.5
+    },
+    "max_acceptable_drawdown": {
+      "metric": "max_drawdown",
+      "maximum": 15000
+    },
+    "max_no_data_rate": {
+      "metric": "no_data_rate_percent",
+      "maximum": 5.0
+    }
+  }
+}
