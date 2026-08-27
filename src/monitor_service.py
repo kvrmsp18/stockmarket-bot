@@ -12,11 +12,9 @@ from .research_market_data import ResearchMarketDataProvider
 from .risk_management import RiskConfig
 from .stock_monitor import StockMonitorSnapshot, build_monitor_snapshot
 
-# No fixed stock list: the production monitor must receive the complete market
-# universe from the market-data provider/configuration. An explicit symbols
-# argument remains available for tests and controlled tooling.
+# No fixed stock list: production uses the complete universe supplied by the
+# research/data layer. Explicit symbols remain available for tests/tooling.
 BOT_RESEARCH_UNIVERSE: tuple[str, ...] = ()
-
 LIVE_MONITOR_PERIOD = "5d"
 LIVE_MONITOR_INTERVAL = "5m"
 
@@ -30,12 +28,7 @@ def run_stock_monitor(
     risk_config: RiskConfig | None = None,
     selected_quantities: Mapping[str, int] | None = None,
 ) -> tuple[ResearchScanResult, StockMonitorSnapshot]:
-    """Run one complete read-only intraday scan.
-
-    No hard-coded 26/29-stock fallback is used. If ``symbols`` is omitted,
-    ``scan_symbols`` receives ``None`` so its configured/provider universe is
-    used in full.
-    """
+    """Run one complete read-only intraday scan without a fixed small universe."""
     universe = tuple(symbols) if symbols else None
     cfg = research_config or ResearchPipelineConfig(
         period=LIVE_MONITOR_PERIOD,
@@ -43,23 +36,15 @@ def run_stock_monitor(
         account_equity=account_equity,
         fundamental_config=FundamentalConfig.from_environment(),
     )
-
     cfg = replace(
         cfg,
         account_equity=account_equity,
         risk_config=risk_config or cfg.risk_config,
-        candidate_config=replace(
-            cfg.candidate_config,
-            require_mtf_rsi_confirmation=False,
-        ),
+        candidate_config=replace(cfg.candidate_config, require_mtf_rsi_confirmation=False),
     )
-
     data_provider = provider or ProductionMarketDataProvider(timeout=12.0)
     scan = scan_symbols(universe, provider=data_provider, config=cfg)
     snapshot = build_monitor_snapshot(
-        scan,
-        account_equity,
-        config=cfg.risk_config,
-        selected_quantities=selected_quantities,
+        scan, account_equity, config=cfg.risk_config, selected_quantities=selected_quantities
     )
     return scan, snapshot
