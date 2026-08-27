@@ -1,256 +1,303 @@
 """Streamlit dashboard for the stockmarket bot.
 
-Reads from data/paper_trading_journal.jsonl to show live monitor status,
-frozen signals, outcomes, daily/weekly summaries, and the Phase 9 readiness gate.
+The dashboard reads the persisted paper-trading journal and the monitor health
+snapshot written by GitHub Actions. It never places broker orders.
 """
 
+from __future__ import annotations
+
+import json
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 
-# Fix import path for Streamlit Cloud
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Configuration
 st.set_page_config(
-    page_title="Stockmarket Bot",
+    page_title="Stockmarket Bot Dashboard",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Cache validation store and tools
+ROOT = Path(__file__).parent.parent
+STATUS_PATH = ROOT / "data" / "monitor_status.json"
+IST = ZoneInfo("Asia/Kolkata")
+
+
 @st.cache_resource
 def load_validation_store():
-    """Load the paper-trading journal store."""
     try:
         from src.validation_store import ValidationStore
         return ValidationStore("data/paper_trading_journal.jsonl")
-    except Exception as e:
+    except Exception:
         return None
 
 
 @st.cache_resource
 def load_validation_tools():
-    """Load the validation gate evaluation tools."""
     try:
         from src.validation_gate import evaluate, render_scorecard
         return evaluate, render_scorecard
-    except Exception as e:
+    except Exception:
         return None, None
 
 
-# ---- Page: Overview ----
+@st.cache_data(ttl=30)
+def load_monitor_status() -> dict:
+    if not STATUS_PATH.exists():
+        return {"status": "NOT_RUN", "updated_at": None, "scan": {}, "actionable_candidates": []}
+    try:
+        payload = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {"status": "INVALID"}
+    except Exception as exc:
+        return {"status": "ERROR", "error": str(exc)}
+
+
+def _format_time(value: str | None) -> str:
+    if not value:
+        return "Not available"
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt.astimezone(IST).strftime("%d-%b-%Y %I:%M:%S %p IST")
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _secret_or_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if value:
+        return value
+    try:
+        return str(st.secrets.get(name, "")).strip()
+    except Exception:
+        return ""
+
+
+def _mask(name: str, value: str) -> str:
+    if not value:
+        return "(not set)"
+    if any(word in name for word in ("TOKEN", "SECRET", "ACCESS", "API_KEY")):
+        if len(value) > 8:
+            return value[:4] + "***" + value[-4:]
+        return "***"
+    return value
+
+
 def page_overview():
-    """Dashboard overview with signal counts and status."""
     st.title("📊 Stockmarket Bot Dashboard")
 
-    col1, col2, col3 = st.columns(3)
+    status = load_monitor_status()
+    scan = status.get("scan") or {}
+    candidates = status.get("actionable_candidates") or []
+    bot_status = status.get("status", "NOT_RUN")
 
-    store = load_validation_store()
-    if store:
-        try:
-            signals = store.signals()
-            outcomes = store.outcomes()
-            outcome_ids = {rec["payload"]["signal_id"] for rec in outcomes}
-            open_count = len(signals) - len(outcome_ids)
+    if st.button("🔄 Refresh latest data"):
+        load_monitor_status.clear()
+        st.rerun()
 
-            with col1:
-                st.metric("Frozen Signals", len(signals))
-            with col2:
-                st.metric("Resolved Outcomes", len(outcomes))
-            with col3:
-                st.metric("Still Open", open_count)
-        except Exception as e:
-            st.error(f"Error loading data: {e}")
+    if bot_status == "OK":
+        st.success(f"🟢 Bot heartbeat healthy — last cycle: {_format_time(status.get('updated_at'))}")
+    elif bot_status == "FAILED":
+        st.error(f"🔴 Last monitor cycle FAILED — {_format_time(status.get('updated_at'))}")
+        st.code(str(status.get("error", "Unknown error")))
+    elif bot_status == "NOT_RUN":
+        st.warning("🟡 Monitor has not completed a recorded cycle yet.")
     else:
-        with col1:
-            st.metric("Status", "Initializing", "Waiting for first cycle")
-        with col2:
-            st.write("")
-        with col3:
-            st.write("")
+        st.warning(f"🟡 Monitor status: {bot_status}")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Frozen Signals", _journal_signal_count())
+    with col2:
+        st.metric("Resolved Outcomes", _journal_outcome_count())
+    with col3:
+        st.metric("Actionable Now", int(scan.get("actionable", 0)))
+    with col4:
+        st.metric("Stocks Scanned", int(scan.get("scanned", 0)))
 
     st.markdown("---")
+    st.subheader("🤖 Monitor Health")
+    health_col1, health_col2, health_col3 = st.columns(3)
+    with health_col1:
+        st.write(f"**Last cycle:** {_format_time(status.get('updated_at'))}")
+        st.write(f"**Mode:** {status.get('mode', 'paper-trading')}")
+        st.write(f"**Market window:** {status.get('market_window', '09:15–15:30 IST weekdays')}")
+    with health_col2:
+        funds = status.get("available_funds")
+        funds_text = "Not available" if funds is None else f"₹{float(funds):,.2f}"
+        st.write(f"**Available Dhan funds:** {funds_text}")
+        st.write(f"**Funds source:** {status.get('funds_source', 'Not available')}")
+        st.write(f"**Telegram heartbeat:** {'Configured' if status.get('telegram_configured') else 'NOT CONFIGURED'}")
+    with health_col3:
+        st.write(f"**BUY:** {int(scan.get('buy', 0))}")
+        st.write(f"**SELL:** {int(scan.get('sell', 0))}")
+        st.write(f"**New signals frozen:** {int(status.get('new_signals_frozen', 0))}")
 
+    st.markdown("---")
+    st.subheader("🎯 Current Suggested Stocks")
+    if candidates:
+        for candidate in candidates:
+            direction = candidate.get("direction", "")
+            title = f"{direction} {candidate.get('symbol', '')} — confidence {float(candidate.get('confidence', 0)):.0%}"
+            with st.expander(title):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.write(f"**Entry:** ₹{float(candidate['entry']):,.2f}")
+                    st.write(f"**Stop Loss:** ₹{float(candidate['stop_loss']):,.2f}")
+                    st.write(f"**Target:** ₹{float(candidate['target']):,.2f}")
+                with c2:
+                    st.write(f"**AI Quantity:** {int(candidate['quantity'])}")
+                    st.write(f"**Capital Required:** ₹{float(candidate['capital_required']):,.2f}")
+                    st.write(f"**Risk Amount:** ₹{float(candidate['risk_amount']):,.2f}")
+                with c3:
+                    st.write(f"**Confidence:** {float(candidate['confidence']):.1%}")
+                    st.write(f"**Risk/Reward:** {float(candidate['risk_reward']):.2f}x")
+                    st.write(f"**Risk:** {float(candidate['risk_percent']):.2f}%")
+    else:
+        st.info("No actionable stock passed all configured research, market-context, M/W/D, fundamental and risk gates in the latest cycle. This is different from the bot being stopped; the health panel above shows whether the scan actually ran.")
+
+    st.markdown("---")
+    st.subheader("🔎 Why candidates were filtered")
+    rejection = status.get("rejection_breakdown") or {}
+    if rejection:
+        for reason, count in sorted(rejection.items(), key=lambda item: item[1], reverse=True):
+            st.write(f"**{reason}:** {count}")
+    else:
+        st.caption("No rejection diagnostics recorded yet.")
+
+    sources = status.get("data_sources") or {}
+    if sources:
+        st.subheader("📡 Market-data sources used")
+        st.write(" · ".join(f"{name}: {count}" for name, count in sources.items()))
+
+    st.markdown("---")
     st.subheader("📋 How It Works")
     st.write("""
-    **GitHub Actions** runs the monitor every 15 minutes during market hours (9:15 AM - 3:30 PM IST).
-    
+    **GitHub Actions** runs the paper-trading monitor every 15 minutes during NSE market hours, from **9:15 AM to 3:30 PM IST on weekdays**.
+
     Each cycle:
-    1. Analyzes market data from Dhan
-    2. Screens and ranks stocks
-    3. Freezes paper signals for high-conviction candidates
-    4. Simulates trades (paper mode, no real orders)
-    5. Commits results to the journal
-    
-    Data updates here automatically as cycles complete. Refresh to see the latest results.
+    1. Fetches read-only intraday market data.
+    2. Screens and ranks the managed stock universe.
+    3. Applies market/sector, technical, M/W/D RSI, advanced, fundamental and risk gates.
+    4. Freezes high-conviction paper signals only once per symbol per day.
+    5. Sends a Telegram heartbeat with funds and suggested stocks when Telegram is configured.
+    6. Persists monitor health, journal and reports back to GitHub.
+
+    **Live trading remains disabled.** No real BUY/SELL orders are placed by this workflow.
     """)
 
-    st.markdown("---")
 
-    st.info("💡 Tip: Check back in ~15 minutes to see data from the next monitor cycle (9:15–3:30 IST weekdays).")
+def _journal_signal_count() -> int:
+    store = load_validation_store()
+    return len(store.signals()) if store else 0
 
 
-# ---- Page: Signals & Outcomes ----
+def _journal_outcome_count() -> int:
+    store = load_validation_store()
+    return len(store.outcomes()) if store else 0
+
+
 def page_signals():
-    """View frozen signals and their outcomes."""
     st.title("🎯 Frozen Signals & Outcomes")
-
     store = load_validation_store()
     if not store:
-        st.warning("Journal not available yet. Dashboard initializing...")
+        st.warning("Journal is unavailable.")
         return
 
     try:
         signals = store.signals()
         outcomes = store.outcomes()
-        outcome_by_signal = {
-            rec["payload"]["signal_id"]: rec["payload"] for rec in outcomes
-        }
-
+        outcome_by_signal = {rec["payload"]["signal_id"]: rec["payload"] for rec in outcomes}
         if not signals:
-            st.info("No signals frozen yet. Waiting for the next monitor cycle.")
+            st.info("No paper signals have been frozen yet.")
             return
 
-        st.write(f"**Total signals:** {len(signals)} | **Resolved:** {len(outcomes)}")
+        st.write(f"**Total signals:** {len(signals)} | **Resolved:** {len(outcomes)} | **Open:** {len(signals) - len(outcome_by_signal)}")
         st.markdown("---")
-
-        for rec in signals[-10:][::-1]:
+        for rec in signals[-20:][::-1]:
             sig = rec["payload"]
             outcome = outcome_by_signal.get(sig["signal_id"])
             status = "✓ Resolved" if outcome else "⏳ Open"
-
-            with st.expander(
-                f"{sig['symbol']} {sig['direction']} @ {sig['entry']} — {status}"
-            ):
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    st.write(f"**Symbol:** {sig['symbol']}")
-                    st.write(f"**Direction:** {sig['direction']}")
-                    st.write(f"**Entry:** {sig['entry']}")
-                    st.write(f"**Stop Loss:** {sig['stop_loss']}")
-                    st.write(f"**Target:** {sig['target']}")
+            with st.expander(f"{sig['symbol']} {sig['direction']} @ ₹{sig['entry']} — {status}"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.write(f"**Entry:** ₹{sig['entry']}")
+                    st.write(f"**Stop Loss:** ₹{sig['stop_loss']}")
+                    st.write(f"**Target:** ₹{sig['target']}")
                     st.write(f"**Quantity:** {sig['quantity']}")
-
-                with col2:
-                    st.write(f"**Generated:** {sig['generated_at']}")
+                with c2:
+                    st.write(f"**Generated:** {_format_time(sig['generated_at'])}")
                     st.write(f"**Confidence:** {sig['confidence']:.1%}")
                     st.write(f"**Risk/Reward:** {sig['risk_reward']:.2f}x")
                     if outcome:
                         st.write(f"**Outcome:** {outcome['outcome']}")
-                        if outcome.get("net_pnl"):
+                        if outcome.get("net_pnl") is not None:
                             st.write(f"**Net P&L:** ₹{outcome['net_pnl']:.2f}")
+    except Exception as exc:
+        st.error(f"Error loading signals: {exc}")
 
-    except Exception as e:
-        st.error(f"Error loading signals: {e}")
 
-
-# ---- Page: Phase 9 Gate ----
 def page_phase9():
-    """Live-trading readiness validation gate."""
     st.title("✅ Phase 9: Live-Trading Readiness Gate")
-
-    st.write("""
-    This gate evaluates whether the paper-trading record meets objective criteria for live trading.
-    
-    **Locked criteria** prevent moving the goalposts after results are in. Criteria are set before
-    the validation window starts and cannot be changed retroactively.
-    """)
-
+    st.write("The gate evaluates the locked paper-trading criteria before any decision to enable live trading.")
     st.markdown("---")
 
     store = load_validation_store()
     evaluate, render_scorecard = load_validation_tools()
-
     if not store or not evaluate:
-        st.info("Readiness gate will appear here after the first monitor cycle.")
-        st.write("Check back in 15-30 minutes for initial data.")
+        st.info("Readiness gate is not available yet.")
         return
 
     try:
         scorecard = evaluate(store, criteria_path="config/validation_criteria.json")
-
         st.markdown(render_scorecard(scorecard, decider="Dashboard User"))
-
         st.markdown("---")
-
         if scorecard.all_passed:
-            st.success(
-                "✅ All criteria passed! \n\n"
-                "Next steps: \n"
-                "1. Review the scorecard above carefully \n"
-                "2. Make an informed decision before enabling live trading \n"
-                "3. Edit `.github/workflows/continuous-monitor.yml` to set `DHAN_LIVE_TRADING_ENABLED = true` "
-                "(if desired after manual review)"
-            )
+            st.success("All locked validation criteria passed. Live trading is still disabled until a deliberate manual decision is made.")
         else:
-            st.warning(
-                f"⏳ {len(scorecard.failed)} criterion/criteria not yet met. Keep monitoring."
-            )
-
-    except Exception as e:
-        st.warning(f"Cannot evaluate readiness yet: {e}")
+            st.warning(f"{len(scorecard.failed)} criterion/criteria not yet met. Continue paper validation.")
+    except Exception as exc:
+        st.warning(f"Cannot evaluate readiness yet: {exc}")
 
 
-# ---- Page: Settings ----
 def page_settings():
-    """View environment configuration."""
     st.title("⚙️ Settings & Configuration")
-
-    st.subheader("Environment Variables")
-    st.write(
-        "These are loaded from Streamlit Secrets (Secrets tab in 'Manage app') "
-        "or your local `.env` file."
-    )
+    st.write("GitHub Actions uses repository Actions Secrets/Variables. Streamlit Cloud uses its app Secrets.")
 
     env_vars = [
         ("DHAN_CLIENT_ID", "Dhan broker client ID"),
-        ("DHAN_ACCESS_TOKEN", "Dhan broker access token"),
-        ("DHAN_SECURITY_IDS_JSON", "Instrument ID mapping (JSON)"),
-        ("BSE_SCRIP_CODES_JSON", "BSE codes (JSON)"),
-        ("BOT_RESEARCH_REFERENCE_CAPITAL", "Reference capital for position sizing"),
-        ("TELEGR AM_BOT_TOKEN", "Telegram bot token (optional)"),
-        ("TELEGRAM_CHAT_ID", "Telegram chat ID (optional)"),
-        ("DHAN_LIVE_TRADING_ENABLED", "Live trading switch (hardcoded in workflow)"),
+        ("DHAN_ACCESS_TOKEN", "Dhan access token"),
+        ("DHAN_API_KEY", "Dhan API key"),
+        ("DHAN_SECURITY_IDS_JSON", "Dhan instrument/security ID mapping"),
+        ("BSE_SCRIP_CODES_JSON", "BSE scrip-code mapping"),
+        ("TWELVEDATA_API_KEY", "Twelve Data intraday fallback key"),
+        ("BOT_RESEARCH_REFERENCE_CAPITAL", "Fallback paper-trading reference capital"),
+        ("TELEGRAM_BOT_TOKEN", "Telegram bot token"),
+        ("TELEGRAM_CHAT_ID", "Telegram chat ID"),
     ]
-
-    for var, desc in env_vars:
-        value = os.getenv(var, "(not set)")
-
-        # Mask sensitive values
-        if any(word in var for word in ["TOKEN", "SECRET", "ACCESS"]):
-            if len(value) > 10 and value != "(not set)":
-                value = value[:4] + "***" + value[-4:]
-
-        status = "✅" if value != "(not set)" else "⚠️"
-        st.write(f"{status} **{var}** — {desc}")
-        st.caption(value)
+    for name, description in env_vars:
+        value = _secret_or_env(name)
+        marker = "✅" if value else "⚠️"
+        st.write(f"{marker} **{name}** — {description}")
+        st.caption(_mask(name, value))
 
     st.markdown("---")
+    st.subheader("Workflow")
+    st.write("**Schedule:** Every 15 minutes, 9:15 AM–3:30 PM IST, weekdays")
+    st.write("**Mode:** Paper-trading only")
+    st.write("**Live trading switch:** Hardcoded to `false` in the GitHub Actions workflow")
+    st.write("**Health file:** `data/monitor_status.json`")
+    st.write("**Journal:** `data/paper_trading_journal.jsonl`")
+    st.write("**Criteria:** `config/validation_criteria.json`")
 
-    st.subheader("Files & Directories")
-    st.write("""
-    - **Journal:** `data/paper_trading_journal.jsonl` (persisted on GitHub)
-    - **Criteria:** `config/validation_criteria.json` (locked pass/fail rules)
-    - **Reports:** `reports/daily/` and `reports/weekly/` (validation summaries)
-    - **Workflow:** `.github/workflows/continuous-monitor.yml` (scheduler config)
-    """)
 
-
-# ---- Main App ----
 def main():
-    """Main dashboard app with navigation."""
     st.sidebar.title("Navigation")
-
-    page = st.sidebar.radio(
-        "Select page",
-        ["Overview", "Signals & Outcomes", "Phase 9 Gate", "Settings"],
-        index=0,
-    )
+    page = st.sidebar.radio("Select page", ["Overview", "Signals & Outcomes", "Phase 9 Gate", "Settings"], index=0)
 
     if page == "Overview":
         page_overview()
@@ -258,13 +305,16 @@ def main():
         page_signals()
     elif page == "Phase 9 Gate":
         page_phase9()
-    elif page == "Settings":
+    else:
         page_settings()
 
+    status = load_monitor_status()
     st.sidebar.markdown("---")
     st.sidebar.subheader("Status")
+    st.sidebar.write(f"**Bot:** {status.get('status', 'NOT_RUN')}")
     st.sidebar.write("**Mode:** Paper-trading")
     st.sidebar.write("**Monitor:** Every 15 min (9:15–3:30 IST)")
+    st.sidebar.write("**Last cycle:** " + _format_time(status.get("updated_at")))
     st.sidebar.write("**Repository:** github.com/kvrmsp18/stockmarket-bot")
 
 
