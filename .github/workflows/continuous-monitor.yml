@@ -1,9 +1,10 @@
 name: Continuous Intraday Monitor
 
-# GitHub Actions schedules are best-effort and can be delayed. Wake every
-# 5 minutes during the broad market window and execute only when the last
-# recorded cycle is at least 12 minutes old. A workflow-file push also runs
-# one immediate validation cycle; state commits use [skip ci].
+# Paper-trading monitor: run a complete monitor cycle every 5 minutes
+# during NSE market hours (9:15 AM-3:30 PM IST), weekdays.
+# GitHub Actions cron is UTC (IST = UTC+5:30), so the schedule wakes
+# every 5 minutes across the broad window and the job itself enforces
+# the exact NSE market window.
 "on":
   schedule:
     - cron: '*/5 3-10 * * 1-5'
@@ -27,66 +28,50 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Decide whether a monitor cycle is due
-        id: due
+      - name: Check NSE market window
+        id: market
         shell: bash
         run: |
           python - <<'PY'
-          import json
           import os
-          from datetime import datetime, timedelta
-          from pathlib import Path
+          from datetime import datetime
           from zoneinfo import ZoneInfo
 
           ist = ZoneInfo("Asia/Kolkata")
           now = datetime.now(ist)
           event = os.getenv("GITHUB_EVENT_NAME", "")
-          due = event in {"push", "workflow_dispatch"}
-          reason = f"event={event}; immediate validation" if due else "outside market window"
-          start = now.replace(hour=9, minute=15, second=0, microsecond=0)
-          end = now.replace(hour=15, minute=30, second=0, microsecond=0)
 
-          if not due and start <= now <= end and now.weekday() < 5:
-              status_path = Path("data/monitor_status.json")
-              last = None
-              if status_path.exists():
-                  try:
-                      payload = json.loads(status_path.read_text(encoding="utf-8"))
-                      value = payload.get("updated_at")
-                      if value:
-                          last = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-                          if last.tzinfo is None:
-                              last = last.replace(tzinfo=ZoneInfo("UTC"))
-                          last = last.astimezone(ist)
-                  except Exception as exc:
-                      print(f"Could not read previous monitor status: {exc}")
+          # Scheduled cycles run only during the NSE cash-market window.
+          # Push/manual runs are allowed immediately for validation.
+          market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+          market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+          in_market = now.weekday() < 5 and market_open <= now <= market_close
+          run_cycle = in_market or event in {"push", "workflow_dispatch"}
 
-              if last is None:
-                  due = True
-                  reason = "no previous cycle recorded"
-              elif now - last >= timedelta(minutes=12):
-                  due = True
-                  reason = f"last cycle {(now-last).total_seconds()/60:.1f} minutes ago"
-              else:
-                  reason = f"last cycle {(now-last).total_seconds()/60:.1f} minutes ago; waiting"
+          if event == "schedule" and not in_market:
+              reason = "outside NSE market window"
+          elif in_market:
+              reason = "inside NSE market window"
+          else:
+              reason = f"manual validation event={event}"
 
           print(f"IST now: {now.isoformat()}")
-          print(f"Cycle due: {due} ({reason})")
+          print(f"Run monitor cycle: {run_cycle} ({reason})")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"due={'true' if due else 'false'}\n")
+              fh.write(f"run_cycle={'true' if run_cycle else 'false'}\n")
           PY
 
       - uses: actions/setup-python@v6
-        if: steps.due.outputs.due == 'true'
+        if: steps.market.outputs.run_cycle == 'true'
         with:
           python-version: '3.12'
 
       - name: Install dependencies
-        if: steps.due.outputs.due == 'true'
+        if: steps.market.outputs.run_cycle == 'true'
         run: pip install -r requirements.txt --quiet
 
       - name: Run one monitor cycle
-        if: steps.due.outputs.due == 'true'
+        if: steps.market.outputs.run_cycle == 'true'
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
@@ -102,7 +87,7 @@ jobs:
         run: python -m scripts.run_daily_cycle
 
       - name: Commit journal, reports and monitor health
-        if: always() && steps.due.outputs.due == 'true'
+        if: always() && steps.market.outputs.run_cycle == 'true'
         run: |
           set -e
           git config user.name "stockmarket-bot"
