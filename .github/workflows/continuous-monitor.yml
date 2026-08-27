@@ -4,7 +4,10 @@ name: Continuous Intraday Monitor
 # on every cycle. The cycle is scheduled every 5 minutes during NSE hours.
 "on":
   schedule:
-    - cron: '*/5 3-10 * * 1-5'
+    # 09:15, 09:20, 09:25 ... 15:25, 15:30 IST (UTC+05:30).
+    - cron: '45,50,55 3 * * 1-5'
+    - cron: '*/5 4-9 * * 1-5'
+    - cron: '0 10 * * 1-5'
   push:
     branches: [main]
     paths:
@@ -31,7 +34,7 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     # A healthy complete-market cycle should finish well before the next 5m
-    # trigger. Do not hide a performance regression behind a 45m timeout.
+    # trigger. Do not hide a performance regression behind a long timeout.
     timeout-minutes: 8
 
     steps:
