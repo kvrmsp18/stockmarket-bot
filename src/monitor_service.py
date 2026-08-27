@@ -12,17 +12,15 @@ from .research_market_data import ResearchMarketDataProvider
 from .risk_management import RiskConfig
 from .stock_monitor import StockMonitorSnapshot, build_monitor_snapshot
 
-BOT_RESEARCH_UNIVERSE: tuple[str, ...] = (
-    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
-    "SBIN.NS", "LT.NS", "AXISBANK.NS", "ITC.NS", "BHARTIARTL.NS",
-    "KOTAKBANK.NS", "MARUTI.NS", "M&M.NS", "SUNPHARMA.NS", "HINDUNILVR.NS",
-    "TMPV.NS", "TMCV.NS", "BAJFINANCE.NS", "ADANIENT.NS", "ADANIPORTS.NS",
-    "NTPC.NS", "POWERGRID.NS", "TATASTEEL.NS", "HCLTECH.NS", "WIPRO.NS",
-    "TECHM.NS",
-)
+# Do not maintain a small fixed stock list here.  The production monitor must
+# validate the complete configured market universe supplied by the market-data
+# provider.  An explicit symbols argument is still supported for tests/tools.
+BOT_RESEARCH_UNIVERSE: tuple[str, ...] = ()
 
 LIVE_MONITOR_PERIOD = "5d"
-LIVE_MONITOR_INTERVAL = "15m"
+# The bot runs every 5 minutes. Keep the research candles aligned with that
+# cadence so each cycle evaluates fresh 5-minute intraday data.
+LIVE_MONITOR_INTERVAL = "5m"
 
 
 def run_stock_monitor(
@@ -34,23 +32,13 @@ def run_stock_monitor(
     risk_config: RiskConfig | None = None,
     selected_quantities: Mapping[str, int] | None = None,
 ) -> tuple[ResearchScanResult, StockMonitorSnapshot]:
-    """Run one complete read-only intraday scan using the managed universe.
+    """Run one complete read-only intraday scan.
 
-    Decision chain:
-      NIFTY/BANKNIFTY regime -> sector strength -> stock technicals
-      -> M/W/D RSI confirmation -> advanced indicators -> fundamentals
-      -> risk -> Entry/SL/Target -> ranking.
-
-    The research pipeline is the single source of truth for M/W/D confirmation.
-    The older candidate-engine helper also has an MTF check for standalone use,
-    but it is disabled here to avoid a second provider call that can reject a
-    valid candidate for a provider-specific reason after the real pipeline MTF
-    gate has already passed.
-
-    Production data policy is DhanHQ intraday -> Twelve Data intraday ->
-    official NSE/BSE daily/EOD fallback. No broker order API is used.
+    If no symbols are explicitly supplied, the research pipeline/provider is
+    responsible for its complete configured market universe.  The monitor no
+    longer falls back to a hard-coded 26/29-stock list.
     """
-    universe = tuple(symbols) if symbols else BOT_RESEARCH_UNIVERSE
+    universe = tuple(symbols) if symbols else None
     cfg = research_config or ResearchPipelineConfig(
         period=LIVE_MONITOR_PERIOD,
         interval=LIVE_MONITOR_INTERVAL,
@@ -58,9 +46,6 @@ def run_stock_monitor(
         fundamental_config=FundamentalConfig.from_environment(),
     )
 
-    # The research_pipeline performs the genuine M/W/D gate itself using the
-    # configured production provider. Do not run a second, independent MTF
-    # provider lookup inside candidate_engine for the live monitor.
     cfg = replace(
         cfg,
         account_equity=account_equity,
@@ -72,6 +57,9 @@ def run_stock_monitor(
     )
 
     data_provider = provider or ProductionMarketDataProvider(timeout=12.0)
+
+    # scan_symbols must receive the provider's complete market universe when
+    # symbols is None; this is intentionally not replaced by a small constant.
     scan = scan_symbols(universe, provider=data_provider, config=cfg)
     snapshot = build_monitor_snapshot(
         scan,
