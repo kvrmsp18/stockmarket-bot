@@ -15,6 +15,7 @@ import uuid
 from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from src.dhan_api import DhanAPIError, DhanAuthenticationError, DhanHQClient
 from src.monitor_service import run_stock_monitor
@@ -25,6 +26,7 @@ from src.validation_store import ValidationStore
 
 DEFAULT_JOURNAL_PATH = "data/paper_trading_journal.jsonl"
 DEFAULT_STATUS_PATH = "data/monitor_status.json"
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def _reference_capital() -> float:
@@ -145,7 +147,7 @@ def _telegram_message(
         funds_text = f"₹{available_funds:,.2f}"
     lines = [
         "🤖 Stockmarket Bot — monitor heartbeat",
-        f"Time: {now.astimezone().strftime('%d-%b-%Y %I:%M:%S %p %Z')}",
+        f"Time: {now.astimezone(IST).strftime('%d-%b-%Y %I:%M:%S %p IST')}",
         "Mode: PAPER-TRADING (no real orders)",
         f"Available Dhan funds: {funds_text} [{funds_source}]",
         f"Scan equity used: ₹{account_equity:,.2f}",
@@ -197,12 +199,12 @@ def main() -> int:
         _write_status(failure_status)
         print(f"Monitor cycle failed: {error}", file=sys.stderr)
         try:
-            notifier.send(f"⚠️ Monitor cycle FAILED\nTime: {now.isoformat()}\nError: {error}")
+            notifier.send(f"⚠️ Monitor cycle FAILED\nTime: {now.astimezone(IST).strftime('%d-%b-%Y %I:%M:%S %p IST')}\nError: {error}")
         except Exception as notify_exc:
             print(f"(Telegram alert also failed: {notify_exc})", file=sys.stderr)
         return 1
 
-    already_open = _symbols_with_open_signal_today(store, today=now.date())
+    already_open = _symbols_with_open_signal_today(store, today=now.astimezone(IST).date())
     new_signals = signals_from_snapshot(snapshot, generated_at=now, already_open=already_open)
     for signal in new_signals:
         store.append_signal(signal)
@@ -268,8 +270,6 @@ def main() -> int:
         else:
             print("Telegram heartbeat delivered.")
     except Exception as exc:
-        # Telegram failure must not turn a successful market-data scan into a
-        # failed trading cycle. The dashboard/status file remains authoritative.
         print(f"Telegram heartbeat failed: {exc}", file=sys.stderr)
 
     return 0
