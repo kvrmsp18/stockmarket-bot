@@ -56,13 +56,21 @@ jobs:
       - name: Commit journal, reports and monitor health
         if: always()
         run: |
+          set -e
           git config user.name "stockmarket-bot"
           git config user.email "actions@users.noreply.github.com"
+
+          # Sync first, while the working tree is still clean. This prevents
+          # git pull --rebase from unstaging the freshly generated monitor state.
+          git pull --rebase --autostash
+
+          # Stage AFTER the pull so monitor_status.json and all generated
+          # journal/report files are definitely included in the commit.
           git add data/ reports/
+
           if ! git diff --cached --quiet; then
-            git pull --rebase --autostash
             git commit -m "Update paper-trading monitor state [skip ci]"
             git push
           else
-            echo "No changes to commit."
+            echo "No monitor state changes to commit."
           fi
