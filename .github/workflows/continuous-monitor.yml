@@ -8,6 +8,14 @@ name: Continuous Intraday Monitor
     - cron: '45 3 * * 1-5'
     - cron: '*/15 4-9 * * 1-5'
     - cron: '0 10 * * 1-5'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'config/**'
+      - 'requirements.txt'
+      - '.github/workflows/continuous-monitor.yml'
   workflow_dispatch: {}
 
 concurrency:
@@ -40,6 +48,7 @@ jobs:
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_AUTO_DISCOVER_CHAT_ID: "true"
           BOT_RESEARCH_REFERENCE_CAPITAL: ${{ vars.BOT_RESEARCH_REFERENCE_CAPITAL }}
           DHAN_LIVE_TRADING_ENABLED: "false"
         run: python -m scripts.run_daily_cycle
