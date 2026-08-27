@@ -76,31 +76,98 @@ jobs:
           import os
           import requests
 
-          url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
-          response = requests.get(
-              url,
-              timeout=30,
-              headers={"User-Agent": "Mozilla/5.0"},
-          )
-          response.raise_for_status()
-          rows = csv.DictReader(io.StringIO(response.content.decode("utf-8-sig", errors="replace")))
-          symbols = []
-          seen = set()
-          for row in rows:
-              symbol = str(row.get("SYMBOL", "")).strip().upper()
-              series = str(row.get("SERIES", "")).strip().upper()
-              if symbol and series == "EQ" and symbol not in seen:
-                  symbols.append(symbol)
-                  seen.add(symbol)
+          session = requests.Session()
+          session.headers.update({
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36",
+              "Accept": "text/csv,application/json,text/plain,*/*",
+              "Accept-Language": "en-US,en;q=0.9",
+              "Referer": "https://www.nseindia.com/",
+          })
 
-          if not symbols:
-              raise SystemExit("NSE equity universe download returned zero EQ symbols.")
+          def emit(symbols, source):
+              symbols = sorted(set(s.strip().upper() for s in symbols if s and s.strip()))
+              if len(symbols) < 500:
+                  raise RuntimeError(f"{source} returned only {len(symbols)} NSE EQ symbols; refusing to run a partial market scan.")
+              print(f"Complete NSE EQ universe loaded from {source}: {len(symbols)} symbols")
+              # GitHub Actions environment files support this comfortably for
+              # the current NSE equity universe; one symbol is written once.
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+                  fh.write("BOT_MARKET_UNIVERSE=" + ",".join(symbols) + "\n")
+              with open("market_universe_count.txt", "w", encoding="utf-8") as fh:
+                  fh.write(str(len(symbols)))
 
-          print(f"Complete NSE EQ universe loaded: {len(symbols)} symbols")
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
-              fh.write("BOT_MARKET_UNIVERSE=" + ",".join(symbols) + "\n")
-          with open("market_universe_count.txt", "w", encoding="utf-8") as fh:
-              fh.write(str(len(symbols)))
+          # Primary: official NSE equity master CSV. Some GitHub-hosted runners
+          # receive a challenge/HTML response, so validate the CSV before use.
+          nse_error = None
+          try:
+              response = session.get(
+                  "https://archives.nseindia.com/content/equities/EQUITY_L.csv",
+                  timeout=30,
+              )
+              response.raise_for_status()
+              text = response.content.decode("utf-8-sig", errors="replace")
+              if "SYMBOL" not in text[:1000].upper():
+                  raise RuntimeError("NSE response is not the expected equity CSV")
+              rows = csv.DictReader(io.StringIO(text))
+              symbols = []
+              for row in rows:
+                  symbol = str(row.get("SYMBOL", "")).strip().upper()
+                  series = str(row.get("SERIES", "")).strip().upper()
+                  if symbol and series == "EQ":
+                      symbols.append(symbol)
+              emit(symbols, "official NSE EQUITY_L.csv")
+          except Exception as exc:
+              nse_error = str(exc)
+              print(f"Official NSE CSV unavailable: {nse_error}")
+
+          # Fallback: Dhan's public instrument master. This is NOT a fixed list;
+          # it is downloaded fresh every cycle and filtered to NSE cash equities.
+          # It keeps the monitor operational when NSE blocks GitHub Actions IPs.
+          if nse_error is not None:
+              try:
+                  response = session.get(
+                      "https://images.dhan.co/api-data/api-scrip-master.csv",
+                      timeout=45,
+                  )
+                  response.raise_for_status()
+                  rows = csv.DictReader(io.StringIO(response.content.decode("utf-8-sig", errors="replace")))
+                  fields = {str(f).strip().lower(): f for f in (rows.fieldnames or []) if f}
+
+                  def field(*names):
+                      for name in names:
+                          if name in fields:
+                              return fields[name]
+                      return None
+
+                  exchange_field = field("sem_exm_exch_id", "exchange")
+                  symbol_field = field("sem_trading_symbol", "trading_symbol", "tradingsymbol", "sem_custom_symbol")
+                  segment_field = field("sem_segment", "segment", "exchange_segment")
+                  instrument_field = field("sem_instrument_name", "instrument_name", "instrument")
+                  if not exchange_field or not symbol_field:
+                      raise RuntimeError("Dhan master schema does not contain exchange and trading-symbol fields")
+
+                  symbols = []
+                  for row in rows:
+                      exchange = str(row.get(exchange_field, "")).strip().upper()
+                      symbol = str(row.get(symbol_field, "")).strip().upper()
+                      segment = str(row.get(segment_field, "")).strip().upper() if segment_field else ""
+                      instrument = str(row.get(instrument_field, "")).strip().upper() if instrument_field else ""
+                      # Accept explicit NSE equity rows. If the instrument column
+                      # exists, require EQUITY; if it does not, require NSE_EQ.
+                      if exchange != "NSE" or not symbol:
+                          continue
+                      if instrument_field and instrument and instrument != "EQUITY":
+                          continue
+                      if segment_field and segment and segment not in {"NSE_EQ", "NSE"}:
+                          continue
+                      symbols.append(symbol)
+                  emit(symbols, "Dhan public instrument master fallback")
+              except Exception as exc:
+                  raise SystemExit(
+                      "Unable to obtain a complete NSE equity universe from either "
+                      f"the official NSE CSV ({nse_error}) or Dhan master ({exc}). "
+                      "Refusing to run a partial/fixed-stock scan."
+                  ) from exc
           PY
 
       - name: Run one complete paper-trading market cycle
