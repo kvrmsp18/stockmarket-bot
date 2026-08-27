@@ -1,0 +1,27 @@
+{
+  "status": "NOT_RUN",
+  "updated_at": null,
+  "mode": "paper-trading",
+  "market_window": "09:15-15:30 IST weekdays",
+  "account_equity": null,
+  "available_funds": null,
+  "funds_source": null,
+  "funds_error": null,
+  "telegram_configured": false,
+  "scan": {
+    "requested": 0,
+    "scanned": 0,
+    "data_errors": 0,
+    "quality_failures": 0,
+    "technical_rejections": 0,
+    "fundamental_errors": 0,
+    "candidate_count": 0,
+    "actionable": 0,
+    "buy": 0,
+    "sell": 0
+  },
+  "rejection_breakdown": {},
+  "data_sources": {},
+  "new_signals_frozen": 0,
+  "actionable_candidates": []
+}
