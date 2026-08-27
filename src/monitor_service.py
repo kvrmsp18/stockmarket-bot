@@ -12,14 +12,12 @@ from .research_market_data import ResearchMarketDataProvider
 from .risk_management import RiskConfig
 from .stock_monitor import StockMonitorSnapshot, build_monitor_snapshot
 
-# Do not maintain a small fixed stock list here.  The production monitor must
-# validate the complete configured market universe supplied by the market-data
-# provider.  An explicit symbols argument is still supported for tests/tools.
+# No fixed stock list: the production monitor must receive the complete market
+# universe from the market-data provider/configuration. An explicit symbols
+# argument remains available for tests and controlled tooling.
 BOT_RESEARCH_UNIVERSE: tuple[str, ...] = ()
 
 LIVE_MONITOR_PERIOD = "5d"
-# The bot runs every 5 minutes. Keep the research candles aligned with that
-# cadence so each cycle evaluates fresh 5-minute intraday data.
 LIVE_MONITOR_INTERVAL = "5m"
 
 
@@ -34,9 +32,9 @@ def run_stock_monitor(
 ) -> tuple[ResearchScanResult, StockMonitorSnapshot]:
     """Run one complete read-only intraday scan.
 
-    If no symbols are explicitly supplied, the research pipeline/provider is
-    responsible for its complete configured market universe.  The monitor no
-    longer falls back to a hard-coded 26/29-stock list.
+    No hard-coded 26/29-stock fallback is used. If ``symbols`` is omitted,
+    ``scan_symbols`` receives ``None`` so its configured/provider universe is
+    used in full.
     """
     universe = tuple(symbols) if symbols else None
     cfg = research_config or ResearchPipelineConfig(
@@ -57,9 +55,6 @@ def run_stock_monitor(
     )
 
     data_provider = provider or ProductionMarketDataProvider(timeout=12.0)
-
-    # scan_symbols must receive the provider's complete market universe when
-    # symbols is None; this is intentionally not replaced by a small constant.
     scan = scan_symbols(universe, provider=data_provider, config=cfg)
     snapshot = build_monitor_snapshot(
         scan,
