@@ -1,7 +1,7 @@
 name: Continuous Intraday Monitor
 
-# Paper-trading monitor. A fresh NSE cash-equity universe is loaded on every
-# cycle. The schedule is every 5 minutes during NSE market hours.
+# Paper-trading monitor. A fresh complete NSE cash-equity universe is loaded
+# on every cycle. The cycle is scheduled every 5 minutes during NSE hours.
 "on":
   schedule:
     - cron: '*/5 3-10 * * 1-5'
@@ -13,17 +13,26 @@ name: Continuous Intraday Monitor
       - 'scripts/**'
   workflow_dispatch: {}
 
+# Never allow an old, slow scan to block newer 5-minute cycles.
 concurrency:
   group: continuous-monitor
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: write
 
+env:
+  # Bounded parallel read-only Dhan chart requests. This removes the old
+  # single-request-at-a-time bottleneck while keeping API pressure controlled.
+  DHAN_SCAN_WORKERS: '6'
+  DHAN_INTRADAY_MIN_INTERVAL_SECONDS: '0.6'
+
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # A healthy complete-market cycle should finish well before the next 5m
+    # trigger. Do not hide a performance regression behind a 45m timeout.
+    timeout-minutes: 8
 
     steps:
       - uses: actions/checkout@v5
@@ -138,6 +147,7 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git add data/ reports/
           if ! git diff --cached --quiet; then
+            git pull --rebase --autostash
             git commit -m 'Update paper-trading monitor state [skip ci]'
             git push
           else
