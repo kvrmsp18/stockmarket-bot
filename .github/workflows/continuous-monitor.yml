@@ -16,7 +16,6 @@ name: Continuous Intraday Monitor
       - 'scripts/**'
   workflow_dispatch: {}
 
-# Never allow an old, slow scan to block newer 5-minute cycles.
 concurrency:
   group: continuous-monitor
   cancel-in-progress: true
@@ -25,16 +24,12 @@ permissions:
   contents: write
 
 env:
-  # Bounded parallel read-only Dhan chart requests. This removes the old
-  # single-request-at-a-time bottleneck while keeping API pressure controlled.
   DHAN_SCAN_WORKERS: '6'
   DHAN_INTRADAY_MIN_INTERVAL_SECONDS: '0.6'
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    # A healthy complete-market cycle should finish well before the next 5m
-    # trigger. Do not hide a performance regression behind a long timeout.
     timeout-minutes: 8
 
     steps:
@@ -55,7 +50,6 @@ jobs:
           closed = now.replace(hour=15, minute=30, second=0, microsecond=0)
           in_market = now.weekday() < 5 and opened <= now <= closed
           run_cycle = in_market or event in {'push', 'workflow_dispatch'}
-
           print(f'IST now: {now.isoformat()}')
           print(f'Run cycle: {run_cycle}')
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
@@ -84,33 +78,61 @@ jobs:
           URL = 'https://images.dhan.co/api-data/api-scrip-master.csv'
           MIN_SYMBOLS = 500
 
-          r = requests.get(URL, timeout=60, headers={'User-Agent': 'stockmarket-bot/1.0'})
-          r.raise_for_status()
-          text = r.content.decode('utf-8-sig', errors='replace')
+          response = requests.get(
+              URL,
+              timeout=60,
+              headers={'User-Agent': 'stockmarket-bot/1.0'},
+          )
+          response.raise_for_status()
+          text = response.content.decode('utf-8-sig', errors='replace')
           reader = csv.DictReader(io.StringIO(text))
           fields = {str(x).strip().upper(): x for x in (reader.fieldnames or []) if x}
 
-          required = ['SEM_EXM_EXCH_ID', 'SEM_INSTRUMENT_NAME', 'SEM_TRADING_SYMBOL', 'SEM_SMST_SECURITY_ID']
+          required = [
+              'SEM_EXM_EXCH_ID',
+              'SEM_SEGMENT',
+              'SEM_INSTRUMENT_NAME',
+              'SEM_TRADING_SYMBOL',
+              'SEM_SMST_SECURITY_ID',
+          ]
           missing = [x for x in required if x not in fields]
           if missing:
               raise SystemExit(f'Dhan master missing required columns: {missing}')
 
           symbols = []
           seen = set()
+          segment_counts = {}
+          instrument_counts = {}
+
           for row in reader:
               exchange = str(row.get(fields['SEM_EXM_EXCH_ID'], '')).strip().upper()
+              segment = str(row.get(fields['SEM_SEGMENT'], '')).strip().upper()
               instrument = str(row.get(fields['SEM_INSTRUMENT_NAME'], '')).strip().upper()
               symbol = str(row.get(fields['SEM_TRADING_SYMBOL'], '')).strip().upper()
               security_id = str(row.get(fields['SEM_SMST_SECURITY_ID'], '')).strip()
-              if exchange != 'NSE' or instrument != 'EQUITY' or not symbol or not security_id:
+
+              segment_counts[segment] = segment_counts.get(segment, 0) + 1
+              instrument_counts[instrument] = instrument_counts.get(instrument, 0) + 1
+
+              # Dhan's cash-equity segment is E. Keep only real NSE cash
+              # equity instruments; this excludes debt/derivatives rows that
+              # were incorrectly inflating the previous 9,855-symbol count.
+              if (
+                  exchange != 'NSE'
+                  or segment != 'E'
+                  or instrument != 'EQUITY'
+                  or not symbol
+                  or not security_id
+              ):
                   continue
+
               if symbol not in seen:
                   symbols.append(symbol)
                   seen.add(symbol)
 
           if len(symbols) < MIN_SYMBOLS:
               raise SystemExit(
-                  f'Dhan master returned only {len(symbols)} NSE EQ symbols; '
+                  f'Dhan master returned only {len(symbols)} NSE cash-equity symbols; '
                   'refusing to run a partial/fixed-stock scan.'
               )
 
@@ -118,6 +140,8 @@ jobs:
           print(f'COMPLETE NSE CASH-EQUITY UNIVERSE: {len(symbols)} symbols')
           print(f'First symbols: {", ".join(symbols[:10])}')
           print(f'Last symbols: {", ".join(symbols[-10:])}')
+          print(f'NSE segment E rows: {segment_counts.get("E", 0)}')
+          print(f'Instrument EQUITY rows: {instrument_counts.get("EQUITY", 0)}')
 
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
               f.write('BOT_MARKET_UNIVERSE=' + ','.join(symbols) + '\n')
