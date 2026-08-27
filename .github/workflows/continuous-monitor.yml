@@ -1,33 +1,23 @@
 name: Continuous Intraday Monitor
 
-# NSE/BSE session is 9:15 AM - 3:30 PM IST (UTC+5:30, no DST). GitHub
-# Actions cron is UTC-only and Mon-Fri = weekday values 1-5.
-#
-# Known, accepted gap: this does NOT know about NSE/BSE holidays (Diwali,
-# Republic Day, etc.) -- it will still fire on those days. That's fine: a
-# closed-market cycle just produces a data/connectivity failure the same
-# way any other bad-data cycle does, which the pipeline already handles
-# without crashing.
+# Run analysis 24/7 (every hour), every day including holidays
+# Trades only during market hours (guarded by the code itself)
 "on":
   schedule:
-    - cron: '45 3 * * 1-5'           # 9:15 AM IST -- market open
-    - cron: '0,15,30,45 4-9 * * 1-5' # every 15 min, 9:30 AM - 3:15 PM IST
-    - cron: '0 10 * * 1-5'           # 3:30 PM IST -- market close
-  workflow_dispatch: {}              # manual test run from the Actions tab
+    - cron: '0 * * * *'  # Every hour, 24/7, all days
+  workflow_dispatch: {}  # Manual trigger from Actions tab
 
 concurrency:
   group: continuous-monitor
-  # Queue, never cancel. A half-finished cycle must never be interrupted
-  # mid-write to the journal -- see run_daily_cycle.py's docstring.
   cancel-in-progress: false
 
 permissions:
-  contents: write  # needed for the commit-back step below
+  contents: write
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 12  # leave headroom before the next 15-minute trigger
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -41,16 +31,13 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BOT_RESEARCH_REFERENCE_CAPITAL: ${{ vars.BOT_RESEARCH_REFERENCE_CAPITAL }}
-          # Deliberately hardcoded here, not read from a secret/variable.
-          # Going live means editing THIS FILE -- a visible, reviewable git
-          # diff -- not flipping a setting quietly. Change this by hand only
-          # after the Phase 9 readiness decision is actually signed.
           DHAN_LIVE_TRADING_ENABLED: "false"
         run: python -m scripts.run_daily_cycle
 
