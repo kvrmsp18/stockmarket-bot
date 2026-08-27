@@ -1,10 +1,7 @@
 name: Continuous Intraday Monitor
 
-# Paper-trading monitor: run a complete monitor cycle every 5 minutes
+# Paper-trading monitor: start a fresh market-validation cycle every 5 minutes
 # during NSE market hours (9:15 AM-3:30 PM IST), weekdays.
-# GitHub Actions cron is UTC (IST = UTC+5:30), so the schedule wakes
-# every 5 minutes across the broad window and the job itself enforces
-# the exact NSE market window.
 "on":
   schedule:
     - cron: '*/5 3-10 * * 1-5'
@@ -12,6 +9,8 @@ name: Continuous Intraday Monitor
     branches: [main]
     paths:
       - '.github/workflows/continuous-monitor.yml'
+      - 'src/**'
+      - 'scripts/**'
   workflow_dispatch: {}
 
 concurrency:
@@ -24,7 +23,7 @@ permissions:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -40,9 +39,6 @@ jobs:
           ist = ZoneInfo("Asia/Kolkata")
           now = datetime.now(ist)
           event = os.getenv("GITHUB_EVENT_NAME", "")
-
-          # Scheduled cycles run only during the NSE cash-market window.
-          # Push/manual runs are allowed immediately for validation.
           market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
           market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
           in_market = now.weekday() < 5 and market_open <= now <= market_close
@@ -70,7 +66,44 @@ jobs:
         if: steps.market.outputs.run_cycle == 'true'
         run: pip install -r requirements.txt --quiet
 
-      - name: Run one monitor cycle
+      - name: Refresh complete NSE equity universe
+        if: steps.market.outputs.run_cycle == 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import csv
+          import io
+          import os
+          import requests
+
+          url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
+          response = requests.get(
+              url,
+              timeout=30,
+              headers={"User-Agent": "Mozilla/5.0"},
+          )
+          response.raise_for_status()
+          rows = csv.DictReader(io.StringIO(response.content.decode("utf-8-sig", errors="replace")))
+          symbols = []
+          seen = set()
+          for row in rows:
+              symbol = str(row.get("SYMBOL", "")).strip().upper()
+              series = str(row.get("SERIES", "")).strip().upper()
+              if symbol and series == "EQ" and symbol not in seen:
+                  symbols.append(symbol)
+                  seen.add(symbol)
+
+          if not symbols:
+              raise SystemExit("NSE equity universe download returned zero EQ symbols.")
+
+          print(f"Complete NSE EQ universe loaded: {len(symbols)} symbols")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              fh.write("BOT_MARKET_UNIVERSE=" + ",".join(symbols) + "\n")
+          with open("market_universe_count.txt", "w", encoding="utf-8") as fh:
+              fh.write(str(len(symbols)))
+          PY
+
+      - name: Run one complete paper-trading market cycle
         if: steps.market.outputs.run_cycle == 'true'
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
