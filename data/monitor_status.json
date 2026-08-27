@@ -1,27 +1,33 @@
 {
-  "status": "NOT_RUN",
-  "updated_at": null,
-  "mode": "paper-trading",
-  "market_window": "09:15-15:30 IST weekdays",
-  "account_equity": null,
-  "available_funds": null,
-  "funds_source": null,
+  "account_equity": 0.18,
+  "actionable_candidates": [],
+  "available_funds": 0.18,
+  "data_sources": {
+    "dhanhq_intraday": 26
+  },
   "funds_error": null,
-  "telegram_configured": false,
+  "funds_source": "dhan_fundlimit",
+  "market_window": "09:15-15:30 IST weekdays",
+  "mode": "paper-trading",
+  "new_signals_frozen": 0,
+  "rejection_breakdown": {
+    "MARKET_CONTEXT_REJECTED": 4,
+    "MTF_DATA_ERROR": 2,
+    "NO_CANDIDATE": 20
+  },
   "scan": {
-    "requested": 0,
-    "scanned": 0,
-    "data_errors": 0,
-    "quality_failures": 0,
-    "technical_rejections": 0,
-    "fundamental_errors": 0,
-    "candidate_count": 0,
     "actionable": 0,
     "buy": 0,
-    "sell": 0
+    "candidate_count": 2,
+    "data_errors": 0,
+    "fundamental_errors": 0,
+    "quality_failures": 0,
+    "requested": 26,
+    "scanned": 26,
+    "sell": 0,
+    "technical_rejections": 26
   },
-  "rejection_breakdown": {},
-  "data_sources": {},
-  "new_signals_frozen": 0,
-  "actionable_candidates": []
+  "status": "OK",
+  "telegram_configured": true,
+  "updated_at": "2026-08-27T07:41:14.061714+00:00"
 }
