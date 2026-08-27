@@ -1,0 +1,145 @@
+name: Continuous Intraday Monitor
+
+# Paper-trading monitor. A fresh NSE cash-equity universe is loaded on every
+# cycle. The schedule is every 5 minutes during NSE market hours.
+"on":
+  schedule:
+    - cron: '*/5 3-10 * * 1-5'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/continuous-monitor.yml'
+      - 'src/**'
+      - 'scripts/**'
+  workflow_dispatch: {}
+
+concurrency:
+  group: continuous-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check NSE market window
+        id: market
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          now = datetime.now(ZoneInfo('Asia/Kolkata'))
+          event = os.getenv('GITHUB_EVENT_NAME', '')
+          opened = now.replace(hour=9, minute=15, second=0, microsecond=0)
+          closed = now.replace(hour=15, minute=30, second=0, microsecond=0)
+          in_market = now.weekday() < 5 and opened <= now <= closed
+          run_cycle = in_market or event in {'push', 'workflow_dispatch'}
+
+          print(f'IST now: {now.isoformat()}')
+          print(f'Run cycle: {run_cycle}')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write(f"run_cycle={'true' if run_cycle else 'false'}\n")
+          PY
+
+      - uses: actions/setup-python@v6
+        if: steps.market.outputs.run_cycle == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        if: steps.market.outputs.run_cycle == 'true'
+        run: pip install -r requirements.txt --quiet
+
+      - name: Load complete NSE cash-equity universe
+        if: steps.market.outputs.run_cycle == 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import csv
+          import io
+          import os
+          import requests
+
+          URL = 'https://images.dhan.co/api-data/api-scrip-master.csv'
+          MIN_SYMBOLS = 500
+
+          r = requests.get(URL, timeout=60, headers={'User-Agent': 'stockmarket-bot/1.0'})
+          r.raise_for_status()
+          text = r.content.decode('utf-8-sig', errors='replace')
+          reader = csv.DictReader(io.StringIO(text))
+          fields = {str(x).strip().upper(): x for x in (reader.fieldnames or []) if x}
+
+          required = ['SEM_EXM_EXCH_ID', 'SEM_INSTRUMENT_NAME', 'SEM_TRADING_SYMBOL', 'SEM_SMST_SECURITY_ID']
+          missing = [x for x in required if x not in fields]
+          if missing:
+              raise SystemExit(f'Dhan master missing required columns: {missing}')
+
+          symbols = []
+          seen = set()
+          for row in reader:
+              exchange = str(row.get(fields['SEM_EXM_EXCH_ID'], '')).strip().upper()
+              instrument = str(row.get(fields['SEM_INSTRUMENT_NAME'], '')).strip().upper()
+              symbol = str(row.get(fields['SEM_TRADING_SYMBOL'], '')).strip().upper()
+              security_id = str(row.get(fields['SEM_SMST_SECURITY_ID'], '')).strip()
+              if exchange != 'NSE' or instrument != 'EQUITY' or not symbol or not security_id:
+                  continue
+              if symbol not in seen:
+                  symbols.append(symbol)
+                  seen.add(symbol)
+
+          if len(symbols) < MIN_SYMBOLS:
+              raise SystemExit(
+                  f'Dhan master returned only {len(symbols)} NSE EQ symbols; '
+                  'refusing to run a partial/fixed-stock scan.'
+              )
+
+          symbols.sort()
+          print(f'COMPLETE NSE CASH-EQUITY UNIVERSE: {len(symbols)} symbols')
+          print(f'First symbols: {", ".join(symbols[:10])}')
+          print(f'Last symbols: {", ".join(symbols[-10:])}')
+
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write('BOT_MARKET_UNIVERSE=' + ','.join(symbols) + '\n')
+          with open('market_universe_count.txt', 'w', encoding='utf-8') as f:
+              f.write(str(len(symbols)))
+          PY
+
+      - name: Run one complete 5-minute paper-trading market cycle
+        if: steps.market.outputs.run_cycle == 'true'
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+          DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
+          BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_AUTO_DISCOVER_CHAT_ID: 'true'
+          BOT_RESEARCH_REFERENCE_CAPITAL: ${{ vars.BOT_RESEARCH_REFERENCE_CAPITAL }}
+          DHAN_LIVE_TRADING_ENABLED: 'false'
+        run: python -m scripts.run_daily_cycle
+
+      - name: Commit journal, reports and monitor health
+        if: always() && steps.market.outputs.run_cycle == 'true'
+        shell: bash
+        run: |
+          set -e
+          git config user.name 'stockmarket-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add data/ reports/
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update paper-trading monitor state [skip ci]'
+            git push
+          else
+            echo 'No monitor state changes to commit.'
+          fi
