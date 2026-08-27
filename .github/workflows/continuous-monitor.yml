@@ -1,12 +1,16 @@
 name: Continuous Intraday Monitor
 
 # GitHub Actions schedules are best-effort and can be delayed. Wake every
-# 5 minutes during market hours and execute only when the last recorded cycle
-# is at least 12 minutes old. This preserves an approximately 15-minute scan
-# cadence while giving delayed scheduled jobs a chance to catch up.
+# 5 minutes during the broad market window and execute only when the last
+# recorded cycle is at least 12 minutes old. A workflow-file push also runs
+# one immediate validation cycle; state commits use [skip ci].
 "on":
   schedule:
     - cron: '*/5 3-10 * * 1-5'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/continuous-monitor.yml'
   workflow_dispatch: {}
 
 concurrency:
@@ -29,18 +33,20 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           from datetime import datetime, timedelta
           from pathlib import Path
           from zoneinfo import ZoneInfo
 
           ist = ZoneInfo("Asia/Kolkata")
           now = datetime.now(ist)
+          event = os.getenv("GITHUB_EVENT_NAME", "")
+          due = event in {"push", "workflow_dispatch"}
+          reason = f"event={event}; immediate validation" if due else "outside market window"
           start = now.replace(hour=9, minute=15, second=0, microsecond=0)
           end = now.replace(hour=15, minute=30, second=0, microsecond=0)
-          due = False
-          reason = "outside market window"
 
-          if start <= now <= end and now.weekday() < 5:
+          if not due and start <= now <= end and now.weekday() < 5:
               status_path = Path("data/monitor_status.json")
               last = None
               if status_path.exists():
@@ -66,7 +72,7 @@ jobs:
 
           print(f"IST now: {now.isoformat()}")
           print(f"Cycle due: {due} ({reason})")
-          with open("$GITHUB_OUTPUT", "a", encoding="utf-8") as fh:
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"due={'true' if due else 'false'}\n")
           PY
 
