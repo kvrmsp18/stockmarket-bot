@@ -11,8 +11,8 @@
   "mode": "paper-trading",
   "new_signals_frozen": 0,
   "rejection_breakdown": {
-    "MARKET_CONTEXT_REJECTED": 4,
-    "NO_CANDIDATE": 22
+    "MARKET_CONTEXT_REJECTED": 7,
+    "NO_CANDIDATE": 19
   },
   "scan": {
     "actionable": 0,
@@ -28,5 +28,5 @@
   },
   "status": "OK",
   "telegram_configured": true,
-  "updated_at": "2026-08-27T08:09:13.645210+00:00"
+  "updated_at": "2026-08-27T08:31:17.088541+00:00"
 }
