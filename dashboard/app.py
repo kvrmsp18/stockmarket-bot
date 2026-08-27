@@ -1,6 +1,6 @@
 """Streamlit dashboard for the stockmarket bot.
 
-The dashboard reads the persisted paper-trading journal and the monitor health
+The dashboard reads the persisted paper-trading journal and monitor health
 snapshot written by GitHub Actions. It never places broker orders.
 """
 
@@ -68,6 +68,7 @@ def _format_time(value: str | None) -> str:
 
 
 def _secret_or_env(name: str) -> str:
+    """Read deployment secrets without ever displaying their full values."""
     value = os.getenv(name, "").strip()
     if value:
         return value
@@ -266,7 +267,12 @@ def page_phase9():
 
 def page_settings():
     st.title("⚙️ Settings & Configuration")
-    st.write("GitHub Actions uses repository Actions Secrets/Variables. Streamlit Cloud uses its app Secrets.")
+    st.write("GitHub Actions and Streamlit Cloud are separate environments. GitHub Actions Secrets do **not** automatically appear in Streamlit Cloud.")
+
+    st.info(
+        "To configure this dashboard, open your Streamlit Cloud app's **Settings → Secrets** and paste the real values from your secure credential store. "
+        "Do not commit real keys to GitHub. A safe template is available at `.streamlit/secrets.toml.example`."
+    )
 
     env_vars = [
         ("DHAN_CLIENT_ID", "Dhan broker client ID"),
@@ -277,7 +283,8 @@ def page_settings():
         ("TWELVEDATA_API_KEY", "Twelve Data intraday fallback key"),
         ("BOT_RESEARCH_REFERENCE_CAPITAL", "Fallback paper-trading reference capital"),
         ("TELEGRAM_BOT_TOKEN", "Telegram bot token"),
-        ("TELEGRAM_CHAT_ID", "Telegram chat ID"),
+        ("TELEGRAM_CHAT_ID", "Telegram chat ID (optional when auto-discovery is enabled)"),
+        ("TELEGRAM_AUTO_DISCOVER_CHAT_ID", "Allow safe unique Telegram chat-ID discovery"),
     ]
     for name, description in env_vars:
         value = _secret_or_env(name)
