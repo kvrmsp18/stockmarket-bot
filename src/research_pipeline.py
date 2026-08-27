@@ -1,10 +1,9 @@
 """End-to-end, read-only research screening pipeline.
 
-The production scanner deliberately separates the complete-market pass from
-expensive confirmation work. Every cycle still receives the complete dynamic
-NSE universe, but network-bound 5-minute OHLCV requests are fetched in a
-bounded worker pool instead of one stock at a time. M/W/D history is fetched
-only after a stock has passed the initial technical/context candidate gate.
+The production scanner separates the complete-market pass from expensive
+confirmation work. Every cycle receives the complete dynamic NSE universe,
+while network-bound 5-minute OHLCV requests are fetched in a bounded worker
+pool. M/W/D history is fetched only after a stock reaches the candidate gate.
 
 No order placement occurs in this module.
 """
@@ -19,6 +18,7 @@ from typing import Sequence
 from .advanced_indicators import AdvancedTechnicalSnapshot, analyze_advanced
 from .candidate_engine import CandidateConfig, generate_candidate, rank_candidates
 from .market_context import build_market_context, candidate_context_allowed
+from .production_market_data import ProductionMarketDataProvider
 from .research_data_quality import ResearchDataQualityError, ResearchDataQualityReport, assess_research_data
 from .research_fundamentals import CachedFundamentals, FundamentalAssessment, FundamentalConfig, FundamentalDataError, FundamentalMetrics, assess_buy_fundamentals
 from .research_market_data import ResearchBar, ResearchMarketDataError, ResearchMarketDataProvider, ResilientMarketDataProvider, indian_equity_symbol
@@ -130,33 +130,16 @@ def _aggregate_bars(bars: Sequence[ResearchBar], timeframe: str) -> tuple[Resear
     aggregated: list[ResearchBar] = []
     for group in groups.values():
         first, last = group[0], group[-1]
-        aggregated.append(
-            ResearchBar(
-                symbol=last.symbol,
-                timestamp=last.timestamp,
-                open=first.open,
-                high=max(bar.high for bar in group),
-                low=min(bar.low for bar in group),
-                close=last.close,
-                volume=sum(max(0, int(bar.volume)) for bar in group),
-            )
-        )
+        aggregated.append(ResearchBar(symbol=last.symbol, timestamp=last.timestamp, open=first.open, high=max(bar.high for bar in group), low=min(bar.low for bar in group), close=last.close, volume=sum(max(0, int(bar.volume)) for bar in group)))
     return tuple(aggregated)
 
 
 def _mtf_reason(mtf: MultiTimeframeRSI | None) -> str:
     if mtf is None:
         return "MTF confirmation unavailable."
-
     def fmt(value: float | None) -> str:
         return "NA" if value is None else f"{value:.1f}"
-
-    return (
-        f"MTF RSI M/W/D={fmt(mtf.monthly_rsi_14)}/{fmt(mtf.weekly_rsi_14)}/"
-        f"{fmt(mtf.daily_rsi_14)}; alignment={mtf.alignment}; "
-        f"all_three_agree={mtf.all_three_agree}; "
-        f"all_three_overbought={mtf.all_three_overbought}."
-    )
+    return f"MTF RSI M/W/D={fmt(mtf.monthly_rsi_14)}/{fmt(mtf.weekly_rsi_14)}/{fmt(mtf.daily_rsi_14)}; alignment={mtf.alignment}; all_three_agree={mtf.all_three_agree}; all_three_overbought={mtf.all_three_overbought}."
 
 
 def _mtf_gate(candidate_direction: str, mtf: MultiTimeframeRSI) -> tuple[bool, str]:
@@ -166,55 +149,24 @@ def _mtf_gate(candidate_direction: str, mtf: MultiTimeframeRSI) -> tuple[bool, s
     if expected_alignment is None:
         return False, f"MTF directional conflict: unsupported candidate direction {candidate_direction}."
     if mtf.alignment != expected_alignment:
-        return False, (
-            f"MTF directional conflict: candidate is {candidate_direction}, "
-            f"but M/W/D RSI regime is {mtf.alignment}."
-        )
+        return False, f"MTF directional conflict: candidate is {candidate_direction}, but M/W/D RSI regime is {mtf.alignment}."
     return True, f"MTF confirmation passed: M/W/D RSI all align {candidate_direction}."
 
 
-def analyze_history(
-    bars: tuple[ResearchBar, ...],
-    *,
-    exchange: str = "NSE",
-    account_equity: float = 100000.0,
-    candidate_config: CandidateConfig | None = None,
-    risk_config: RiskConfig | None = None,
-) -> ResearchResult:
+def analyze_history(bars: tuple[ResearchBar, ...], *, exchange: str = "NSE", account_equity: float = 100000.0, candidate_config: CandidateConfig | None = None, risk_config: RiskConfig | None = None) -> ResearchResult:
     if not bars:
         raise ValueError("At least one market bar is required.")
     quality = assess_research_data(bars)
     if not quality.ready:
-        raise ResearchDataQualityError(
-            f"Research data quality check failed for {quality.symbol}: "
-            + "; ".join(quality.issues)
-        )
+        raise ResearchDataQualityError(f"Research data quality check failed for {quality.symbol}: " + "; ".join(quality.issues))
     technical = analyze(bars)
     advanced = analyze_advanced(bars)
-    candidate = generate_candidate(
-        technical,
-        exchange=exchange,
-        config=candidate_config,
-        advanced=advanced,
-    )
+    candidate = generate_candidate(technical, exchange=exchange, config=candidate_config, advanced=advanced)
     risk = assess_candidate(candidate, account_equity, config=risk_config) if candidate else None
-    return ResearchResult(
-        symbol=bars[-1].symbol,
-        exchange=exchange.upper(),
-        bars=tuple(bars),
-        technical=technical,
-        risk=risk,
-    )
+    return ResearchResult(symbol=bars[-1].symbol, exchange=exchange.upper(), bars=tuple(bars), technical=technical, risk=risk)
 
 
-def research_symbol(
-    symbol: str,
-    *,
-    exchange: str = "NSE",
-    period: str = "6mo",
-    interval: str = "1d",
-    account_equity: float = 100000.0,
-) -> ResearchResult:
+def research_symbol(symbol: str, *, exchange: str = "NSE", period: str = "6mo", interval: str = "1d", account_equity: float = 100000.0) -> ResearchResult:
     market_symbol = indian_equity_symbol(symbol, exchange)
     provider = ResilientMarketDataProvider()
     bars = provider.history(market_symbol, period=period, interval=interval)
@@ -236,140 +188,51 @@ def _validate_symbols(symbols: Sequence[str]) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def _result(
-    *,
-    requested_symbol: str,
-    yahoo_symbol: str,
-    data_status: str,
-    bars: tuple[ResearchBar, ...] = (),
-    quality: ResearchDataQualityReport | None = None,
-    technical: TechnicalSnapshot | None = None,
-    candidate: object | None = None,
-    risk: RiskAssessment | None = None,
-    reason: str,
-    data_source: str | None = None,
-    fundamental_status: str = "NOT_CHECKED",
-    fundamental_score: float | None = None,
-    fundamental_checks: tuple[str, ...] = (),
-    fundamentals: FundamentalMetrics | None = None,
-    advanced: AdvancedTechnicalSnapshot | None = None,
-    mtf: MultiTimeframeRSI | None = None,
-) -> SymbolResearchResult:
-    return SymbolResearchResult(
-        requested_symbol=requested_symbol,
-        yahoo_symbol=yahoo_symbol,
-        data_status=data_status,
-        bars=bars,
-        quality=quality,
-        technical=technical,
-        candidate=candidate,
-        risk=risk,
-        reason=reason,
-        data_source=data_source,
-        fundamental_status=fundamental_status,
-        fundamental_score=fundamental_score,
-        fundamental_checks=fundamental_checks,
-        fundamentals=fundamentals,
-        advanced=advanced,
-        mtf=mtf,
-    )
+def _result(*, requested_symbol: str, yahoo_symbol: str, data_status: str, bars: tuple[ResearchBar, ...] = (), quality: ResearchDataQualityReport | None = None, technical: TechnicalSnapshot | None = None, candidate: object | None = None, risk: RiskAssessment | None = None, reason: str, data_source: str | None = None, fundamental_status: str = "NOT_CHECKED", fundamental_score: float | None = None, fundamental_checks: tuple[str, ...] = (), fundamentals: FundamentalMetrics | None = None, advanced: AdvancedTechnicalSnapshot | None = None, mtf: MultiTimeframeRSI | None = None) -> SymbolResearchResult:
+    return SymbolResearchResult(requested_symbol=requested_symbol, yahoo_symbol=yahoo_symbol, data_status=data_status, bars=bars, quality=quality, technical=technical, candidate=candidate, risk=risk, reason=reason, data_source=data_source, fundamental_status=fundamental_status, fundamental_score=fundamental_score, fundamental_checks=fundamental_checks, fundamentals=fundamentals, advanced=advanced, mtf=mtf)
 
 
-def _fundamental_context(
-    assessment: FundamentalAssessment,
-) -> tuple[str, float | None, tuple[str, ...], FundamentalMetrics | None]:
+def _fundamental_context(assessment: FundamentalAssessment) -> tuple[str, float | None, tuple[str, ...], FundamentalMetrics | None]:
     return assessment.status, assessment.score, assessment.checks, assessment.metrics
 
 
-def _load_mtf(
-    data_provider: ResearchMarketDataProvider,
-    market_symbol: str,
-    cfg: ResearchPipelineConfig,
-) -> tuple[MultiTimeframeRSI | None, str | None, str | None]:
-    """Load slow M/W/D confirmation only for an already qualified candidate."""
+def _load_mtf(data_provider: ResearchMarketDataProvider, market_symbol: str, cfg: ResearchPipelineConfig) -> tuple[MultiTimeframeRSI | None, str | None, str | None]:
     try:
-        daily = tuple(
-            data_provider.history(
-                market_symbol,
-                period=cfg.mtf_period,
-                interval=cfg.mtf_interval,
-            )
-        )
+        daily = tuple(data_provider.history(market_symbol, period=cfg.mtf_period, interval=cfg.mtf_interval))
         quality = assess_research_data(daily, max_allowed_gap=cfg.maximum_gap)
         if not quality.ready or quality.quality_score < cfg.minimum_quality_score:
-            reason = (
-                "; ".join(quality.issues)
-                if quality.issues
-                else f"MTF daily quality score {quality.quality_score:.2f} is below minimum "
-                f"{cfg.minimum_quality_score:.2f}."
-            )
+            reason = "; ".join(quality.issues) if quality.issues else f"MTF daily quality score {quality.quality_score:.2f} is below minimum {cfg.minimum_quality_score:.2f}."
             return None, "MTF_DATA_REJECTED", reason
         weekly = _aggregate_bars(daily, "weekly")
         monthly = _aggregate_bars(daily, "monthly")
         mtf = analyze_multi_timeframe_rsi(monthly, weekly, daily)
         if mtf.alignment == "INSUFFICIENT_HISTORY":
-            return mtf, "MTF_INSUFFICIENT_HISTORY", (
-                "Monthly/weekly/daily RSI could not be calculated from the available daily history."
-            )
+            return mtf, "MTF_INSUFFICIENT_HISTORY", "Monthly/weekly/daily RSI could not be calculated from the available daily history."
         return mtf, None, None
     except (ResearchMarketDataError, TechnicalAnalysisError, ValueError, TypeError) as exc:
         return None, "MTF_DATA_ERROR", str(exc)
 
 
-def _prepare_symbol(
-    requested_symbol: str,
-    *,
-    cfg: ResearchPipelineConfig,
-    provider: ResearchMarketDataProvider,
-) -> tuple[str, str, tuple[ResearchBar, ...], ResearchDataQualityReport, TechnicalSnapshot, AdvancedTechnicalSnapshot, str | None] | SymbolResearchResult:
-    """Fetch and technically prepare one symbol. Safe to execute in a worker."""
+def _prepare_symbol(requested_symbol: str, *, cfg: ResearchPipelineConfig, provider: ResearchMarketDataProvider) -> tuple[str, str, tuple[ResearchBar, ...], ResearchDataQualityReport, TechnicalSnapshot, AdvancedTechnicalSnapshot, str | None] | SymbolResearchResult:
     market_symbol = indian_equity_symbol(requested_symbol, cfg.exchange)
     try:
         bars = tuple(provider.history(market_symbol, period=cfg.period, interval=cfg.interval))
     except (ResearchMarketDataError, ValueError, TypeError) as exc:
-        return _result(
-            requested_symbol=requested_symbol,
-            yahoo_symbol=market_symbol,
-            data_status="DATA_ERROR",
-            reason=str(exc),
-            data_source=getattr(provider, "last_source", None),
-        )
-
+        return _result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status="DATA_ERROR", reason=str(exc), data_source=getattr(provider, "last_source", None))
     source = getattr(provider, "last_source", None) or getattr(provider, "name", None)
     quality = assess_research_data(bars, max_allowed_gap=cfg.maximum_gap)
     if not quality.ready or quality.quality_score < cfg.minimum_quality_score:
-        reason = "; ".join(quality.issues) if quality.issues else (
-            f"Quality score {quality.quality_score:.2f} is below minimum "
-            f"{cfg.minimum_quality_score:.2f}."
-        )
-        return _result(
-            requested_symbol=requested_symbol,
-            yahoo_symbol=market_symbol,
-            data_status="QUALITY_REJECTED",
-            bars=bars,
-            quality=quality,
-            reason=reason,
-            data_source=source,
-        )
-
+        reason = "; ".join(quality.issues) if quality.issues else f"Quality score {quality.quality_score:.2f} is below minimum {cfg.minimum_quality_score:.2f}."
+        return _result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status="QUALITY_REJECTED", bars=bars, quality=quality, reason=reason, data_source=source)
     try:
         snapshot = analyze(bars)
         advanced = analyze_advanced(bars)
     except (TechnicalAnalysisError, ValueError, TypeError) as exc:
-        return _result(
-            requested_symbol=requested_symbol,
-            yahoo_symbol=market_symbol,
-            data_status="TECHNICAL_REJECTED",
-            bars=bars,
-            quality=quality,
-            reason=str(exc),
-            data_source=source,
-        )
+        return _result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status="TECHNICAL_REJECTED", bars=bars, quality=quality, reason=str(exc), data_source=source)
     return (requested_symbol, market_symbol, bars, quality, snapshot, advanced, source)
 
 
 def _scan_workers() -> int:
-    """Bound network concurrency; configurable without code changes."""
     raw = os.getenv("DHAN_SCAN_WORKERS", "6").strip()
     try:
         return max(1, min(12, int(raw)))
@@ -377,54 +240,43 @@ def _scan_workers() -> int:
         return 6
 
 
-def scan_symbols(
-    symbols: Sequence[str],
-    *,
-    provider: ResearchMarketDataProvider | None = None,
-    config: ResearchPipelineConfig | None = None,
-) -> ResearchScanResult:
-    """Scan the complete supplied universe with bounded parallel market I/O.
+def _worker_provider(template: ResearchMarketDataProvider | None) -> ResearchMarketDataProvider:
+    """Create an independent provider for a network worker when safe."""
+    if isinstance(template, ProductionMarketDataProvider):
+        return ProductionMarketDataProvider(timeout=getattr(template, "timeout", 12.0))
+    if isinstance(template, ResilientMarketDataProvider):
+        return ResilientMarketDataProvider(timeout=getattr(template, "timeout", 12.0))
+    # Custom providers are normally stateful test doubles. Preserve their
+    # deterministic behavior rather than guessing how to clone them.
+    if template is not None:
+        return template
+    return ResilientMarketDataProvider(timeout=12.0)
 
-    Production calls create one read-only provider per worker. This avoids the
-    previous single-provider .6-second serial bottleneck while retaining a
-    strict worker cap. Tests can still inject a provider and use the deterministic
-    single-provider path.
-    """
-    cfg = config or ResearchPipelineConfig(
-        fundamental_config=FundamentalConfig.from_environment()
-    )
+
+def scan_symbols(symbols: Sequence[str], *, provider: ResearchMarketDataProvider | None = None, config: ResearchPipelineConfig | None = None) -> ResearchScanResult:
+    """Scan the complete supplied universe with bounded parallel market I/O."""
+    cfg = config or ResearchPipelineConfig(fundamental_config=FundamentalConfig.from_environment())
     cfg.validate()
     requested_symbols = _validate_symbols(symbols)
 
-    # Fundamentals are fetched once in a batch and cached for 24h by default;
-    # they are not queried separately for every stock in the intraday loop.
     fundamentals_by_symbol: dict[str, FundamentalMetrics] = {}
     fundamental_error: str | None = None
     if cfg.fundamental_config.enabled:
         try:
-            fundamentals_by_symbol = CachedFundamentals(
-                config=cfg.fundamental_config
-            ).get_many(requested_symbols)
+            fundamentals_by_symbol = CachedFundamentals(config=cfg.fundamental_config).get_many(requested_symbols)
         except (FundamentalDataError, ValueError, TypeError) as exc:
             fundamental_error = str(exc)
 
     results: list[SymbolResearchResult] = []
     prepared: list[tuple[str, str, tuple[ResearchBar, ...], ResearchDataQualityReport, TechnicalSnapshot, AdvancedTechnicalSnapshot, str | None]] = []
 
-    # Phase 1: COMPLETE market universe. No fixed symbol list and no early
-    # candidate cutoff. Every requested symbol gets a data attempt.
-    if provider is not None:
-        prepared_provider_results = [
-            _prepare_symbol(symbol, cfg=cfg, provider=provider)
-            for symbol in requested_symbols
-        ]
-    else:
+    # Phase 1: complete market pass. Production and resilient providers get an
+    # independent network client per worker; custom injected providers stay
+    # serial/deterministic for test compatibility.
+    parallel_safe = provider is None or isinstance(provider, (ProductionMarketDataProvider, ResilientMarketDataProvider))
+    if parallel_safe:
         def worker(symbol: str):
-            # One provider/session per worker avoids sharing requests.Session
-            # across threads. Dhan's own API remains read-only here.
-            worker_provider = ResilientMarketDataProvider(timeout=12.0)
-            return _prepare_symbol(symbol, cfg=cfg, provider=worker_provider)
-
+            return _prepare_symbol(symbol, cfg=cfg, provider=_worker_provider(provider))
         prepared_provider_results = []
         with ThreadPoolExecutor(max_workers=_scan_workers(), thread_name_prefix="market-scan") as executor:
             future_map = {executor.submit(worker, symbol): symbol for symbol in requested_symbols}
@@ -433,22 +285,12 @@ def scan_symbols(
                 try:
                     prepared_provider_results.append(future.result())
                 except Exception as exc:
-                    market_symbol = indian_equity_symbol(symbol, cfg.exchange)
-                    prepared_provider_results.append(
-                        _result(
-                            requested_symbol=symbol,
-                            yahoo_symbol=market_symbol,
-                            data_status="DATA_ERROR",
-                            reason=f"Worker failure: {exc}",
-                        )
-                    )
+                    prepared_provider_results.append(_result(requested_symbol=symbol, yahoo_symbol=indian_equity_symbol(symbol, cfg.exchange), data_status="DATA_ERROR", reason=f"Worker failure: {exc}"))
+    else:
+        prepared_provider_results = [_prepare_symbol(symbol, cfg=cfg, provider=provider) for symbol in requested_symbols]
 
-    # Restore deterministic universe order for dashboard/report output.
     order = {symbol: index for index, symbol in enumerate(requested_symbols)}
-    prepared_provider_results.sort(
-        key=lambda item: order.get(item[0] if isinstance(item, tuple) else item.requested_symbol, 10**9)
-    )
-
+    prepared_provider_results.sort(key=lambda item: order.get(item[0] if isinstance(item, tuple) else item.requested_symbol, 10**9))
     for item in prepared_provider_results:
         if isinstance(item, SymbolResearchResult):
             results.append(item)
@@ -462,169 +304,46 @@ def scan_symbols(
     candidate_count = 0
     approved_candidates: list[object] = []
 
-    # Phase 2: market regime/sector context is built from the complete
-    # successfully prepared market set before candidate creation.
     context_rows = {item[0]: item[2] for item in prepared}
     try:
         market_context = build_market_context(context_rows)
     except Exception as exc:
         for requested_symbol, market_symbol, bars, quality, snapshot, advanced, source in prepared:
-            results.append(
-                _result(
-                    requested_symbol=requested_symbol,
-                    yahoo_symbol=market_symbol,
-                    data_status="MARKET_CONTEXT_UNAVAILABLE",
-                    bars=bars,
-                    quality=quality,
-                    technical=snapshot,
-                    advanced=advanced,
-                    reason=(
-                        "Market regime/sector context unavailable; candidate generation blocked: "
-                        + str(exc)
-                    ),
-                    data_source=source,
-                )
-            )
+            results.append(_result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status="MARKET_CONTEXT_UNAVAILABLE", bars=bars, quality=quality, technical=snapshot, advanced=advanced, reason=f"Market regime/sector context unavailable; candidate generation blocked: {exc}", data_source=source))
         results.sort(key=lambda result: order.get(result.requested_symbol, 10**9))
-        return ResearchScanResult(
-            requested_count=len(requested_symbols),
-            scanned_count=len(requested_symbols),
-            data_error_count=data_error_count,
-            quality_failure_count=quality_failure_count,
-            technical_rejection_count=technical_rejection_count + len(prepared),
-            fundamental_error_count=fundamental_error_count,
-            candidate_count=0,
-            actionable_count=0,
-            buy_count=0,
-            sell_count=0,
-            results=tuple(results),
-            actionable_candidates=(),
-        )
+        return ResearchScanResult(requested_count=len(requested_symbols), scanned_count=len(requested_symbols), data_error_count=data_error_count, quality_failure_count=quality_failure_count, technical_rejection_count=technical_rejection_count + len(prepared), fundamental_error_count=fundamental_error_count, candidate_count=0, actionable_count=0, buy_count=0, sell_count=0, results=tuple(results), actionable_candidates=())
 
-    # Phase 3: only after the complete market pass do we run the slower
-    # M/W/D, fundamental and risk gates. MTF history is still candidate-only.
     for requested_symbol, market_symbol, bars, quality, snapshot, advanced, source in prepared:
-        inferred_direction = (
-            "BUY" if snapshot.trend == "BULLISH"
-            else "SELL" if snapshot.trend == "BEARISH"
-            else None
-        )
-        sector = market_context.symbol_sector.get(
-            market_symbol,
-            market_context.symbol_sector.get(requested_symbol, "OTHER"),
-        )
+        inferred_direction = "BUY" if snapshot.trend == "BULLISH" else "SELL" if snapshot.trend == "BEARISH" else None
+        sector = market_context.symbol_sector.get(market_symbol, market_context.symbol_sector.get(requested_symbol, "OTHER"))
         if inferred_direction is None:
             technical_rejection_count += 1
-            results.append(
-                _result(
-                    requested_symbol=requested_symbol,
-                    yahoo_symbol=market_symbol,
-                    data_status="NO_CANDIDATE",
-                    bars=bars,
-                    quality=quality,
-                    technical=snapshot,
-                    advanced=advanced,
-                    reason="Technical trend is not directional.",
-                    data_source=source,
-                )
-            )
+            results.append(_result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status="NO_CANDIDATE", bars=bars, quality=quality, technical=snapshot, advanced=advanced, reason="Technical trend is not directional.", data_source=source))
             continue
-
-        context_allowed, context_reason = candidate_context_allowed(
-            inferred_direction, market_context, sector
-        )
-        context_detail = (
-            f"{context_reason} NIFTY={market_context.nifty.regime}; "
-            f"BANKNIFTY={market_context.banknifty.regime}; sector={sector}."
-        )
+        context_allowed, context_reason = candidate_context_allowed(inferred_direction, market_context, sector)
+        context_detail = f"{context_reason} NIFTY={market_context.nifty.regime}; BANKNIFTY={market_context.banknifty.regime}; sector={sector}."
         if not context_allowed:
             technical_rejection_count += 1
-            results.append(
-                _result(
-                    requested_symbol=requested_symbol,
-                    yahoo_symbol=market_symbol,
-                    data_status="MARKET_CONTEXT_REJECTED",
-                    bars=bars,
-                    quality=quality,
-                    technical=snapshot,
-                    advanced=advanced,
-                    reason=context_detail,
-                    data_source=source,
-                )
-            )
+            results.append(_result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status="MARKET_CONTEXT_REJECTED", bars=bars, quality=quality, technical=snapshot, advanced=advanced, reason=context_detail, data_source=source))
             continue
-
-        candidate = generate_candidate(
-            snapshot,
-            exchange=cfg.exchange,
-            config=cfg.candidate_config,
-            advanced=advanced,
-        )
+        candidate = generate_candidate(snapshot, exchange=cfg.exchange, config=cfg.candidate_config, advanced=advanced)
         if candidate is None:
             technical_rejection_count += 1
-            results.append(
-                _result(
-                    requested_symbol=requested_symbol,
-                    yahoo_symbol=market_symbol,
-                    data_status="NO_CANDIDATE",
-                    bars=bars,
-                    quality=quality,
-                    technical=snapshot,
-                    advanced=advanced,
-                    reason=(
-                        "Technical/advanced confirmation did not produce a candidate. "
-                        + context_detail
-                    ),
-                    data_source=source,
-                )
-            )
+            results.append(_result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status="NO_CANDIDATE", bars=bars, quality=quality, technical=snapshot, advanced=advanced, reason=f"Technical/advanced confirmation did not produce a candidate. {context_detail}", data_source=source))
             continue
         candidate_count += 1
 
-        # Slow historical M/W/D confirmation is performed only here, after the
-        # complete market has been screened.
-        candidate_provider = ResilientMarketDataProvider(timeout=12.0)
+        candidate_provider = ProductionMarketDataProvider(timeout=12.0)
         mtf, mtf_status, mtf_error = _load_mtf(candidate_provider, market_symbol, cfg)
         if cfg.require_mtf_confirmation:
             if mtf_status is not None:
                 technical_rejection_count += 1
-                results.append(
-                    _result(
-                        requested_symbol=requested_symbol,
-                        yahoo_symbol=market_symbol,
-                        data_status=mtf_status,
-                        bars=bars,
-                        quality=quality,
-                        technical=snapshot,
-                        advanced=advanced,
-                        candidate=candidate,
-                        reason=(
-                            f"MTF gate blocked candidate: {mtf_error or 'confirmation unavailable'}. "
-                            f"{_mtf_reason(mtf)} {context_detail}"
-                        ),
-                        data_source=source,
-                        mtf=mtf,
-                    )
-                )
+                results.append(_result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status=mtf_status, bars=bars, quality=quality, technical=snapshot, advanced=advanced, candidate=candidate, reason=f"MTF gate blocked candidate: {mtf_error or 'confirmation unavailable'}. {_mtf_reason(mtf)} {context_detail}", data_source=source, mtf=mtf))
                 continue
             allowed, gate_reason = _mtf_gate(candidate.direction, mtf)
             if not allowed:
                 technical_rejection_count += 1
-                results.append(
-                    _result(
-                        requested_symbol=requested_symbol,
-                        yahoo_symbol=market_symbol,
-                        data_status="MTF_REJECTED",
-                        bars=bars,
-                        quality=quality,
-                        technical=snapshot,
-                        advanced=advanced,
-                        candidate=candidate,
-                        reason=f"{gate_reason} {_mtf_reason(mtf)} {context_detail}",
-                        data_source=source,
-                        mtf=mtf,
-                    )
-                )
+                results.append(_result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status="MTF_REJECTED", bars=bars, quality=quality, technical=snapshot, advanced=advanced, candidate=candidate, reason=f"{gate_reason} {_mtf_reason(mtf)} {context_detail}", data_source=source, mtf=mtf))
                 continue
         elif mtf is None:
             mtf_status = "MTF_NOT_AVAILABLE"
@@ -632,122 +351,35 @@ def scan_symbols(
         if candidate.direction == "BUY":
             if fundamental_error is not None:
                 fundamental_error_count += 1
-                assessment = FundamentalAssessment(
-                    required=cfg.fundamental_config.require_for_buy,
-                    passed=not cfg.fundamental_config.require_for_buy,
-                    status="FUNDAMENTALS_UNAVAILABLE",
-                    score=0.0,
-                    checks=("Fundamental provider failed: " + fundamental_error,),
-                    metrics=None,
-                )
+                assessment = FundamentalAssessment(required=cfg.fundamental_config.require_for_buy, passed=not cfg.fundamental_config.require_for_buy, status="FUNDAMENTALS_UNAVAILABLE", score=0.0, checks=("Fundamental provider failed: " + fundamental_error,), metrics=None)
             else:
-                assessment = assess_buy_fundamentals(
-                    fundamentals_by_symbol.get(requested_symbol),
-                    config=cfg.fundamental_config,
-                )
+                assessment = assess_buy_fundamentals(fundamentals_by_symbol.get(requested_symbol), config=cfg.fundamental_config)
             f_status, f_score, f_checks, f_metrics = _fundamental_context(assessment)
             if not assessment.passed:
-                results.append(
-                    _result(
-                        requested_symbol=requested_symbol,
-                        yahoo_symbol=market_symbol,
-                        data_status="FUNDAMENTALS_REJECTED",
-                        bars=bars,
-                        quality=quality,
-                        technical=snapshot,
-                        advanced=advanced,
-                        candidate=candidate,
-                        reason=(
-                            "BUY blocked by fundamental quality gate: "
-                            + "; ".join(f_checks)
-                            + f". {_mtf_reason(mtf)} {context_detail}"
-                        ),
-                        data_source=source,
-                        fundamental_status=f_status,
-                        fundamental_score=f_score,
-                        fundamental_checks=f_checks,
-                        fundamentals=f_metrics,
-                        mtf=mtf,
-                    )
-                )
+                results.append(_result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status="FUNDAMENTALS_REJECTED", bars=bars, quality=quality, technical=snapshot, advanced=advanced, candidate=candidate, reason="BUY blocked by fundamental quality gate: " + "; ".join(f_checks) + f". {_mtf_reason(mtf)} {context_detail}", data_source=source, fundamental_status=f_status, fundamental_score=f_score, fundamental_checks=f_checks, fundamentals=f_metrics, mtf=mtf))
                 continue
         else:
-            assessment = FundamentalAssessment(
-                required=False,
-                passed=True,
-                status="FUNDAMENTALS_NOT_REQUIRED",
-                score=None if not cfg.fundamental_config.enabled else 100.0,
-                checks=("Fundamental gate not used for intraday SELL candidates.",),
-                metrics=fundamentals_by_symbol.get(requested_symbol),
-            )
+            assessment = FundamentalAssessment(required=False, passed=True, status="FUNDAMENTALS_NOT_REQUIRED", score=None if not cfg.fundamental_config.enabled else 100.0, checks=("Fundamental gate not used for intraday SELL candidates.",), metrics=fundamentals_by_symbol.get(requested_symbol))
             f_status, f_score, f_checks, f_metrics = _fundamental_context(assessment)
 
         risk = assess_candidate(candidate, cfg.account_equity, config=cfg.risk_config)
         if risk.approved:
             approved_candidates.append(candidate)
             status = "ACTIONABLE"
-            reason = (
-                "Technical, market context, M/W/D confirmation, advanced, fundamental and risk checks passed"
-                if candidate.direction == "BUY"
-                else "Technical, market context, M/W/D confirmation, advanced and risk checks passed"
-            )
+            reason = "Technical, market context, M/W/D confirmation, advanced, fundamental and risk checks passed" if candidate.direction == "BUY" else "Technical, market context, M/W/D confirmation, advanced and risk checks passed"
         else:
             status = "RISK_REJECTED"
             reason = ", ".join(risk.reasons) or "Risk checks failed"
-        results.append(
-            _result(
-                requested_symbol=requested_symbol,
-                yahoo_symbol=market_symbol,
-                data_status=status,
-                bars=bars,
-                quality=quality,
-                technical=snapshot,
-                advanced=advanced,
-                candidate=candidate,
-                risk=risk,
-                reason=reason + f". {_mtf_reason(mtf)} {context_detail}",
-                data_source=source,
-                fundamental_status=f_status,
-                fundamental_score=f_score,
-                fundamental_checks=f_checks,
-                fundamentals=f_metrics,
-                mtf=mtf,
-            )
-        )
+        results.append(_result(requested_symbol=requested_symbol, yahoo_symbol=market_symbol, data_status=status, bars=bars, quality=quality, technical=snapshot, advanced=advanced, candidate=candidate, risk=risk, reason=reason + f". {_mtf_reason(mtf)} {context_detail}", data_source=source, fundamental_status=f_status, fundamental_score=f_score, fundamental_checks=f_checks, fundamentals=f_metrics, mtf=mtf))
 
-    ranked = rank_candidates(
-        approved_candidates,
-        minimum_confidence=cfg.minimum_rank_confidence,
-        minimum_rr=cfg.minimum_rank_rr,
-    )
-    actionable = tuple(ranked[: cfg.maximum_actionable_candidates])
+    ranked = rank_candidates(approved_candidates, minimum_confidence=cfg.minimum_rank_confidence, minimum_rr=cfg.minimum_rank_rr)
+    actionable = tuple(ranked[:cfg.maximum_actionable_candidates])
     buy_count = sum(1 for candidate in actionable if candidate.direction == "BUY")
     sell_count = sum(1 for candidate in actionable if candidate.direction == "SELL")
     results.sort(key=lambda result: order.get(result.requested_symbol, 10**9))
-    return ResearchScanResult(
-        requested_count=len(requested_symbols),
-        scanned_count=len(requested_symbols),
-        data_error_count=data_error_count,
-        quality_failure_count=quality_failure_count,
-        technical_rejection_count=technical_rejection_count,
-        fundamental_error_count=fundamental_error_count,
-        candidate_count=candidate_count,
-        actionable_count=len(actionable),
-        buy_count=buy_count,
-        sell_count=sell_count,
-        results=tuple(results),
-        actionable_candidates=tuple(actionable),
-    )
+    return ResearchScanResult(requested_count=len(requested_symbols), scanned_count=len(requested_symbols), data_error_count=data_error_count, quality_failure_count=quality_failure_count, technical_rejection_count=technical_rejection_count, fundamental_error_count=fundamental_error_count, candidate_count=candidate_count, actionable_count=len(actionable), buy_count=buy_count, sell_count=sell_count, results=tuple(results), actionable_candidates=tuple(actionable))
 
 
 def rank_research_results(results: list[ResearchResult]):
-    assessments = [
-        result.risk
-        for result in results
-        if result.risk is not None and result.risk.approved
-    ]
-    return sorted(
-        assessments,
-        key=lambda item: (item.confidence, item.risk_reward),
-        reverse=True,
-    )
+    assessments = [result.risk for result in results if result.risk is not None and result.risk.approved]
+    return sorted(assessments, key=lambda item: (item.confidence, item.risk_reward), reverse=True)
