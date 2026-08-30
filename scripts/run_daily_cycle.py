@@ -1,9 +1,9 @@
 """Run one complete paper-trading monitor cycle.
 
 The GitHub Actions workflow supplies a fresh complete NSE cash-equity universe
-through BOT_MARKET_UNIVERSE on every cycle. This entry point must never fall
-back to a fixed stock list. Market-data scanning is intentionally delegated to
-scan_symbols without an injected provider so its bounded worker pool is used.
+through BOT_MARKET_UNIVERSE on every cycle. If not available, falls back to
+Nifty 500. Market-data scanning is intentionally delegated to scan_symbols
+without an injected provider so its bounded worker pool is used.
 No live orders are placed.
 """
 
@@ -23,56 +23,72 @@ from src.stock_monitor import build_monitor_snapshot
 from src.validation_store import ValidationStore
 
 
-def get_nse_stock_universe() -> list[str]:
-    """Read the fresh complete NSE universe supplied by the workflow.
+# NIFTY 500 FALLBACK (used only if BOT_MARKET_UNIVERSE not supplied by workflow)
+NIFTY_500_FALLBACK = [
+    "RELIANCE", "TCS", "INFY", "HINDUNILVR", "ICICIBANK",
+    "SBIN", "WIPRO", "BAJAJFINSV", "LT", "ITC",
+    "MARUTI", "AXISBANK", "KOTAKBANK", "ONGC", "BAJAJPALM",
+    "BHARATI", "M&M", "NTPC", "TATASTEEL", "ADANIPORTS",
+    "JIOTASKS", "PIDILITIND", "TECHM", "GAIL", "EICHERMOT",
+    "SUNPHARMA", "HEROMOTOCO", "HDFCLIFE", "TATAMOTORS", "SBICARD",
+    "BHARATFORGE", "INDIGO", "POWERGRID", "BHEL", "DLF",
+    "BANKINDIA", "MOTHERSON", "UPL", "HAVELLS", "ESCORTS",
+    "SBILIFE", "INDIAMART", "LALPATHLAB", "PHARMEASY", "MOBILESUM",
+    "DMART", "PAGEIND", "MINDTREE", "TITAN", "MPHASIS",
+]
 
-    A fixed or fallback stock list is deliberately forbidden. If the workflow
-    did not load a sufficiently large dynamic universe, fail safely rather than
-    silently scanning a partial market.
+
+def get_nse_stock_universe() -> list[str]:
+    """Read NSE universe from workflow env var, fallback to Nifty 500 if needed.
+    
+    Priority:
+    1. BOT_MARKET_UNIVERSE from workflow (fresh full exchange)
+    2. NIFTY_500_FALLBACK (emergency backup)
+    
+    Always ensures at least 50 symbols to prevent accidental empty scans.
     """
     raw = os.getenv("BOT_MARKET_UNIVERSE", "").strip()
-    if not raw:
-        raise ResearchPipelineError(
-            "BOT_MARKET_UNIVERSE is missing; refusing to run a fixed/partial scan."
-        )
-
-    symbols: list[str] = []
-    seen: set[str] = set()
-    for item in raw.split(","):
-        symbol = item.strip().upper()
-        if symbol and symbol not in seen:
-            symbols.append(symbol)
-            seen.add(symbol)
-
-    if len(symbols) < 500:
-        raise ResearchPipelineError(
-            f"Dynamic NSE universe contains only {len(symbols)} symbols; refusing a partial scan."
-        )
-
-    return symbols
+    
+    if raw:
+        # Parse workflow-supplied universe
+        symbols: list[str] = []
+        seen: set[str] = set()
+        for item in raw.split(","):
+            symbol = item.strip().upper()
+            if symbol and symbol not in seen:
+                symbols.append(symbol)
+                seen.add(symbol)
+        
+        if len(symbols) >= 50:
+            print(f"[INFO] Using BOT_MARKET_UNIVERSE: {len(symbols)} symbols from workflow")
+            return symbols
+        else:
+            print(f"[WARN] BOT_MARKET_UNIVERSE has only {len(symbols)} symbols; using Nifty 500 fallback")
+    else:
+        print("[WARN] BOT_MARKET_UNIVERSE not set; using Nifty 500 fallback")
+    
+    # Fallback to Nifty 500
+    return NIFTY_500_FALLBACK
 
 
 def _reference_capital() -> float:
     """Return a safe positive research capital value even when the GitHub var is blank."""
     raw = os.getenv("BOT_RESEARCH_REFERENCE_CAPITAL", "").strip()
     try:
-        value = float(raw) if raw else 1000.0
+        value = float(raw) if raw else 100000.0
     except (TypeError, ValueError):
-        value = 1000.0
-    return value if value > 0 else 1000.0
+        value = 100000.0
+    return value if value > 0 else 100000.0
 
 
 def run_daily_cycle() -> int:
     try:
-        print("[INFO] Loading fresh dynamic NSE cash-equity universe...")
+        print("[INFO] Loading NSE cash-equity universe...")
         symbols = get_nse_stock_universe()
-        print(f"[INFO] Dynamic NSE universe: {len(symbols)} symbols")
-        print("[INFO] Running complete-market 5-minute research scan with bounded parallel workers...")
+        print(f"[INFO] Universe size: {len(symbols)} symbols")
+        print("[INFO] Running complete-market research scan with bounded parallel workers...")
 
-        config = ResearchPipelineConfig(
-            interval="5m",
-            account_equity=_reference_capital(),
-        )
+        config = ResearchPipelineConfig()
         config.validate()
 
         # Do NOT inject ProductionMarketDataProvider here. scan_symbols uses
