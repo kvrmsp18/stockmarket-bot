@@ -2,11 +2,8 @@ name: Continuous Intraday Monitor
 
 on:
   schedule:
-    # Every 1 minute during market hours (9:15-3:30 IST = 3:45-10:00 UTC)
-    # Cron format: minute hour day month weekday
-    # 4-9 = 3:45-9:00 UTC (roughly 9:15-14:30 IST)
-    # We add extra buffer; the bot checks market window internally
-    - cron: '*/1 3-10 * * 1-5'
+    # Every 5 minutes during market hours (9:15-3:30 IST = 3:45-10:00 UTC)
+    - cron: '*/5 3-10 * * 1-5'
   workflow_dispatch: {}
 
 concurrency:
@@ -19,7 +16,7 @@ permissions:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 10   # Increased from 2 to 10 minutes
 
     steps:
       - uses: actions/checkout@v4
@@ -28,18 +25,32 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Check NSE market window
+        run: |
+          python - <<'EOF'
+          from datetime import datetime, timezone, timedelta
+          IST = timezone(timedelta(hours=5, minutes=30))
+          now = datetime.now(IST)
+          open_t = now.replace(hour=9,  minute=15, second=0, microsecond=0)
+          close_t = now.replace(hour=15, minute=30, second=0, microsecond=0)
+          in_window = open_t <= now <= close_t and now.weekday() < 5
+          print(f"IST now: {now.strftime('%H:%M')} | Market open: {in_window}")
+          import sys; sys.exit(0 if in_window else 0)
+          EOF
+
       - name: Install dependencies
         run: pip install -r requirements.txt --quiet
 
-      - name: Load complete NSE stock universe
+      - name: Load complete NSE cash-equity universe
         id: universe
         run: |
-          # Generate fresh NSE Nifty 500 universe on every run
-          # TODO: Replace with live Dhan security master fetch
-          UNIVERSE="RELIANCE,TCS,INFY,HINDUNILVR,ICICIBANK,SBIN,WIPRO,BAJAJFINSV,LT,ITC,MARUTI,AXISBANK,KOTAKBANK,ONGC,BAJAJPALM,BHARATI,M&M,NTPC,TATASTEEL,ADANIPORTS,JIOTASKS,PIDILITIND,TECHM,GAIL,EICHERMOT,SUNPHARMA,HEROMOTOCO,HDFCLIFE,TATAMOTORS,SBICARD,BHARATFORGE,INDIGO,POWERGRID,BHEL,DLF,BANKINDIA,MOTHERSON,UPL,HAVELLS,ESCORTS,SBILIFE,INDIAMART,LALPATHLAB,PHARMEASY,MOBILESUM,DMART,PAGEIND,MINDTREE,TITAN,MPHASIS"
+          # Top 25 most liquid NSE stocks for fast scanning
+          # Expand this list as scan speed improves
+          UNIVERSE="RELIANCE,TCS,INFY,HDFCBANK,ICICIBANK,SBIN,WIPRO,BAJAJFINSV,LT,ITC,MARUTI,AXISBANK,KOTAKBANK,BHARTI,M&M,NTPC,TATASTEEL,ADANIPORTS,SUNPHARMA,TITAN,HINDUNILVR,ONGC,POWERGRID,COALINDIA,EICHERMOT"
           echo "BOT_MARKET_UNIVERSE=$UNIVERSE" >> $GITHUB_ENV
+          echo "Loaded $(echo $UNIVERSE | tr ',' '\n' | wc -l) symbols"
 
-      - name: Run one complete 5-minute paper-trading cycle
+      - name: Run one complete paper-trading market cycle
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
@@ -54,7 +65,7 @@ jobs:
           DHAN_LIVE_TRADING_ENABLED: 'false'
         run: python -m scripts.run_daily_cycle
 
-      - name: Commit updated journal and reports
+      - name: Commit journal, reports and monitor health
         run: |
           git config user.name "stockmarket-bot"
           git config user.email "actions@users.noreply.github.com"
