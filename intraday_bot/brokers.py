@@ -88,8 +88,8 @@ class DhanBroker(BrokerInterface):
     _RETRY_BASE_SECONDS = 2.0
 
     def __init__(self) -> None:
-        self.client_id = os.getenv("DHAN_CLIENT_ID", "").strip()
-        self.token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
+        self.client_id = settings.dhan_client_id
+        self.token = settings.dhan_access_token
         self.base = settings.dhan_base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({
@@ -284,7 +284,7 @@ class DhanBroker(BrokerInterface):
 
 
 def load_security_map() -> dict[str, dict[str, Any]]:
-    raw = os.getenv("DHAN_SECURITY_IDS_JSON", "").strip()
+    raw = settings.dhan_security_ids_json.strip()
     if not raw:
         return {}
     try:
