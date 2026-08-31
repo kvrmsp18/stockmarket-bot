@@ -10,19 +10,12 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _secret_or_env(name: str, default: str = "") -> str:
-    """Read configuration from environment first, then Streamlit Secrets.
-
-    GitHub Actions/server processes use environment variables. Streamlit
-    Community Cloud exposes app secrets through st.secrets instead, so the
-    dashboard must support both without requiring Streamlit during CLI/tests.
-    """
+    """Read configuration from environment first, then Streamlit Secrets."""
     value = os.getenv(name)
     if value is not None and value.strip() != "":
         return value.strip()
-
     try:
         import streamlit as st
-
         secret_value = st.secrets.get(name, default)
         if secret_value is None:
             return default
@@ -71,6 +64,11 @@ class Settings:
     reference_capital: float = _float("BOT_RESEARCH_REFERENCE_CAPITAL", 100000.0)
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
+    dhan_client_id: str = _secret_or_env("DHAN_CLIENT_ID", "")
+    dhan_access_token: str = _secret_or_env("DHAN_ACCESS_TOKEN", "")
+    dhan_api_key: str = _secret_or_env("DHAN_API_KEY", "")
+    dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
+    bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
     telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
     telegram_chat_id: str = _secret_or_env("TELEGRAM_CHAT_ID", "")
     openai_api_key: str = _secret_or_env("OPENAI_API_KEY", _secret_or_env("CHATGPT_API_KEY", ""))
@@ -92,10 +90,9 @@ class Settings:
         if self.min_rr < 1:
             raise ValueError("MIN_RR must be >=1")
         if self.bullish_threshold != 7.0 or self.bearish_threshold != 4.0:
-            # Source-derived defaults remain 7/4; configuration may change them deliberately.
             pass
         if self.live_mode_requested:
-            if not _secret_or_env("DHAN_CLIENT_ID") or not _secret_or_env("DHAN_ACCESS_TOKEN"):
+            if not self.dhan_client_id or not self.dhan_access_token:
                 raise ValueError("LIVE requested but Dhan credentials are missing")
 
 
