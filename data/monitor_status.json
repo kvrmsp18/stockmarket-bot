@@ -1,32 +1,17 @@
 {
-  "account_equity": 0.18,
-  "actionable_candidates": [],
-  "available_funds": 0.18,
-  "data_sources": {
-    "dhanhq_intraday": 26
-  },
-  "funds_error": null,
-  "funds_source": "dhan_fundlimit",
-  "market_window": "09:15-15:30 IST weekdays",
-  "mode": "paper-trading",
-  "new_signals_frozen": 0,
-  "rejection_breakdown": {
-    "MARKET_CONTEXT_REJECTED": 7,
-    "NO_CANDIDATE": 19
-  },
-  "scan": {
-    "actionable": 0,
-    "buy": 0,
-    "candidate_count": 0,
-    "data_errors": 0,
-    "fundamental_errors": 0,
-    "quality_failures": 0,
-    "requested": 26,
-    "scanned": 26,
-    "sell": 0,
-    "technical_rejections": 26
-  },
-  "status": "OK",
-  "telegram_configured": true,
-  "updated_at": "2026-08-27T08:32:23.532841+00:00"
+  "cycle_id": "e25ee5ebcccc4676b8229587f8efa602",
+  "mode": "PAPER",
+  "market_open": true,
+  "stocks_observed": 2672,
+  "quotes": 0,
+  "candidates": [],
+  "rejections": {},
+  "orders": [],
+  "errors": [
+    "DATA_ERROR: DHAN_HTTP_400: {\"data\":{\"814\":\"Invalid Request\"},\"status\":\"failed\"}"
+  ],
+  "duration_seconds": 0.353,
+  "ended_at": "2026-08-31T09:19:21.958247+05:30",
+  "positions_open": 0,
+  "realized_pnl": 0.0
 }
