@@ -1,7 +1,7 @@
 """Always-on 24/7 market worker.
 
 The worker is independent from Streamlit. A dedicated heartbeat thread writes
-liveness every few seconds even while a market/research cycle is running.
+liveness every configured interval even while a market/research cycle is running.
 Paper trading is the default and LIVE_TEST uses simulated fills only.
 """
 from __future__ import annotations
@@ -64,17 +64,59 @@ def _atomic_write(payload: dict) -> None:
     tmp.replace(HEARTBEAT)
 
 
-def write_heartbeat() -> None:
+def write_heartbeat(
+    state: str | None = None,
+    message: str | None = None,
+    *,
+    started_at: str | None = None,
+    last_cycle_started_at: str | None = None,
+    last_cycle_ended_at: str | None = None,
+    last_cycle_id: str | None = None,
+    last_cycle_errors: int | None = None,
+    last_cycle_duration_seconds: float | None = None,
+    last_error: str | None = None,
+) -> None:
+    """Persist a heartbeat snapshot.
+
+    The optional arguments preserve compatibility with the original heartbeat
+    writer API while the normal worker path uses the shared state snapshot.
+    This makes direct health tests and the independent heartbeat thread exercise
+    the same atomic persistence path.
+    """
+    changes: dict[str, object] = {}
+    if state is not None:
+        changes["state"] = state
+    if message is not None:
+        changes["message"] = message
+    if started_at is not None:
+        changes["worker_started_at"] = started_at
+    if last_cycle_started_at is not None:
+        changes["last_cycle_started_at"] = last_cycle_started_at
+    if last_cycle_ended_at is not None:
+        changes["last_cycle_ended_at"] = last_cycle_ended_at
+    if last_cycle_id is not None:
+        changes["last_cycle_id"] = last_cycle_id
+    if last_cycle_errors is not None:
+        changes["last_cycle_errors"] = int(last_cycle_errors)
+    if last_cycle_duration_seconds is not None:
+        changes["last_cycle_duration_seconds"] = last_cycle_duration_seconds
+    if last_error is not None:
+        changes["last_error"] = last_error
+    if changes:
+        _set(**changes)
+
     payload = _snapshot()
-    payload.update({
-        "updated_at": now_ist().isoformat(),
-        "pid": os.getpid(),
-        "hostname": socket.gethostname(),
-        "market_open": market_open(),
-        "cycle_interval_seconds": CYCLE_INTERVAL,
-        "heartbeat_interval_seconds": HEARTBEAT_INTERVAL,
-        "heartbeat_stale_after_seconds": STALE_AFTER,
-    })
+    payload.update(
+        {
+            "updated_at": now_ist().isoformat(),
+            "pid": os.getpid(),
+            "hostname": socket.gethostname(),
+            "market_open": market_open(),
+            "cycle_interval_seconds": CYCLE_INTERVAL,
+            "heartbeat_interval_seconds": HEARTBEAT_INTERVAL,
+            "heartbeat_stale_after_seconds": STALE_AFTER,
+        }
+    )
     _atomic_write(payload)
 
 
@@ -98,7 +140,11 @@ def _handle_stop(signum: int, _frame) -> None:
 def main() -> None:
     signal.signal(signal.SIGTERM, _handle_stop)
     signal.signal(signal.SIGINT, _handle_stop)
-    _set(state="RUNNING", message="Worker started; independent heartbeat active", worker_started_at=now_ist().isoformat())
+    _set(
+        state="RUNNING",
+        message="Worker started; independent heartbeat active",
+        worker_started_at=now_ist().isoformat(),
+    )
     write_heartbeat()
 
     hb = threading.Thread(target=heartbeat_loop, name="worker-heartbeat", daemon=True)
@@ -109,7 +155,11 @@ def main() -> None:
         if time.monotonic() >= next_cycle:
             if market_open():
                 started = now_ist().isoformat()
-                _set(state="RUNNING", message="Market cycle running; heartbeat remains active", last_cycle_started_at=started)
+                _set(
+                    state="RUNNING",
+                    message="Market cycle running; heartbeat remains active",
+                    last_cycle_started_at=started,
+                )
                 try:
                     result = run_cycle()
                     errors = result.get("errors", [])
@@ -132,7 +182,10 @@ def main() -> None:
                         last_error=str(exc),
                     )
             else:
-                _set(state="RUNNING", message="Outside NSE market window; heartbeat-only mode")
+                _set(
+                    state="RUNNING",
+                    message="Outside NSE market window; heartbeat-only mode",
+                )
             try:
                 write_heartbeat()
             except Exception:
