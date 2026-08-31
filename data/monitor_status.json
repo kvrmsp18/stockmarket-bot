@@ -1,5 +1,5 @@
 {
-  "cycle_id": "b5c028aed6604b9298f145c8016ff863",
+  "cycle_id": "fe449c75af654d3e972c23a5655b28ed",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 2672,
@@ -70,8 +70,8 @@
     "ANALYSIS_ERROR: DHAN_HTTP_400: {\"errorType\":\"Input_Exception\",\"errorCode\":\"DH-905\",\"errorMessage\":\"fromDate is required\"}"
   ],
   "execution_gate": "PAPER_MODE",
-  "duration_seconds": 19.396,
-  "ended_at": "2026-08-31T12:28:50.251111+05:30",
+  "duration_seconds": 19.386,
+  "ended_at": "2026-08-31T12:34:41.415277+05:30",
   "positions_open": 0,
   "realized_pnl": 0.0
 }
