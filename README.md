@@ -56,6 +56,7 @@ The complete universe is observed using a bulk quote stage. Expensive per-symbol
 - `scripts/load_universe.py` — complete NSE cash-equity universe loader
 - `scripts/run_daily_cycle.py` — scheduled cycle entry point
 - `app.py` — Streamlit trading desk UI and live chart interface
+- `src/` — legacy/compatibility layer retained intentionally; `scripts/run_daily_cycle.py` and the validation tests still import validation/paper-trading utilities from it. It is not to be physically reorganized without first migrating and updating all live imports/tests/documentation together.
 - `tests/test_platform.py` — automated core tests
 - `SOURCE_RULES.md` — source/engineering rule traceability
 - `.github/workflows/continuous-monitor.yml` — 5-minute fallback monitor
