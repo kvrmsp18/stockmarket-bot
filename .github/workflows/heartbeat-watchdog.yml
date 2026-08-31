@@ -1,0 +1,63 @@
+name: 24x7 Heartbeat Watchdog
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: heartbeat-watchdog
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Write heartbeat
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: |
+          python - <<'PY'
+          import json, os, socket, tempfile
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          path = Path('data/worker_heartbeat.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          now = datetime.now(ZoneInfo('Asia/Kolkata'))
+          payload = {
+              'state': 'RUNNING',
+              'message': 'GitHub 24x7 watchdog heartbeat',
+              'updated_at': now.isoformat(),
+              'source': 'github-actions-heartbeat-watchdog',
+              'hostname': socket.gethostname(),
+              'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
+              'heartbeat_interval_seconds': 300,
+              'heartbeat_source_is_persistent_worker': False,
+              'note': 'Fallback heartbeat only; persistent worker requires an always-on host.'
+          }
+          fd, tmp_name = tempfile.mkstemp(prefix='heartbeat-', suffix='.tmp', dir=str(path.parent))
+          with os.fdopen(fd, 'w', encoding='utf-8') as f:
+              json.dump(payload, f, indent=2)
+          os.replace(tmp_name, path)
+          PY
+
+      - name: Persist heartbeat
+        run: |
+          git config user.name 'stockmarket-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add data/worker_heartbeat.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update 24x7 heartbeat [skip ci]'
+            git push
+          else
+            echo 'Heartbeat unchanged.'
+          fi
