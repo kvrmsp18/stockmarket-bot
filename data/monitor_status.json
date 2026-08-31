@@ -1,21 +1,21 @@
 {
-  "cycle_id": "e4a8705db14247169fbe1a4646606451",
+  "cycle_id": "61f4ac62212343eb936831df23d2bd30",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 2672,
   "quotes": 2650,
   "candidates": [],
   "rejections": {
-    "TECHNICAL_REJECTION": 33,
-    "INSUFFICIENT_FUNDS": 14,
-    "DATA_ERROR": 8,
-    "RISK_REJECTION": 5
+    "TECHNICAL_REJECTION": 32,
+    "INSUFFICIENT_FUNDS": 13,
+    "RISK_REJECTION": 8,
+    "DATA_ERROR": 7
   },
   "orders": [],
   "errors": [],
   "execution_gate": "PAPER_MODE",
-  "duration_seconds": 24.106,
-  "ended_at": "2026-08-31T14:17:49.577527+05:30",
+  "duration_seconds": 19.984,
+  "ended_at": "2026-08-31T14:23:42.694955+05:30",
   "positions_open": 0,
   "realized_pnl": 0.0
 }
