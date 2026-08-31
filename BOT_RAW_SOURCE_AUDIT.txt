@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 31c3ba6d3c22c07118950aeebb083a23b74b686c
-Generated UTC: 2026-08-31T16:26:16.504886+00:00
+Commit SHA: 32751a1aeba07c1fb4a64e600ea3bbf49aaa6c34
+Generated UTC: 2026-08-31T17:05:52.671659+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -19,7 +19,7 @@ FILE INVENTORY
 .github/workflows/continuous-monitor.yml	4952 bytes
 .github/workflows/eod-close.yml	1709 bytes
 .github/workflows/eod-report.yml	800 bytes
-.github/workflows/export-source-audit.yml	4167 bytes
+.github/workflows/export-source-audit.yml	5122 bytes
 .github/workflows/heartbeat-watchdog.yml	1985 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
@@ -467,7 +467,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/export-source-audit.yml
-SIZE: 4167 bytes
+SIZE: 5122 bytes
 ====================================================================
 name: Export Source Audit
 
@@ -484,6 +484,7 @@ permissions:
 jobs:
   export:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -521,13 +522,15 @@ jobs:
                   continue
               files.append((rel, size))
 
-          out = []
-          out += [
+          if not files:
+              raise SystemExit('AUDIT_GENERATION_FAILED: repository file inventory is empty')
+
+          out = [
               '====================================================================',
               'BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT',
               '====================================================================',
-              f'Repository: kvrmsp18/stockmarket-bot',
-              f'Branch: main',
+              'Repository: kvrmsp18/stockmarket-bot',
+              'Branch: main',
               f'Commit SHA: {sha}',
               f'Generated UTC: {now}',
               '',
@@ -561,8 +564,25 @@ jobs:
                   continue
               out.append(text.rstrip('\n'))
 
-          Path('BOT_RAW_SOURCE_AUDIT.txt').write_text('\n'.join(out) + '\n', encoding='utf-8')
+          audit = '\n'.join(out) + '\n'
+          if len(audit.strip()) < 500:
+              raise SystemExit(f'AUDIT_GENERATION_FAILED: generated audit is unexpectedly small ({len(audit)} bytes)')
+          if 'FILE INVENTORY' not in audit or 'FILE: ' not in audit:
+              raise SystemExit('AUDIT_GENERATION_FAILED: required audit sections are missing')
+
+          Path('BOT_RAW_SOURCE_AUDIT.txt').write_text(audit, encoding='utf-8')
+          print(f'Generated audit: {len(audit)} bytes across {len(files)} files')
           PY
+
+      - name: Validate generated audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s BOT_RAW_SOURCE_AUDIT.txt
+          test "$(wc -c < BOT_RAW_SOURCE_AUDIT.txt)" -ge 500
+          grep -q '^FILE INVENTORY$' BOT_RAW_SOURCE_AUDIT.txt
+          grep -q '^FILE: ' BOT_RAW_SOURCE_AUDIT.txt
+          echo "Audit validation passed: $(wc -c < BOT_RAW_SOURCE_AUDIT.txt) bytes"
 
       - name: Commit audit
         shell: bash
@@ -24075,9 +24095,9 @@ SIZE: 354 bytes
 {
   "state": "RUNNING",
   "message": "GitHub Actions scheduler invocation completed",
-  "updated_at": "2026-08-31T21:47:16.654699+05:30",
+  "updated_at": "2026-08-31T22:29:48.545630+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33413250398",
+  "workflow_run_id": "33417127252",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -40137,10 +40157,10 @@ SIZE: 422 bytes
 {
   "state": "RUNNING",
   "message": "GitHub fallback watchdog heartbeat",
-  "updated_at": "2026-08-31T21:51:41.762928+05:30",
+  "updated_at": "2026-08-31T22:30:56.028927+05:30",
   "source": "github-actions-heartbeat-watchdog",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33413651847",
+  "workflow_run_id": "33417235080",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "note": "Fallback/watchdog only. This file must never be presented as the primary 24/7 worker heartbeat."
