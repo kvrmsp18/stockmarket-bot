@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: dd7818400ee58e5f5c14f8c6b9fdd051cb30e3cf
-Generated UTC: 2026-08-31T18:29:27.658409+00:00
+Commit SHA: ee0f67b287f3c8d8d9eb100cdb31c91f5fb321b0
+Generated UTC: 2026-08-31T18:29:38.427402+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -23,7 +23,7 @@ FILE INVENTORY
 .github/workflows/heartbeat-watchdog.yml	1985 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
-.streamlit/secrets.toml.example	433 bytes
+.streamlit/secrets.toml.example	431 bytes
 Dockerfile	229 bytes
 README.md	6040 bytes
 SOURCE_RULES.md	3206 bytes
@@ -715,7 +715,7 @@ level = "info"
 
 ====================================================================
 FILE: .streamlit/secrets.toml.example
-SIZE: 433 bytes
+SIZE: 431 bytes
 ====================================================================
 # Streamlit Community Cloud Secrets
 # Paste the real values into the app's Settings -> Secrets panel.
@@ -727,7 +727,7 @@ DHAN_API_KEY = ""
 DHAN_SECURITY_IDS_JSON = "{}"
 BSE_SCRIP_CODES_JSON = "{}"
 TWELVEDATA_API_KEY = ""
-BOT_RESEARCH_REFERENCE_CAPITAL = "100000"
+BOT_RESEARCH_REFERENCE_CAPITAL = "1000"
 TELEGRAM_BOT_TOKEN = ""
 TELEGRAM_CHAT_ID = ""
 TELEGRAM_AUTO_DISCOVER_CHAT_ID = "true"
