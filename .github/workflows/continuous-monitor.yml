@@ -1,9 +1,9 @@
 name: Complete Intraday Monitor
 
 on:
-  # Scheduler runs on weekdays every 5 minutes, including outside market hours.
-  # The Python market-window gate decides whether a trading cycle is allowed.
-  # This keeps the Bot alive/observable all day without requiring Streamlit.
+  # The scheduler stays active all day. During NSE hours it runs the full
+  # paper-trading cycle every 5 minutes. Outside market hours it records
+  # scheduler health only and NEVER executes trading analysis/orders.
   schedule:
     - cron: '*/5 * * * 1-5'
     - cron: '0 * * * 0,6'
@@ -47,44 +47,49 @@ jobs:
           import os
           from datetime import datetime
           from zoneinfo import ZoneInfo
-          now=datetime.now(ZoneInfo('Asia/Kolkata'))
-          opened=now.replace(hour=9,minute=15,second=0,microsecond=0)
-          closed=now.replace(hour=15,minute=30,second=0,microsecond=0)
-          weekday=now.weekday()<5
-          in_window=weekday and opened<=now<=closed
-          manual=os.getenv('GITHUB_EVENT_NAME') in {'workflow_dispatch','push'}
-          run_cycle=in_window or manual
-          print('IST:',now.isoformat(),'market_open:',in_window,'run_cycle:',run_cycle)
-          with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write(f'run_cycle={str(run_cycle).lower()}\n')
+          now = datetime.now(ZoneInfo('Asia/Kolkata'))
+          opened = now.replace(hour=9, minute=15, second=0, microsecond=0)
+          closed = now.replace(hour=15, minute=30, second=0, microsecond=0)
+          weekday = now.weekday() < 5
+          in_window = weekday and opened <= now <= closed
+          manual = os.getenv('GITHUB_EVENT_NAME') == 'workflow_dispatch'
+          run_cycle = in_window or manual
+          print('IST:', now.isoformat(), 'market_open:', in_window, 'run_cycle:', run_cycle)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'run_cycle={str(run_cycle).lower()}\n')
           PY
 
-      - name: Record off-market heartbeat
-        if: steps.market.outputs.run_cycle != 'true'
+      - name: Record scheduler heartbeat
         shell: bash
         run: |
           python - <<'PY'
-          import json, os, socket, tempfile
+          import json, os, tempfile
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
-          path=Path('data/scheduler_heartbeat.json'); path.parent.mkdir(parents=True,exist_ok=True)
-          now=datetime.now(ZoneInfo('Asia/Kolkata'))
-          payload={
-            'state':'RUNNING',
-            'message':'GitHub scheduler alive; market cycle gated because NSE market is closed',
-            'updated_at':now.isoformat(),
-            'source':'github-actions-scheduler',
-            'workflow_run_id':os.getenv('GITHUB_RUN_ID'),
-            'market_open':False,
-            'market_cycle_interval_seconds':300,
-            'off_market_schedule':'hourly weekends / every 5 minutes weekdays',
-            'paper_mode':True,
-            'live_order_submission':False,
+          path = Path('data/scheduler_heartbeat.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          now = datetime.now(ZoneInfo('Asia/Kolkata'))
+          market_open = os.getenv('RUN_CYCLE') == 'true'
+          payload = {
+            'state': 'RUNNING',
+            'message': 'GitHub Actions scheduler invocation completed',
+            'updated_at': now.isoformat(),
+            'source': 'github-actions-scheduler',
+            'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
+            'event': os.getenv('GITHUB_EVENT_NAME'),
+            'market_open': market_open,
+            'scheduled_interval_seconds': 300,
+            'paper_mode': True,
+            'live_order_submission': False,
           }
-          fd,tmp=tempfile.mkstemp(prefix='scheduler-',suffix='.tmp',dir=str(path.parent))
-          with os.fdopen(fd,'w',encoding='utf-8') as f: json.dump(payload,f,indent=2)
-          os.replace(tmp,path)
+          fd, tmp = tempfile.mkstemp(prefix='scheduler-', suffix='.tmp', dir=str(path.parent))
+          with os.fdopen(fd, 'w', encoding='utf-8') as f:
+              json.dump(payload, f, indent=2)
+          os.replace(tmp, path)
           PY
+        env:
+          RUN_CYCLE: ${{ steps.market.outputs.run_cycle }}
 
       - name: Setup Python
         if: steps.market.outputs.run_cycle == 'true'
@@ -118,8 +123,8 @@ jobs:
           DHAN_LIVE_TRADING_ENABLED: 'false'
         run: python scripts/run_daily_cycle.py
 
-      - name: Persist health and journal
-        if: always() && steps.market.outputs.run_cycle == 'true'
+      - name: Persist scheduler and paper state
+        if: always()
         shell: bash
         run: |
           set -e
@@ -128,23 +133,8 @@ jobs:
           git add data/ reports/
           if ! git diff --cached --quiet; then
             git pull --rebase --autostash
-            git commit -m 'Update complete paper-trading state [skip ci]'
+            git commit -m 'Update Bot scheduler and paper state [skip ci]'
             git push
           else
             echo 'No state changes.'
-          fi
-
-      - name: Persist scheduler heartbeat
-        if: always() && steps.market.outputs.run_cycle != 'true'
-        shell: bash
-        run: |
-          set -e
-          git config user.name 'stockmarket-bot'
-          git config user.email 'actions@users.noreply.github.com'
-          git add data/scheduler_heartbeat.json
-          if ! git diff --cached --quiet; then
-            git commit -m 'Update scheduler heartbeat [skip ci]'
-            git push
-          else
-            echo 'Scheduler heartbeat unchanged.'
           fi
