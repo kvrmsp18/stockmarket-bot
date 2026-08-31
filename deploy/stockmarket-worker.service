@@ -1,0 +1,25 @@
+[Unit]
+Description=Stockmarket Bot 24/7 Trading Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stockbot
+Group=stockbot
+WorkingDirectory=/opt/stockmarket-bot
+EnvironmentFile=-/etc/stockmarket-bot.env
+Environment=PYTHONUNBUFFERED=1
+Environment=WORKER_INTERVAL_SECONDS=300
+Environment=HEARTBEAT_INTERVAL_SECONDS=30
+ExecStart=/opt/stockmarket-bot/.venv/bin/python /opt/stockmarket-bot/scripts/worker.py
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Keep the service independent from the Streamlit browser/dashboard.
+# Real live order submission remains disabled by the application's safety gates.
+
+[Install]
+WantedBy=multi-user.target

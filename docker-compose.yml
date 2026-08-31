@@ -1,0 +1,34 @@
+services:
+  worker:
+    build: .
+    command: ["python", "scripts/worker.py"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      WORKER_INTERVAL_SECONDS: "300"
+      HEARTBEAT_INTERVAL_SECONDS: "30"
+      BOT_MODE: "PAPER"
+      DHAN_LIVE_TRADING_ENABLED: "false"
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+
+  dashboard:
+    build: .
+    command: ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      BOT_MODE: "PAPER"
+      DHAN_LIVE_TRADING_ENABLED: "false"
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+    depends_on:
+      - worker
