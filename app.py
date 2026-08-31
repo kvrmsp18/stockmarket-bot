@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -9,8 +10,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from intraday_bot.database import Database
 from intraday_bot.brokers import DhanBroker
+from intraday_bot.config import settings
+from intraday_bot.database import Database
 
 st.set_page_config(
     page_title="NSE/BSE Intraday AI Trading Desk",
@@ -63,6 +65,23 @@ def records(table: str, limit: int = 200) -> pd.DataFrame:
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
+def sql_records(sql: str, params: tuple[Any, ...] = ()) -> pd.DataFrame:
+    try:
+        with DB.connect() as con:
+            rows = con.execute(sql, params).fetchall()
+        return pd.DataFrame([dict(row) for row in rows]) if rows else pd.DataFrame()
+    except Exception as exc:
+        st.error(f"DATABASE ERROR: {exc}")
+        return pd.DataFrame()
+
+
+def today_mask(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        return pd.Series(False, index=df.index)
+    parsed = pd.to_datetime(df[column], errors="coerce", utc=True)
+    return parsed.dt.tz_convert("Asia/Kolkata").dt.date == date.today()
+
+
 def mode_switch() -> None:
     st.sidebar.markdown("### Trading Mode")
     st.sidebar.success("🟢 PAPER MODE — DEFAULT")
@@ -86,40 +105,57 @@ def dashboard() -> None:
     s = status()
     header(
         "📈 NSE/BSE Intraday AI Trading Desk",
-        "The backend runs independently of this UI. Paper trading is the active mode; live trading is hard-disabled by default.",
+        "Paper trading uses real market data and never places real Dhan orders. Live execution remains hard-disabled.",
     )
     a, b, c, d, e, f = st.columns(6)
-    a.metric("Mode", "PAPER")
+    a.metric("Mode", s.get("mode", "PAPER"))
     b.metric("Universe", s.get("stocks_observed", 0))
     c.metric("Quotes", s.get("quotes", 0))
     d.metric("Candidates", len(s.get("candidates", [])))
     e.metric("Open Positions", s.get("positions_open", 0))
     f.metric("Realized P&L", f"₹{s.get('realized_pnl', 0):,.2f}")
 
-    st.subheader("Market / Execution Health")
+    st.subheader("TODAY'S RESEARCH")
+    candidates = pd.DataFrame(s.get("candidates", []))
+    if candidates.empty:
+        st.warning("No actionable candidates were recorded in the latest cycle.")
+    else:
+        display_cols = [c for c in [
+            "symbol", "decision", "price", "entry", "entry_low", "entry_high", "max_chase",
+            "stop", "target", "rr", "quantity", "capital_required", "max_risk", "potential_reward",
+            "trend_score", "technical_score", "fundamental_score", "conviction_score", "volume_score", "ai_score", "reason",
+        ] if c in candidates.columns]
+        st.dataframe(candidates[display_cols], use_container_width=True, hide_index=True)
+        buys = candidates[candidates["decision"].eq("BUY")] if "decision" in candidates else pd.DataFrame()
+        sells = candidates[candidates["decision"].eq("SELL")] if "decision" in candidates else pd.DataFrame()
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Suggested BUY investment", f"₹{pd.to_numeric(buys.get('capital_required', pd.Series(dtype=float)), errors='coerce').fillna(0).sum():,.2f}")
+        c2.metric("Suggested SELL value", f"₹{pd.to_numeric(sells.get('quantity', pd.Series(dtype=float)), errors='coerce').fillna(0).mul(pd.to_numeric(sells.get('entry', pd.Series(dtype=float)), errors='coerce').fillna(0)).sum():,.2f}")
+        c3.metric("Total actionable stocks", len(candidates))
+
+    st.subheader("TODAY'S PAPER RESULT")
+    trades = sql_records("SELECT * FROM trades WHERE mode='PAPER' ORDER BY closed_at DESC")
+    if trades.empty:
+        st.info("No completed paper trades yet. Today's realized paper P&L is ₹0.00 until a position is closed.")
+    else:
+        trades["net_pnl"] = pd.to_numeric(trades["net_pnl"], errors="coerce").fillna(0)
+        todays = trades[today_mask(trades, "closed_at")]
+        st.metric("Today's realized paper P&L", f"₹{todays['net_pnl'].sum():,.2f}")
+
+    st.subheader("HISTORY / MARKET HEALTH")
     h1, h2, h3, h4 = st.columns(4)
     h1.write("**Market:** " + ("OPEN" if s.get("market_open") else "CLOSED"))
     h2.write("**Data:** " + ("HEALTHY" if s.get("quotes") else "DATA UNAVAILABLE"))
-    h3.write("**Dhan:** " + ("CONNECTED" if secret("DHAN_ACCESS_TOKEN") else "NOT CONFIGURED"))
+    h3.write("**Dhan data:** " + ("CONNECTED" if secret("DHAN_ACCESS_TOKEN") else "NOT CONFIGURED"))
     h4.write("**AI:** " + ("CONFIGURED" if secret("OPENAI_API_KEY") or secret("ANTHROPIC_API_KEY") else "ADVISORY UNAVAILABLE"))
     st.write(
-        f"**Last cycle:** {s.get('ended_at', 'Not available')} · "
-        f"**Duration:** {s.get('duration_seconds', 0)}s · "
+        f"**Last cycle:** {s.get('ended_at', 'Not available')} · **Duration:** {s.get('duration_seconds', 0)}s · "
         f"**Execution gate:** {s.get('execution_gate', 'Not evaluated')}"
     )
 
-    st.subheader("Top Intraday Candidates")
-    candidates = s.get("candidates", [])
-    if candidates:
-        st.dataframe(pd.DataFrame(candidates), use_container_width=True, hide_index=True)
-    else:
-        st.warning("No actionable candidates were recorded in the latest cycle. Check System Health/Diagnostics for DATA_UNAVAILABLE or rejection reasons.")
-    if s.get("errors"):
-        st.error("\n".join(str(x) for x in s["errors"][:10]))
-
 
 def signals_page(title: str = "Signals") -> None:
-    header(title, "Showing persisted signals from the production SQLite journal. No synthetic market values are created.")
+    header(title, "Showing persisted signal records only. No synthetic market values are created.")
     df = records("signals", 1000)
     if df.empty:
         st.warning("No persisted signals are available yet.")
@@ -129,8 +165,7 @@ def signals_page(title: str = "Signals") -> None:
 
 def screener() -> None:
     header("🔎 Stock Screener", "The screener uses candidates persisted by the latest backend cycle.")
-    s = status()
-    rows = s.get("candidates", [])
+    rows = status().get("candidates", [])
     if not rows:
         st.info("No actionable candidates in the latest persisted cycle.")
         return
@@ -159,7 +194,7 @@ def stock_detail(title: str = "📊 Stock Detail") -> None:
 
 
 def live_charts() -> None:
-    header("📉 Live Market Charts", "Charts use Dhan market data when credentials and a security mapping are available. No synthetic data is labelled live.")
+    header("📉 Live Charts", "Real Dhan market history only. No synthetic data is labelled live.")
     try:
         mapping = json.loads(secret("DHAN_SECURITY_IDS_JSON", "{}"))
     except Exception:
@@ -189,62 +224,274 @@ def live_charts() -> None:
             st.error(f"LIVE DATA ERROR: {exc}")
 
 
+def portfolio_page() -> None:
+    header("📊 Portfolio", "Account-level paper portfolio summary. Dhan balance never blocks research or paper trading.")
+    positions = sql_records("SELECT * FROM positions ORDER BY opened_at DESC")
+    trades = sql_records("SELECT * FROM trades WHERE mode='PAPER' ORDER BY closed_at DESC")
+    open_pos = positions[positions["closed_at"].isna()] if not positions.empty and "closed_at" in positions else pd.DataFrame()
+    realized = pd.to_numeric(trades.get("net_pnl", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()
+    exposure = pd.to_numeric(open_pos.get("entry_price", pd.Series(dtype=float)), errors="coerce").fillna(0).mul(pd.to_numeric(open_pos.get("quantity", pd.Series(dtype=float)), errors="coerce").fillna(0)).sum()
+    a, b, c, d = st.columns(4)
+    a.metric("Open Positions", len(open_pos))
+    b.metric("Open Exposure", f"₹{exposure:,.2f}")
+    c.metric("Realized Paper P&L", f"₹{realized:,.2f}")
+    d.metric("Reference Capital", f"₹{settings.reference_capital:,.2f}")
+    if open_pos.empty:
+        st.info("No open positions are currently persisted.")
+    else:
+        st.subheader("Current Holdings")
+        st.dataframe(open_pos, use_container_width=True, hide_index=True)
+
+
 def positions_page() -> None:
-    header("📌 Positions / Portfolio", "Persisted position state from the paper-trading database.")
+    header("📌 Positions", "Current and historical position state. Open positions are shown first; current price is updated from the latest market cycle.")
     df = records("positions", 1000)
     if df.empty:
         st.info("No positions are currently persisted.")
         return
+    if "closed_at" in df.columns:
+        df["Position Status"] = df["closed_at"].isna().map({True: "OPEN", False: "CLOSED"})
+        df = df.sort_values(["Position Status", "opened_at"], ascending=[True, False])
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
 def orders_page() -> None:
-    header("🧾 Orders", "Persisted paper/live order records. Live trading remains disabled by the application safety gate.")
+    header("🧾 Orders", "Persisted order ledger. Paper fills are real-data simulations; live orders are blocked by the application safety gate.")
     df = records("orders", 1000)
     if df.empty:
         st.info("No orders are currently persisted.")
         return
+    mode = st.selectbox("Order mode", ["ALL", "PAPER", "LIVE"], index=0)
+    if mode != "ALL" and "payload" in df.columns:
+        def row_mode(x: Any) -> str:
+            try:
+                obj = json.loads(str(x))
+                return str(obj.get("mode", mode)).upper()
+            except Exception:
+                return mode
+        inferred = df["payload"].map(row_mode)
+        df = df[inferred.eq(mode)]
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
-def trades_page(title: str = "📈 P&L / Trade Journal / Bot Performance") -> None:
-    header(title, "Calculated only from persisted completed trades.")
-    df = records("trades", 1000)
+def paper_trading_page() -> None:
+    header("📝 Paper Trading", "Real market data + simulated execution. No real Dhan order is placed in Paper Mode.")
+    s = status()
+    candidates = pd.DataFrame(s.get("candidates", []))
+    orders = sql_records("SELECT * FROM orders WHERE order_id LIKE 'PAPER-%' ORDER BY ts DESC")
+    today_orders = orders[today_mask(orders, "ts")] if not orders.empty else orders
+    today_trades = sql_records("SELECT * FROM trades WHERE mode='PAPER' ORDER BY closed_at DESC")
+    today_trades = today_trades[today_mask(today_trades, "closed_at")] if not today_trades.empty else today_trades
+    a, b, c, d = st.columns(4)
+    a.metric("Actionable Stocks", len(candidates))
+    b.metric("Paper Orders Today", len(today_orders))
+    c.metric("Open Paper Positions", int(s.get("positions_open", 0)))
+    pnl = pd.to_numeric(today_trades.get("net_pnl", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()
+    d.metric("Today's Paper P&L", f"₹{pnl:,.2f}")
+    if candidates.empty:
+        st.info("No actionable paper-trading candidates in the latest cycle.")
+    else:
+        st.subheader("Today's Suggested Trades")
+        cols = [c for c in ["symbol", "decision", "entry", "quantity", "target", "stop", "rr", "capital_required", "max_risk", "reason"] if c in candidates.columns]
+        st.dataframe(candidates[cols], use_container_width=True, hide_index=True)
+    st.subheader("Paper Order Ledger")
+    if today_orders.empty:
+        st.info("No paper orders have been filled today.")
+    else:
+        st.dataframe(today_orders, use_container_width=True, hide_index=True)
+
+
+def live_trading_page() -> None:
+    header("🔒 Live Trading", "Live trading is intentionally hard-disabled. This page must never display Paper Trading records as live activity.")
+    st.error("LIVE TRADING: DISABLED")
+    st.write("**Execution gate:** application safety design prevents live order placement until the explicit objective validation/activation process is completed.")
+    live_orders = sql_records("SELECT * FROM orders WHERE order_id NOT LIKE 'PAPER-%' ORDER BY ts DESC")
+    live_trades = sql_records("SELECT * FROM trades WHERE mode='LIVE' ORDER BY closed_at DESC")
+    if live_orders.empty and live_trades.empty:
+        st.info("No live orders or live trades are persisted. This is expected while the live safety gate is disabled.")
+    else:
+        if not live_orders.empty:
+            st.subheader("Live Order Ledger")
+            st.dataframe(live_orders, use_container_width=True, hide_index=True)
+        if not live_trades.empty:
+            st.subheader("Live Trade Ledger")
+            st.dataframe(live_trades, use_container_width=True, hide_index=True)
+
+
+def pnl_page() -> None:
+    header("💰 P&L", "Realized profit/loss calculated from persisted completed trades, with today's result separated from all-time history.")
+    df = sql_records("SELECT * FROM trades ORDER BY closed_at ASC")
     if df.empty:
-        st.info("No completed trades yet. Paper validation will populate this table after positions are opened and exited.")
+        st.info("No completed trades yet. Today's realized P&L is ₹0.00.")
         return
-    if "closed_at" in df.columns:
-        df["closed_at"] = pd.to_datetime(df["closed_at"], errors="coerce")
-        df = df.sort_values("closed_at")
     df["net_pnl"] = pd.to_numeric(df["net_pnl"], errors="coerce").fillna(0)
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Trades", len(df))
-    c2.metric("Net P&L", f"₹{df.net_pnl.sum():,.2f}")
-    c3.metric("Win Rate", f"{(df.net_pnl > 0).mean() * 100:.1f}%")
+    today = df[today_mask(df, "closed_at")]
+    a, b, c, d = st.columns(4)
+    a.metric("Today's P&L", f"₹{today['net_pnl'].sum():,.2f}")
+    a.caption(f"Completed trades today: {len(today)}")
+    b.metric("Total P&L", f"₹{df['net_pnl'].sum():,.2f}")
+    c.metric("Win Rate", f"{(df['net_pnl'] > 0).mean() * 100:.1f}%")
     losses = abs(df.loc[df.net_pnl < 0, "net_pnl"].sum())
     wins = df.loc[df.net_pnl > 0, "net_pnl"].sum()
-    c4.metric("Profit Factor", f"{wins / losses:.2f}" if losses else "∞")
+    d.metric("Profit Factor", f"{wins / losses:.2f}" if losses else "∞")
     if "closed_at" in df.columns:
-        st.line_chart(df.set_index("closed_at")["net_pnl"].cumsum())
+        x = pd.to_datetime(df["closed_at"], errors="coerce")
+        curve = pd.DataFrame({"closed_at": x, "cumulative_pnl": df["net_pnl"].cumsum()}).dropna().set_index("closed_at")
+        if not curve.empty:
+            st.line_chart(curve["cumulative_pnl"])
+    st.subheader("Completed Trades")
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
-def events_page(title: str = "🩺 System Health / Diagnostics") -> None:
-    header(title, "Operational evidence from the persisted monitor journal and latest cycle status.")
-    s = status()
-    if s:
-        st.subheader("Latest monitor status")
-        st.json(s)
-    df = records("events", 500)
+def trade_journal_page() -> None:
+    header("📒 Trade Journal", "One row per completed trade, including entry, exit, charges, result and exit reason.")
+    df = records("trades", 1000)
     if df.empty:
-        st.info("No persisted events are available.")
+        st.info("No completed trades are persisted yet.")
+        return
+    if "mode" in df.columns:
+        mode = st.selectbox("Mode", ["ALL", "PAPER", "LIVE"])
+        if mode != "ALL":
+            df = df[df["mode"].eq(mode)]
+    if "symbol" in df.columns:
+        symbol = st.text_input("Filter symbol")
+        if symbol:
+            df = df[df["symbol"].astype(str).str.contains(symbol.upper(), na=False)]
+    cols = [c for c in ["trade_id", "signal_id", "symbol", "mode", "side", "quantity", "entry_price", "exit_price", "gross_pnl", "charges", "net_pnl", "exit_reason", "opened_at", "closed_at"] if c in df.columns]
+    st.dataframe(df[cols], use_container_width=True, hide_index=True)
+
+
+def rejected_page() -> None:
+    header("⛔ Rejected Signals", "Only persisted rejection records are shown. Aggregate rejection counts are taken from the latest monitor cycle when individual historical rows are unavailable.")
+    df = sql_records("SELECT * FROM events WHERE event_type='SIGNAL_REJECTED' ORDER BY ts DESC")
+    s = status()
+    if not df.empty:
+        payloads = []
+        for raw in df.get("payload", []):
+            try:
+                payloads.append(json.loads(raw))
+            except Exception:
+                payloads.append({})
+        detail = pd.json_normalize(payloads)
+        if not detail.empty:
+            st.subheader("Rejected candidate details")
+            st.dataframe(detail, use_container_width=True, hide_index=True)
     else:
-        st.subheader("Recent events")
+        st.info("No individual rejection records are persisted yet. The latest cycle's aggregate rejection counts are shown below.")
+    rejection_counts = s.get("rejections", {})
+    if rejection_counts:
+        st.subheader("Latest Cycle Rejection Funnel")
+        st.dataframe(pd.DataFrame([{"reason": k, "count": v} for k, v in rejection_counts.items()]), use_container_width=True, hide_index=True)
+    if df.empty and not rejection_counts:
+        st.info("No persisted rejection information is available.")
+
+
+def backtest_page() -> None:
+    header("📊 Backtesting", "Historical validation results only. This page does not manufacture backtest returns from live-cycle data.")
+    cycles = records("cycles", 500)
+    trades = records("trades", 500)
+    if cycles.empty and trades.empty:
+        st.info("No dedicated persisted backtest records are available yet.")
+        return
+    if not cycles.empty:
+        st.subheader("Validation Cycles")
+        st.dataframe(cycles, use_container_width=True, hide_index=True)
+    if not trades.empty:
+        st.subheader("Validated Trades")
+        st.dataframe(trades, use_container_width=True, hide_index=True)
+
+
+def bot_performance_page() -> None:
+    header("📊 Bot Performance", "Performance statistics across completed trades. This is intentionally separate from the Trade Journal and P&L ledgers.")
+    df = sql_records("SELECT * FROM trades ORDER BY closed_at ASC")
+    if df.empty:
+        st.info("No completed trades yet; performance statistics will populate after positions are opened and exited.")
+        return
+    df["net_pnl"] = pd.to_numeric(df["net_pnl"], errors="coerce").fillna(0)
+    wins = df[df["net_pnl"] > 0]["net_pnl"]
+    losses = df[df["net_pnl"] < 0]["net_pnl"]
+    a, b, c, d, e = st.columns(5)
+    a.metric("Completed Trades", len(df))
+    b.metric("Win Rate", f"{(len(wins) / len(df) * 100):.1f}%")
+    c.metric("Avg Winner", f"₹{wins.mean():,.2f}" if not wins.empty else "₹0.00")
+    d.metric("Avg Loser", f"₹{losses.mean():,.2f}" if not losses.empty else "₹0.00")
+    e.metric("Expectancy", f"₹{df['net_pnl'].mean():,.2f}")
+    st.subheader("Performance by Exit Reason")
+    if "exit_reason" in df.columns:
+        summary = df.groupby("exit_reason", dropna=False).agg(trades=("trade_id", "count"), net_pnl=("net_pnl", "sum"), avg_pnl=("net_pnl", "mean")).reset_index()
+        st.dataframe(summary, use_container_width=True, hide_index=True)
+    st.subheader("Performance by Day")
+    if "closed_at" in df.columns:
+        tmp = df.copy()
+        tmp["day"] = pd.to_datetime(tmp["closed_at"], errors="coerce").dt.tz_localize("UTC", ambiguous="NaT", nonexistent="NaT").dt.tz_convert("Asia/Kolkata").dt.date if not pd.api.types.is_datetime64tz_dtype(pd.to_datetime(tmp["closed_at"], errors="coerce")) else pd.to_datetime(tmp["closed_at"], errors="coerce").dt.tz_convert("Asia/Kolkata").dt.date
+        daily = tmp.groupby("day", dropna=True).agg(trades=("trade_id", "count"), net_pnl=("net_pnl", "sum"), win_rate=("net_pnl", lambda x: (x > 0).mean() * 100)).reset_index()
+        st.dataframe(daily, use_container_width=True, hide_index=True)
+
+
+def system_health_page() -> None:
+    header("🩺 System Health", "High-level operational health from the latest persisted monitor cycle.")
+    s = status()
+    if not s:
+        st.warning("No monitor status is available.")
+        return
+    a, b, c, d, e = st.columns(5)
+    a.metric("Market", "OPEN" if s.get("market_open") else "CLOSED")
+    b.metric("Stocks Observed", s.get("stocks_observed", 0))
+    c.metric("Quotes", s.get("quotes", 0))
+    d.metric("Actionable", len(s.get("candidates", [])))
+    e.metric("Errors", len(s.get("errors", [])))
+    st.subheader("Execution State")
+    st.write(f"**Mode:** {s.get('mode', 'PAPER')} · **Gate:** {s.get('execution_gate', 'UNKNOWN')} · **Open positions:** {s.get('positions_open', 0)}")
+    st.subheader("Latest Cycle")
+    st.json(s)
+
+
+def diagnostics_page() -> None:
+    header("🔍 Diagnostics", "Detailed troubleshooting view. Events are filtered by operational significance instead of duplicating the System Health summary.")
+    s = status()
+    st.subheader("Cycle diagnostics")
+    for key in ["cycle_id", "started_at", "ended_at", "duration_seconds", "stocks_observed", "quotes", "execution_gate", "errors"]:
+        st.write(f"**{key}:** {s.get(key, '—')}")
+    df = sql_records("SELECT * FROM events WHERE severity IN ('ERROR','WARN') OR event_type NOT IN ('CYCLE_START','CYCLE_END') ORDER BY id DESC LIMIT 500")
+    if df.empty:
+        st.info("No warning/error or non-cycle diagnostic events are persisted.")
+    else:
+        st.subheader("Diagnostic Events")
         st.dataframe(df, use_container_width=True, hide_index=True)
 
 
+def news_page() -> None:
+    header("📰 News", "News is shown only from persisted news/headline source events. Cycle telemetry is never used as a news fallback.")
+    df = sql_records("SELECT * FROM events WHERE lower(event_type) LIKE '%news%' OR lower(event_type) LIKE '%headline%' ORDER BY ts DESC LIMIT 500")
+    if df.empty:
+        st.warning("DATA UNAVAILABLE: no persisted news/headline source events are available.")
+        return
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+def settings_page() -> None:
+    header("⚙️ Settings", "Read-only runtime configuration. Secrets are never displayed.")
+    values = {
+        "BOT_MODE": settings.mode,
+        "DHAN_CLIENT_ID": settings.dhan_client_id,
+        "DHAN_LIVE_TRADING_ENABLED": settings.live_enabled,
+        "RISK_PER_TRADE_PCT": settings.risk_per_trade_pct,
+        "MAX_DAILY_LOSS": settings.daily_loss_limit,
+        "MAX_OPEN_POSITIONS": settings.max_positions,
+        "MAX_POSITION_EXPOSURE": settings.max_position_exposure,
+        "MAX_SECTOR_EXPOSURE": settings.max_sector_exposure,
+        "MIN_RR": settings.min_rr,
+        "DATA_FRESHNESS_SECONDS": settings.freshness_seconds,
+        "SCAN_WORKERS": settings.scan_workers,
+        "BOT_RESEARCH_REFERENCE_CAPITAL": settings.reference_capital,
+    }
+    for name, value in values.items():
+        st.write(f"**{name}:** {value}")
+    st.warning("Live trading is hard-disabled by the application safety design and is not activated from this page.")
+
+
 def prompt_guide() -> None:
-    header("🤖 AI Prompt Guide", "AI remains advisory only. This page does not fabricate an AI result when no provider is configured.")
+    header("🤖 AI Prompt Guide", "AI remains advisory only. Missing data must be reported rather than invented.")
     st.markdown("""
 ### Safe AI workflow
 1. Supply only persisted market, technical, risk and portfolio facts.
@@ -257,12 +504,10 @@ def prompt_guide() -> None:
 
 
 def chat_page() -> None:
-    header("💬 New Chat", "Advisory chat is available only when an AI provider is configured; otherwise the application remains truthful about unavailable AI.")
-    api_configured = bool(secret("OPENAI_API_KEY") or secret("ANTHROPIC_API_KEY"))
-    if not api_configured:
+    header("💬 New Chat", "Advisory chat is available only when an AI provider is configured.")
+    if not (secret("OPENAI_API_KEY") or secret("ANTHROPIC_API_KEY")):
         st.warning("AI PROVIDER NOT CONFIGURED. Add the appropriate provider secret to enable advisory chat.")
         return
-    st.info("AI provider credentials are configured. The existing project AI layer should be used for provider calls; this page does not bypass risk or execution gates.")
     question = st.text_area("Question")
     if question:
         st.write("Question received:")
@@ -271,115 +516,53 @@ def chat_page() -> None:
 
 
 def research_placeholder(title: str) -> None:
-    header(title, "This page is wired to the production journal but will not manufacture research without a configured source.")
-    df = records("events", 200)
+    header(title, "This page shows only persisted records relevant to the selected area; it never substitutes generic cycle telemetry.")
+    df = records("signals", 500)
     if df.empty:
-        st.warning("DATA UNAVAILABLE: no persisted research/source events are available.")
+        st.warning("DATA UNAVAILABLE: no persisted records are available for this page.")
     else:
         st.dataframe(df, use_container_width=True, hide_index=True)
 
 
-def news_page() -> None:
-    header("📰 News", "News is shown only when the backend has persisted source events. No fabricated headlines are displayed.")
-    df = records("events", 500)
-    if df.empty:
-        st.warning("DATA UNAVAILABLE: no persisted news/source events are available.")
-    else:
-        if "event_type" in df.columns:
-            mask = df["event_type"].astype(str).str.contains("news|headline", case=False, na=False)
-            filtered = df[mask]
-            st.dataframe(filtered if not filtered.empty else df, use_container_width=True, hide_index=True)
-
-
-def rejected_page() -> None:
-    header("⛔ Rejected Signals", "Rejected candidates are derived from persisted signal/event records; no rejection is invented.")
-    df = records("events", 1000)
-    if df.empty:
-        st.info("No persisted rejection events are available.")
-        return
-    if "event_type" in df.columns:
-        mask = df["event_type"].astype(str).str.contains("reject|rejection|gate|risk", case=False, na=False)
-        filtered = df[mask]
-        st.dataframe(filtered if not filtered.empty else df, use_container_width=True, hide_index=True)
-
-
-def settings_page() -> None:
-    header("⚙️ Settings", "Read-only runtime configuration. Secrets are never displayed.")
-    names = [
-        "BOT_MODE", "DHAN_CLIENT_ID", "DHAN_LIVE_TRADING_ENABLED", "RISK_PER_TRADE_PCT",
-        "MAX_DAILY_LOSS", "MAX_OPEN_POSITIONS", "MAX_POSITION_EXPOSURE", "MAX_SECTOR_EXPOSURE",
-        "MIN_RR", "DATA_FRESHNESS_SECONDS", "SCAN_WORKERS", "BOT_RESEARCH_REFERENCE_CAPITAL",
-    ]
-    for name in names:
-        value = secret(name, "(default)")
-        if any(token in name for token in ("TOKEN", "KEY", "SECRET")):
-            value = "***CONFIGURED***" if value not in {"", "(default)"} else value
-        st.write(f"**{name}:** {value}")
-    st.warning("Live trading is hard-disabled by the application safety design and is not activated from this page.")
-
-
-def backtest_page() -> None:
-    header("📊 Backtesting", "The UI exposes persisted backtest records when present; it does not invent historical results.")
-    for table in ("cycles", "signals", "trades"):
-        df = records(table, 500)
-        if not df.empty:
-            st.subheader(table.capitalize())
-            st.dataframe(df, use_container_width=True, hide_index=True)
-    st.info("No dedicated persisted backtest result was found if the sections above are empty.")
-
-
 def generic_data_page(page: str) -> None:
-    # These pages are intentionally truthful rather than blank or fake.
-    research_pages = {
-        "Deep Research", "Sector Analysis", "Theme Analysis", "Value Migration",
-        "Inflection Points", "Value Chain", "Profit Pool", "Fundamental Analysis",
-        "Technical Analysis", "SCRAP Analysis", "Watchlist", "Basket Detail",
-        "AI Baskets", "Stocks", "Paper Trading", "Live Trading",
-    }
-    if page in research_pages:
-        research_placeholder(page)
-    else:
-        signals_page(page)
+    research_placeholder(page)
 
 
 def main() -> None:
     mode_switch()
-    page = st.sidebar.selectbox("Desk", PAGES)
+    page = st.sidebar.selectbox("Desk", PAGES, key="desk_page")
     st.sidebar.markdown("---")
     st.sidebar.caption("Backend independent · 5-minute fallback · no price cap")
 
-    if page == "Dashboard":
-        dashboard()
-    elif page == "New Chat":
-        chat_page()
-    elif page == "AI Prompt Guide":
-        prompt_guide()
-    elif page == "Stock Screener":
-        screener()
-    elif page in {"Stock Detail", "360° Stock Analysis"}:
-        stock_detail(page)
-    elif page == "Live Charts":
-        live_charts()
-    elif page in {"Portfolio", "Positions"}:
-        positions_page()
-    elif page == "Orders":
-        orders_page()
-    elif page in {"P&L", "Trade Journal", "Bot Performance"}:
-        trades_page(page)
-    elif page in {"System Health", "Diagnostics"}:
-        events_page(page)
-    elif page == "Settings":
-        settings_page()
-    elif page == "Backtesting":
-        backtest_page()
-    elif page == "News":
-        news_page()
-    elif page == "Rejected Signals":
-        rejected_page()
-    elif page in {"Trend Scanner", "Top Bullish", "Top Bearish", "Shift to Bullish", "Shift to Bearish"}:
-        screener()
-    else:
-        generic_data_page(page)
+    routes = {
+        "Dashboard": dashboard,
+        "New Chat": chat_page,
+        "AI Prompt Guide": prompt_guide,
+        "Stock Screener": screener,
+        "Stock Detail": lambda: stock_detail("Stock Detail"),
+        "360° Stock Analysis": lambda: stock_detail("360° Stock Analysis"),
+        "Live Charts": live_charts,
+        "Portfolio": portfolio_page,
+        "Positions": positions_page,
+        "Orders": orders_page,
+        "Paper Trading": paper_trading_page,
+        "Live Trading": live_trading_page,
+        "P&L": pnl_page,
+        "Trade Journal": trade_journal_page,
+        "Rejected Signals": rejected_page,
+        "Backtesting": backtest_page,
+        "Bot Performance": bot_performance_page,
+        "News": news_page,
+        "System Health": system_health_page,
+        "Diagnostics": diagnostics_page,
+        "Settings": settings_page,
+        "Trend Scanner": screener,
+        "Top Bullish": screener,
+        "Top Bearish": screener,
+        "Shift to Bullish": screener,
+        "Shift to Bearish": screener,
+    }
+    routes.get(page, lambda: generic_data_page(page))()
 
 
 main()
