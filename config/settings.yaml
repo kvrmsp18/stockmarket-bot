@@ -1,0 +1,12 @@
+mode: PAPER
+monitoring_interval_seconds: 300
+market_timezone: Asia/Kolkata
+market_open: '09:15'
+market_close: '15:30'
+square_off: '15:20'
+no_price_cap: true
+trend_bullish_threshold: 7.0
+trend_bearish_threshold: 4.0
+min_risk_reward: 3.0
+scrap_sector_threshold_pct: 15.0
+scrap_company_threshold_pct: 25.0
