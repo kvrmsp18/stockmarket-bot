@@ -1,6 +1,6 @@
 {
-  "cycle_id": "d32407c32474498399247135b79d0492",
-  "started_at": "2026-08-31T12:05:39.069400+00:00",
+  "cycle_id": "1d2b268fdbba455b8ce19ae0566a0b0f",
+  "started_at": "2026-08-31T13:36:46.128122+00:00",
   "mode": "PAPER",
   "market_open": false,
   "stocks_observed": 2672,
@@ -9106,291 +9106,6 @@
       "rejection_reason": "INSUFFICIENT_FUNDS"
     },
     {
-      "symbol": "BODALCHEM",
-      "sector": "OTHER",
-      "theme": "UNKNOWN",
-      "price": 118.89,
-      "decision": "NO TRADE",
-      "scrap_score": 0.0,
-      "fundamental_score": 0.0,
-      "valuation_score": 0.0,
-      "conviction_score": 0.0,
-      "framework_status": "DATA UNAVAILABLE",
-      "framework_agreement": "DATA UNAVAILABLE",
-      "frameworks": {
-        "Buffett": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "roce",
-            "predictability",
-            "earnings_quality",
-            "debt_to_equity",
-            "pe"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Quality / economics / predictability / valuation"
-        },
-        "Rakesh Jhunjhunwala": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "roce",
-            "predictability",
-            "earnings_quality"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Growth / earnings / operating leverage / long runway"
-        },
-        "Peter Lynch": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "pe",
-            "predictability",
-            "roe"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Growth relative to price / earnings / business simplicity"
-        },
-        "100 Baggers": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "roce",
-            "roe",
-            "debt_to_equity",
-            "predictability"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "High returns / reinvestment / long compounding runway"
-        },
-        "CANSLIM": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "eps_growth",
-            "profit_growth",
-            "relative_strength",
-            "roce",
-            "market_trend"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Current earnings / annual growth / relative strength / market direction"
-        }
-      },
-      "liquidity_score": 5.0,
-      "volume_score": 7.034891,
-      "market_score": 5.0,
-      "news_score": 5.0,
-      "ai_score": 0.0,
-      "ai_consensus": "NOT_RUN",
-      "entry": 118.89,
-      "entry_zone": [
-        118.89,
-        118.89
-      ],
-      "entry_low": 118.89,
-      "entry_high": 118.89,
-      "max_chase": 118.89,
-      "stop": 118.89,
-      "target": 118.89,
-      "rr": 0.0,
-      "trend_score": 6.8999999999999995,
-      "technical_score": 6.8999999999999995,
-      "trend_state": "NEUTRAL",
-      "research": {
-        "symbol": "BODALCHEM",
-        "scrap": {
-          "symbol": "BODALCHEM",
-          "sector": "UNKNOWN",
-          "theme": "UNKNOWN",
-          "scrap_score": 0.0,
-          "fundamental_score": 0.0,
-          "valuation_score": 0.0,
-          "conviction_score": 0.0,
-          "status": "DATA UNAVAILABLE",
-          "rejection_reason": null,
-          "metrics": {
-            "available_checks": 0,
-            "total_checks": 4
-          }
-        },
-        "fundamental_score": 0.0,
-        "valuation_score": 0.0,
-        "frameworks": {
-          "frameworks": {
-            "Buffett": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "roce",
-                "predictability",
-                "earnings_quality",
-                "debt_to_equity",
-                "pe"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Quality / economics / predictability / valuation"
-            },
-            "Rakesh Jhunjhunwala": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "roce",
-                "predictability",
-                "earnings_quality"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Growth / earnings / operating leverage / long runway"
-            },
-            "Peter Lynch": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "pe",
-                "predictability",
-                "roe"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Growth relative to price / earnings / business simplicity"
-            },
-            "100 Baggers": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "roce",
-                "roe",
-                "debt_to_equity",
-                "predictability"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "High returns / reinvestment / long compounding runway"
-            },
-            "CANSLIM": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "eps_growth",
-                "profit_growth",
-                "relative_strength",
-                "roce",
-                "market_trend"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Current earnings / annual growth / relative strength / market direction"
-            }
-          },
-          "overall": 0.0,
-          "agreement": "DATA UNAVAILABLE",
-          "status": "DATA UNAVAILABLE"
-        },
-        "valuation_price_from_eps_pe": null,
-        "roce_from_profit_capital": null,
-        "status": "DATA UNAVAILABLE"
-      },
-      "reason": "No valid intraday direction",
-      "rejection_reason": "TECHNICAL_REJECTION"
-    },
-    {
       "symbol": "BPCL",
       "sector": "OTHER",
       "theme": "UNKNOWN",
@@ -9674,6 +9389,291 @@
       },
       "reason": "No safe affordable quantity",
       "rejection_reason": "INSUFFICIENT_FUNDS"
+    },
+    {
+      "symbol": "BODALCHEM",
+      "sector": "OTHER",
+      "theme": "UNKNOWN",
+      "price": 118.89,
+      "decision": "NO TRADE",
+      "scrap_score": 0.0,
+      "fundamental_score": 0.0,
+      "valuation_score": 0.0,
+      "conviction_score": 0.0,
+      "framework_status": "DATA UNAVAILABLE",
+      "framework_agreement": "DATA UNAVAILABLE",
+      "frameworks": {
+        "Buffett": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "roce",
+            "predictability",
+            "earnings_quality",
+            "debt_to_equity",
+            "pe"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Quality / economics / predictability / valuation"
+        },
+        "Rakesh Jhunjhunwala": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "roce",
+            "predictability",
+            "earnings_quality"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Growth / earnings / operating leverage / long runway"
+        },
+        "Peter Lynch": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "pe",
+            "predictability",
+            "roe"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Growth relative to price / earnings / business simplicity"
+        },
+        "100 Baggers": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "roce",
+            "roe",
+            "debt_to_equity",
+            "predictability"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "High returns / reinvestment / long compounding runway"
+        },
+        "CANSLIM": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "eps_growth",
+            "profit_growth",
+            "relative_strength",
+            "roce",
+            "market_trend"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Current earnings / annual growth / relative strength / market direction"
+        }
+      },
+      "liquidity_score": 5.0,
+      "volume_score": 7.034891,
+      "market_score": 5.0,
+      "news_score": 5.0,
+      "ai_score": 0.0,
+      "ai_consensus": "NOT_RUN",
+      "entry": 118.89,
+      "entry_zone": [
+        118.89,
+        118.89
+      ],
+      "entry_low": 118.89,
+      "entry_high": 118.89,
+      "max_chase": 118.89,
+      "stop": 118.89,
+      "target": 118.89,
+      "rr": 0.0,
+      "trend_score": 6.8999999999999995,
+      "technical_score": 6.8999999999999995,
+      "trend_state": "NEUTRAL",
+      "research": {
+        "symbol": "BODALCHEM",
+        "scrap": {
+          "symbol": "BODALCHEM",
+          "sector": "UNKNOWN",
+          "theme": "UNKNOWN",
+          "scrap_score": 0.0,
+          "fundamental_score": 0.0,
+          "valuation_score": 0.0,
+          "conviction_score": 0.0,
+          "status": "DATA UNAVAILABLE",
+          "rejection_reason": null,
+          "metrics": {
+            "available_checks": 0,
+            "total_checks": 4
+          }
+        },
+        "fundamental_score": 0.0,
+        "valuation_score": 0.0,
+        "frameworks": {
+          "frameworks": {
+            "Buffett": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "roce",
+                "predictability",
+                "earnings_quality",
+                "debt_to_equity",
+                "pe"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Quality / economics / predictability / valuation"
+            },
+            "Rakesh Jhunjhunwala": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "roce",
+                "predictability",
+                "earnings_quality"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Growth / earnings / operating leverage / long runway"
+            },
+            "Peter Lynch": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "pe",
+                "predictability",
+                "roe"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Growth relative to price / earnings / business simplicity"
+            },
+            "100 Baggers": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "roce",
+                "roe",
+                "debt_to_equity",
+                "predictability"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "High returns / reinvestment / long compounding runway"
+            },
+            "CANSLIM": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "eps_growth",
+                "profit_growth",
+                "relative_strength",
+                "roce",
+                "market_trend"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Current earnings / annual growth / relative strength / market direction"
+            }
+          },
+          "overall": 0.0,
+          "agreement": "DATA UNAVAILABLE",
+          "status": "DATA UNAVAILABLE"
+        },
+        "valuation_price_from_eps_pe": null,
+        "roce_from_profit_capital": null,
+        "status": "DATA UNAVAILABLE"
+      },
+      "reason": "No valid intraday direction",
+      "rejection_reason": "TECHNICAL_REJECTION"
     },
     {
       "symbol": "BSE",
@@ -10531,291 +10531,6 @@
       "rejection_reason": "RISK_REJECTION"
     },
     {
-      "symbol": "CCAVENUE",
-      "sector": "OTHER",
-      "theme": "UNKNOWN",
-      "price": 15.03,
-      "decision": "NO TRADE",
-      "scrap_score": 0.0,
-      "fundamental_score": 0.0,
-      "valuation_score": 0.0,
-      "conviction_score": 0.0,
-      "framework_status": "DATA UNAVAILABLE",
-      "framework_agreement": "DATA UNAVAILABLE",
-      "frameworks": {
-        "Buffett": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "roce",
-            "predictability",
-            "earnings_quality",
-            "debt_to_equity",
-            "pe"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Quality / economics / predictability / valuation"
-        },
-        "Rakesh Jhunjhunwala": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "roce",
-            "predictability",
-            "earnings_quality"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Growth / earnings / operating leverage / long runway"
-        },
-        "Peter Lynch": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "pe",
-            "predictability",
-            "roe"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Growth relative to price / earnings / business simplicity"
-        },
-        "100 Baggers": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "roce",
-            "roe",
-            "debt_to_equity",
-            "predictability"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "High returns / reinvestment / long compounding runway"
-        },
-        "CANSLIM": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "eps_growth",
-            "profit_growth",
-            "relative_strength",
-            "roce",
-            "market_trend"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Current earnings / annual growth / relative strength / market direction"
-        }
-      },
-      "liquidity_score": 5.0,
-      "volume_score": 10.0,
-      "market_score": 5.0,
-      "news_score": 5.0,
-      "ai_score": 0.0,
-      "ai_consensus": "NOT_RUN",
-      "entry": 15.05,
-      "entry_zone": [
-        15.03495,
-        15.065050000000001
-      ],
-      "entry_low": 15.03495,
-      "entry_high": 15.065050000000001,
-      "max_chase": 15.080100000000002,
-      "stop": 14.9898,
-      "target": 15.2306,
-      "rr": 3.0,
-      "trend_score": 7.1,
-      "technical_score": 7.1,
-      "trend_state": "BULLISH",
-      "research": {
-        "symbol": "CCAVENUE",
-        "scrap": {
-          "symbol": "CCAVENUE",
-          "sector": "UNKNOWN",
-          "theme": "UNKNOWN",
-          "scrap_score": 0.0,
-          "fundamental_score": 0.0,
-          "valuation_score": 0.0,
-          "conviction_score": 0.0,
-          "status": "DATA UNAVAILABLE",
-          "rejection_reason": null,
-          "metrics": {
-            "available_checks": 0,
-            "total_checks": 4
-          }
-        },
-        "fundamental_score": 0.0,
-        "valuation_score": 0.0,
-        "frameworks": {
-          "frameworks": {
-            "Buffett": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "roce",
-                "predictability",
-                "earnings_quality",
-                "debt_to_equity",
-                "pe"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Quality / economics / predictability / valuation"
-            },
-            "Rakesh Jhunjhunwala": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "roce",
-                "predictability",
-                "earnings_quality"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Growth / earnings / operating leverage / long runway"
-            },
-            "Peter Lynch": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "pe",
-                "predictability",
-                "roe"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Growth relative to price / earnings / business simplicity"
-            },
-            "100 Baggers": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "roce",
-                "roe",
-                "debt_to_equity",
-                "predictability"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "High returns / reinvestment / long compounding runway"
-            },
-            "CANSLIM": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "eps_growth",
-                "profit_growth",
-                "relative_strength",
-                "roce",
-                "market_trend"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Current earnings / annual growth / relative strength / market direction"
-            }
-          },
-          "overall": 0.0,
-          "agreement": "DATA UNAVAILABLE",
-          "status": "DATA UNAVAILABLE"
-        },
-        "valuation_price_from_eps_pe": null,
-        "roce_from_profit_capital": null,
-        "status": "DATA UNAVAILABLE"
-      },
-      "reason": "No safe affordable quantity",
-      "rejection_reason": "INSUFFICIENT_FUNDS"
-    },
-    {
       "symbol": "CMSINFO",
       "sector": "OTHER",
       "theme": "UNKNOWN",
@@ -11384,6 +11099,291 @@
       },
       "reason": "No valid intraday direction",
       "rejection_reason": "TECHNICAL_REJECTION"
+    },
+    {
+      "symbol": "CUPID",
+      "sector": "OTHER",
+      "theme": "UNKNOWN",
+      "price": 280.46,
+      "decision": "NO TRADE",
+      "scrap_score": 0.0,
+      "fundamental_score": 0.0,
+      "valuation_score": 0.0,
+      "conviction_score": 0.0,
+      "framework_status": "DATA UNAVAILABLE",
+      "framework_agreement": "DATA UNAVAILABLE",
+      "frameworks": {
+        "Buffett": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "roce",
+            "predictability",
+            "earnings_quality",
+            "debt_to_equity",
+            "pe"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Quality / economics / predictability / valuation"
+        },
+        "Rakesh Jhunjhunwala": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "roce",
+            "predictability",
+            "earnings_quality"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Growth / earnings / operating leverage / long runway"
+        },
+        "Peter Lynch": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "pe",
+            "predictability",
+            "roe"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Growth relative to price / earnings / business simplicity"
+        },
+        "100 Baggers": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "roce",
+            "roe",
+            "debt_to_equity",
+            "predictability"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "High returns / reinvestment / long compounding runway"
+        },
+        "CANSLIM": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "eps_growth",
+            "profit_growth",
+            "relative_strength",
+            "roce",
+            "market_trend"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Current earnings / annual growth / relative strength / market direction"
+        }
+      },
+      "liquidity_score": 5.0,
+      "volume_score": 10.0,
+      "market_score": 5.0,
+      "news_score": 5.0,
+      "ai_score": 0.0,
+      "ai_consensus": "NOT_RUN",
+      "entry": 280.44,
+      "entry_zone": [
+        280.15956,
+        280.72044
+      ],
+      "entry_low": 280.15956,
+      "entry_high": 280.72044,
+      "max_chase": 281.00088,
+      "stop": 279.31824,
+      "target": 283.80528,
+      "rr": 3.0,
+      "trend_score": 9.7,
+      "technical_score": 9.7,
+      "trend_state": "BULLISH",
+      "research": {
+        "symbol": "CUPID",
+        "scrap": {
+          "symbol": "CUPID",
+          "sector": "UNKNOWN",
+          "theme": "UNKNOWN",
+          "scrap_score": 0.0,
+          "fundamental_score": 0.0,
+          "valuation_score": 0.0,
+          "conviction_score": 0.0,
+          "status": "DATA UNAVAILABLE",
+          "rejection_reason": null,
+          "metrics": {
+            "available_checks": 0,
+            "total_checks": 4
+          }
+        },
+        "fundamental_score": 0.0,
+        "valuation_score": 0.0,
+        "frameworks": {
+          "frameworks": {
+            "Buffett": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "roce",
+                "predictability",
+                "earnings_quality",
+                "debt_to_equity",
+                "pe"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Quality / economics / predictability / valuation"
+            },
+            "Rakesh Jhunjhunwala": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "roce",
+                "predictability",
+                "earnings_quality"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Growth / earnings / operating leverage / long runway"
+            },
+            "Peter Lynch": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "pe",
+                "predictability",
+                "roe"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Growth relative to price / earnings / business simplicity"
+            },
+            "100 Baggers": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "roce",
+                "roe",
+                "debt_to_equity",
+                "predictability"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "High returns / reinvestment / long compounding runway"
+            },
+            "CANSLIM": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "eps_growth",
+                "profit_growth",
+                "relative_strength",
+                "roce",
+                "market_trend"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Current earnings / annual growth / relative strength / market direction"
+            }
+          },
+          "overall": 0.0,
+          "agreement": "DATA UNAVAILABLE",
+          "status": "DATA UNAVAILABLE"
+        },
+        "valuation_price_from_eps_pe": null,
+        "roce_from_profit_capital": null,
+        "status": "DATA UNAVAILABLE"
+      },
+      "reason": "No safe affordable quantity",
+      "rejection_reason": "INSUFFICIENT_FUNDS"
     },
     {
       "symbol": "DAVANGERE",
@@ -11956,291 +11956,6 @@
       "rejection_reason": "RISK_REJECTION"
     },
     {
-      "symbol": "CUPID",
-      "sector": "OTHER",
-      "theme": "UNKNOWN",
-      "price": 280.46,
-      "decision": "NO TRADE",
-      "scrap_score": 0.0,
-      "fundamental_score": 0.0,
-      "valuation_score": 0.0,
-      "conviction_score": 0.0,
-      "framework_status": "DATA UNAVAILABLE",
-      "framework_agreement": "DATA UNAVAILABLE",
-      "frameworks": {
-        "Buffett": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "roce",
-            "predictability",
-            "earnings_quality",
-            "debt_to_equity",
-            "pe"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Quality / economics / predictability / valuation"
-        },
-        "Rakesh Jhunjhunwala": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "roce",
-            "predictability",
-            "earnings_quality"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Growth / earnings / operating leverage / long runway"
-        },
-        "Peter Lynch": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "pe",
-            "predictability",
-            "roe"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Growth relative to price / earnings / business simplicity"
-        },
-        "100 Baggers": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "roce",
-            "roe",
-            "debt_to_equity",
-            "predictability"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "High returns / reinvestment / long compounding runway"
-        },
-        "CANSLIM": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "eps_growth",
-            "profit_growth",
-            "relative_strength",
-            "roce",
-            "market_trend"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Current earnings / annual growth / relative strength / market direction"
-        }
-      },
-      "liquidity_score": 5.0,
-      "volume_score": 10.0,
-      "market_score": 5.0,
-      "news_score": 5.0,
-      "ai_score": 0.0,
-      "ai_consensus": "NOT_RUN",
-      "entry": 280.44,
-      "entry_zone": [
-        280.15956,
-        280.72044
-      ],
-      "entry_low": 280.15956,
-      "entry_high": 280.72044,
-      "max_chase": 281.00088,
-      "stop": 279.31824,
-      "target": 283.80528,
-      "rr": 3.0,
-      "trend_score": 9.7,
-      "technical_score": 9.7,
-      "trend_state": "BULLISH",
-      "research": {
-        "symbol": "CUPID",
-        "scrap": {
-          "symbol": "CUPID",
-          "sector": "UNKNOWN",
-          "theme": "UNKNOWN",
-          "scrap_score": 0.0,
-          "fundamental_score": 0.0,
-          "valuation_score": 0.0,
-          "conviction_score": 0.0,
-          "status": "DATA UNAVAILABLE",
-          "rejection_reason": null,
-          "metrics": {
-            "available_checks": 0,
-            "total_checks": 4
-          }
-        },
-        "fundamental_score": 0.0,
-        "valuation_score": 0.0,
-        "frameworks": {
-          "frameworks": {
-            "Buffett": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "roce",
-                "predictability",
-                "earnings_quality",
-                "debt_to_equity",
-                "pe"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Quality / economics / predictability / valuation"
-            },
-            "Rakesh Jhunjhunwala": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "roce",
-                "predictability",
-                "earnings_quality"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Growth / earnings / operating leverage / long runway"
-            },
-            "Peter Lynch": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "pe",
-                "predictability",
-                "roe"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Growth relative to price / earnings / business simplicity"
-            },
-            "100 Baggers": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "roce",
-                "roe",
-                "debt_to_equity",
-                "predictability"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "High returns / reinvestment / long compounding runway"
-            },
-            "CANSLIM": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "eps_growth",
-                "profit_growth",
-                "relative_strength",
-                "roce",
-                "market_trend"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Current earnings / annual growth / relative strength / market direction"
-            }
-          },
-          "overall": 0.0,
-          "agreement": "DATA UNAVAILABLE",
-          "status": "DATA UNAVAILABLE"
-        },
-        "valuation_price_from_eps_pe": null,
-        "roce_from_profit_capital": null,
-        "status": "DATA UNAVAILABLE"
-      },
-      "reason": "No safe affordable quantity",
-      "rejection_reason": "INSUFFICIENT_FUNDS"
-    },
-    {
       "symbol": "DIFFNKG",
       "sector": "OTHER",
       "theme": "UNKNOWN",
@@ -12809,6 +12524,291 @@
       },
       "reason": "No valid intraday direction",
       "rejection_reason": "TECHNICAL_REJECTION"
+    },
+    {
+      "symbol": "EASEMYTRIP",
+      "sector": "OTHER",
+      "theme": "UNKNOWN",
+      "price": 6.1,
+      "decision": "NO TRADE",
+      "scrap_score": 0.0,
+      "fundamental_score": 0.0,
+      "valuation_score": 0.0,
+      "conviction_score": 0.0,
+      "framework_status": "DATA UNAVAILABLE",
+      "framework_agreement": "DATA UNAVAILABLE",
+      "frameworks": {
+        "Buffett": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "roce",
+            "predictability",
+            "earnings_quality",
+            "debt_to_equity",
+            "pe"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Quality / economics / predictability / valuation"
+        },
+        "Rakesh Jhunjhunwala": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "roce",
+            "predictability",
+            "earnings_quality"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Growth / earnings / operating leverage / long runway"
+        },
+        "Peter Lynch": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "pe",
+            "predictability",
+            "roe"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Growth relative to price / earnings / business simplicity"
+        },
+        "100 Baggers": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "roce",
+            "roe",
+            "debt_to_equity",
+            "predictability"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "High returns / reinvestment / long compounding runway"
+        },
+        "CANSLIM": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "eps_growth",
+            "profit_growth",
+            "relative_strength",
+            "roce",
+            "market_trend"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Current earnings / annual growth / relative strength / market direction"
+        }
+      },
+      "liquidity_score": 5.0,
+      "volume_score": 6.696471,
+      "market_score": 5.0,
+      "news_score": 5.0,
+      "ai_score": 0.0,
+      "ai_consensus": "NOT_RUN",
+      "entry": 6.12,
+      "entry_zone": [
+        6.11388,
+        6.12612
+      ],
+      "entry_low": 6.11388,
+      "entry_high": 6.12612,
+      "max_chase": 6.1322399999999995,
+      "stop": 6.0955200000000005,
+      "target": 6.19344,
+      "rr": 3.0000000000000364,
+      "trend_score": 8.9,
+      "technical_score": 8.9,
+      "trend_state": "BULLISH",
+      "research": {
+        "symbol": "EASEMYTRIP",
+        "scrap": {
+          "symbol": "EASEMYTRIP",
+          "sector": "UNKNOWN",
+          "theme": "UNKNOWN",
+          "scrap_score": 0.0,
+          "fundamental_score": 0.0,
+          "valuation_score": 0.0,
+          "conviction_score": 0.0,
+          "status": "DATA UNAVAILABLE",
+          "rejection_reason": null,
+          "metrics": {
+            "available_checks": 0,
+            "total_checks": 4
+          }
+        },
+        "fundamental_score": 0.0,
+        "valuation_score": 0.0,
+        "frameworks": {
+          "frameworks": {
+            "Buffett": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "roce",
+                "predictability",
+                "earnings_quality",
+                "debt_to_equity",
+                "pe"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Quality / economics / predictability / valuation"
+            },
+            "Rakesh Jhunjhunwala": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "roce",
+                "predictability",
+                "earnings_quality"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Growth / earnings / operating leverage / long runway"
+            },
+            "Peter Lynch": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "pe",
+                "predictability",
+                "roe"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Growth relative to price / earnings / business simplicity"
+            },
+            "100 Baggers": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "roce",
+                "roe",
+                "debt_to_equity",
+                "predictability"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "High returns / reinvestment / long compounding runway"
+            },
+            "CANSLIM": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "eps_growth",
+                "profit_growth",
+                "relative_strength",
+                "roce",
+                "market_trend"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Current earnings / annual growth / relative strength / market direction"
+            }
+          },
+          "overall": 0.0,
+          "agreement": "DATA UNAVAILABLE",
+          "status": "DATA UNAVAILABLE"
+        },
+        "valuation_price_from_eps_pe": null,
+        "roce_from_profit_capital": null,
+        "status": "DATA UNAVAILABLE"
+      },
+      "reason": "No safe affordable quantity",
+      "rejection_reason": "INSUFFICIENT_FUNDS"
     },
     {
       "symbol": "EDELWEISS",
@@ -15091,6 +15091,291 @@
       "rejection_reason": "INSUFFICIENT_FUNDS"
     },
     {
+      "symbol": "CCAVENUE",
+      "sector": "OTHER",
+      "theme": "UNKNOWN",
+      "price": 15.03,
+      "decision": "NO TRADE",
+      "scrap_score": 0.0,
+      "fundamental_score": 0.0,
+      "valuation_score": 0.0,
+      "conviction_score": 0.0,
+      "framework_status": "DATA UNAVAILABLE",
+      "framework_agreement": "DATA UNAVAILABLE",
+      "frameworks": {
+        "Buffett": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "roce",
+            "predictability",
+            "earnings_quality",
+            "debt_to_equity",
+            "pe"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Quality / economics / predictability / valuation"
+        },
+        "Rakesh Jhunjhunwala": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "roce",
+            "predictability",
+            "earnings_quality"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Growth / earnings / operating leverage / long runway"
+        },
+        "Peter Lynch": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "pe",
+            "predictability",
+            "roe"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Growth relative to price / earnings / business simplicity"
+        },
+        "100 Baggers": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "profit_growth",
+            "eps_growth",
+            "roce",
+            "roe",
+            "debt_to_equity",
+            "predictability"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "High returns / reinvestment / long compounding runway"
+        },
+        "CANSLIM": {
+          "score": 0.0,
+          "confidence": 0.0,
+          "positive_factors": [],
+          "negative_factors": [],
+          "missing_data": [
+            "eps_growth",
+            "profit_growth",
+            "relative_strength",
+            "roce",
+            "market_trend"
+          ],
+          "evidence": [
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied",
+            "No source value supplied"
+          ],
+          "method": "Current earnings / annual growth / relative strength / market direction"
+        }
+      },
+      "liquidity_score": 5.0,
+      "volume_score": 10.0,
+      "market_score": 5.0,
+      "news_score": 5.0,
+      "ai_score": 0.0,
+      "ai_consensus": "NOT_RUN",
+      "entry": 15.05,
+      "entry_zone": [
+        15.03495,
+        15.065050000000001
+      ],
+      "entry_low": 15.03495,
+      "entry_high": 15.065050000000001,
+      "max_chase": 15.080100000000002,
+      "stop": 14.9898,
+      "target": 15.2306,
+      "rr": 3.0,
+      "trend_score": 7.1,
+      "technical_score": 7.1,
+      "trend_state": "BULLISH",
+      "research": {
+        "symbol": "CCAVENUE",
+        "scrap": {
+          "symbol": "CCAVENUE",
+          "sector": "UNKNOWN",
+          "theme": "UNKNOWN",
+          "scrap_score": 0.0,
+          "fundamental_score": 0.0,
+          "valuation_score": 0.0,
+          "conviction_score": 0.0,
+          "status": "DATA UNAVAILABLE",
+          "rejection_reason": null,
+          "metrics": {
+            "available_checks": 0,
+            "total_checks": 4
+          }
+        },
+        "fundamental_score": 0.0,
+        "valuation_score": 0.0,
+        "frameworks": {
+          "frameworks": {
+            "Buffett": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "roce",
+                "predictability",
+                "earnings_quality",
+                "debt_to_equity",
+                "pe"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Quality / economics / predictability / valuation"
+            },
+            "Rakesh Jhunjhunwala": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "roce",
+                "predictability",
+                "earnings_quality"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Growth / earnings / operating leverage / long runway"
+            },
+            "Peter Lynch": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "pe",
+                "predictability",
+                "roe"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Growth relative to price / earnings / business simplicity"
+            },
+            "100 Baggers": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "profit_growth",
+                "eps_growth",
+                "roce",
+                "roe",
+                "debt_to_equity",
+                "predictability"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "High returns / reinvestment / long compounding runway"
+            },
+            "CANSLIM": {
+              "score": 0.0,
+              "confidence": 0.0,
+              "positive_factors": [],
+              "negative_factors": [],
+              "missing_data": [
+                "eps_growth",
+                "profit_growth",
+                "relative_strength",
+                "roce",
+                "market_trend"
+              ],
+              "evidence": [
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied",
+                "No source value supplied"
+              ],
+              "method": "Current earnings / annual growth / relative strength / market direction"
+            }
+          },
+          "overall": 0.0,
+          "agreement": "DATA UNAVAILABLE",
+          "status": "DATA UNAVAILABLE"
+        },
+        "valuation_price_from_eps_pe": null,
+        "roce_from_profit_capital": null,
+        "status": "DATA UNAVAILABLE"
+      },
+      "reason": "No safe affordable quantity",
+      "rejection_reason": "INSUFFICIENT_FUNDS"
+    },
+    {
       "symbol": "FCL",
       "sector": "OTHER",
       "theme": "UNKNOWN",
@@ -16799,291 +17084,6 @@
       },
       "reason": "No valid intraday direction",
       "rejection_reason": "TECHNICAL_REJECTION"
-    },
-    {
-      "symbol": "EASEMYTRIP",
-      "sector": "OTHER",
-      "theme": "UNKNOWN",
-      "price": 6.1,
-      "decision": "NO TRADE",
-      "scrap_score": 0.0,
-      "fundamental_score": 0.0,
-      "valuation_score": 0.0,
-      "conviction_score": 0.0,
-      "framework_status": "DATA UNAVAILABLE",
-      "framework_agreement": "DATA UNAVAILABLE",
-      "frameworks": {
-        "Buffett": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "roce",
-            "predictability",
-            "earnings_quality",
-            "debt_to_equity",
-            "pe"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Quality / economics / predictability / valuation"
-        },
-        "Rakesh Jhunjhunwala": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "roce",
-            "predictability",
-            "earnings_quality"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Growth / earnings / operating leverage / long runway"
-        },
-        "Peter Lynch": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "pe",
-            "predictability",
-            "roe"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Growth relative to price / earnings / business simplicity"
-        },
-        "100 Baggers": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "profit_growth",
-            "eps_growth",
-            "roce",
-            "roe",
-            "debt_to_equity",
-            "predictability"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "High returns / reinvestment / long compounding runway"
-        },
-        "CANSLIM": {
-          "score": 0.0,
-          "confidence": 0.0,
-          "positive_factors": [],
-          "negative_factors": [],
-          "missing_data": [
-            "eps_growth",
-            "profit_growth",
-            "relative_strength",
-            "roce",
-            "market_trend"
-          ],
-          "evidence": [
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied",
-            "No source value supplied"
-          ],
-          "method": "Current earnings / annual growth / relative strength / market direction"
-        }
-      },
-      "liquidity_score": 5.0,
-      "volume_score": 6.696471,
-      "market_score": 5.0,
-      "news_score": 5.0,
-      "ai_score": 0.0,
-      "ai_consensus": "NOT_RUN",
-      "entry": 6.12,
-      "entry_zone": [
-        6.11388,
-        6.12612
-      ],
-      "entry_low": 6.11388,
-      "entry_high": 6.12612,
-      "max_chase": 6.1322399999999995,
-      "stop": 6.0955200000000005,
-      "target": 6.19344,
-      "rr": 3.0000000000000364,
-      "trend_score": 8.9,
-      "technical_score": 8.9,
-      "trend_state": "BULLISH",
-      "research": {
-        "symbol": "EASEMYTRIP",
-        "scrap": {
-          "symbol": "EASEMYTRIP",
-          "sector": "UNKNOWN",
-          "theme": "UNKNOWN",
-          "scrap_score": 0.0,
-          "fundamental_score": 0.0,
-          "valuation_score": 0.0,
-          "conviction_score": 0.0,
-          "status": "DATA UNAVAILABLE",
-          "rejection_reason": null,
-          "metrics": {
-            "available_checks": 0,
-            "total_checks": 4
-          }
-        },
-        "fundamental_score": 0.0,
-        "valuation_score": 0.0,
-        "frameworks": {
-          "frameworks": {
-            "Buffett": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "roce",
-                "predictability",
-                "earnings_quality",
-                "debt_to_equity",
-                "pe"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Quality / economics / predictability / valuation"
-            },
-            "Rakesh Jhunjhunwala": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "roce",
-                "predictability",
-                "earnings_quality"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Growth / earnings / operating leverage / long runway"
-            },
-            "Peter Lynch": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "pe",
-                "predictability",
-                "roe"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Growth relative to price / earnings / business simplicity"
-            },
-            "100 Baggers": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "profit_growth",
-                "eps_growth",
-                "roce",
-                "roe",
-                "debt_to_equity",
-                "predictability"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "High returns / reinvestment / long compounding runway"
-            },
-            "CANSLIM": {
-              "score": 0.0,
-              "confidence": 0.0,
-              "positive_factors": [],
-              "negative_factors": [],
-              "missing_data": [
-                "eps_growth",
-                "profit_growth",
-                "relative_strength",
-                "roce",
-                "market_trend"
-              ],
-              "evidence": [
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied",
-                "No source value supplied"
-              ],
-              "method": "Current earnings / annual growth / relative strength / market direction"
-            }
-          },
-          "overall": 0.0,
-          "agreement": "DATA UNAVAILABLE",
-          "status": "DATA UNAVAILABLE"
-        },
-        "valuation_price_from_eps_pe": null,
-        "roce_from_profit_capital": null,
-        "status": "DATA UNAVAILABLE"
-      },
-      "reason": "No safe affordable quantity",
-      "rejection_reason": "INSUFFICIENT_FUNDS"
     }
   ],
   "orders": [],
@@ -17091,8 +17091,8 @@
   "suggested_buy_investment": 0,
   "suggested_sell_value": 0,
   "execution_gate": "PAPER_MODE",
-  "duration_seconds": 19.764,
-  "ended_at": "2026-08-31T17:35:58.831595+05:30",
+  "duration_seconds": 19.781,
+  "ended_at": "2026-08-31T19:07:05.906597+05:30",
   "positions_open": 0,
   "realized_pnl": 0.0,
   "today_realized_pnl": 0.0
