@@ -1,0 +1,33 @@
+name: EOD Report
+
+on:
+  schedule:
+    - cron: '45 10 * * 1-5'
+  workflow_dispatch: {}
+
+concurrency:
+  group: eod-report
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  eod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt --quiet
+      - run: PYTHONPATH=. python scripts/eod_report.py
+      - name: Commit EOD report
+        run: |
+          git config user.name 'stockmarket-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add reports/ data/
+          if ! git diff --cached --quiet; then
+            git commit -m 'Generate EOD paper report [skip ci]'
+            git push
+          fi
