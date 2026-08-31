@@ -1,0 +1,9 @@
+risk_per_trade_pct: 0.5
+daily_loss_limit: 15000
+max_open_positions: 5
+max_position_exposure: 250000
+max_sector_exposure: 0.30
+max_capital_deployment: 0.80
+cash_reserve_pct: 0.20
+min_risk_reward: 3.0
+kill_switch: true
