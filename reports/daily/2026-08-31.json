@@ -1,0 +1,16 @@
+{
+  "date": "2026-08-31",
+  "mode": "PAPER",
+  "number_of_trades": 0,
+  "winning_trades": 0,
+  "losing_trades": 0,
+  "breakeven_trades": 0,
+  "net_pnl": 0,
+  "gross_profit": 0,
+  "gross_loss": 0,
+  "win_rate": 0,
+  "profit_factor": null,
+  "positions_open": 0,
+  "signals": 0,
+  "events": 148
+}
