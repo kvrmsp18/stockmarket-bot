@@ -1,9 +1,9 @@
 {
   "state": "RUNNING",
   "message": "GitHub scheduler alive; market cycle gated because NSE market is closed",
-  "updated_at": "2026-08-31T19:17:28.537263+05:30",
+  "updated_at": "2026-08-31T19:28:05.921302+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33398893606",
+  "workflow_run_id": "33399883988",
   "market_open": false,
   "market_cycle_interval_seconds": 300,
   "off_market_schedule": "hourly weekends / every 5 minutes weekdays",
