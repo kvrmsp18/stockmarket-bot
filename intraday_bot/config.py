@@ -9,27 +9,49 @@ IST = ZoneInfo("Asia/Kolkata")
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _secret_or_env(name: str, default: str = "") -> str:
+    """Read configuration from environment first, then Streamlit Secrets.
+
+    GitHub Actions/server processes use environment variables. Streamlit
+    Community Cloud exposes app secrets through st.secrets instead, so the
+    dashboard must support both without requiring Streamlit during CLI/tests.
+    """
+    value = os.getenv(name)
+    if value is not None and value.strip() != "":
+        return value.strip()
+
+    try:
+        import streamlit as st
+
+        secret_value = st.secrets.get(name, default)
+        if secret_value is None:
+            return default
+        return str(secret_value).strip()
+    except Exception:
+        return default
+
+
 def _float(name: str, default: float) -> float:
     try:
-        return float(os.getenv(name, str(default)))
-    except ValueError:
+        return float(_secret_or_env(name, str(default)))
+    except (TypeError, ValueError):
         return default
 
 
 def _int(name: str, default: int) -> int:
     try:
-        return int(os.getenv(name, str(default)))
-    except ValueError:
+        return int(_secret_or_env(name, str(default)))
+    except (TypeError, ValueError):
         return default
 
 
 def _bool(name: str, default: bool = False) -> bool:
-    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+    return _secret_or_env(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
 class Settings:
-    mode: str = os.getenv("BOT_MODE", "PAPER").upper()
+    mode: str = _secret_or_env("BOT_MODE", "PAPER").upper()
     live_enabled: bool = _bool("DHAN_LIVE_TRADING_ENABLED", False)
     risk_per_trade_pct: float = _float("RISK_PER_TRADE_PCT", 0.5)
     daily_loss_limit: float = _float("MAX_DAILY_LOSS", 15000.0)
@@ -47,12 +69,12 @@ class Settings:
     square_off_hour: int = _int("SQUARE_OFF_HOUR", 15)
     square_off_minute: int = _int("SQUARE_OFF_MINUTE", 20)
     reference_capital: float = _float("BOT_RESEARCH_REFERENCE_CAPITAL", 100000.0)
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///data/trading.db")
-    dhan_base_url: str = os.getenv("DHAN_API_BASE_URL", "https://api.dhan.co")
-    telegram_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    telegram_chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", os.getenv("CHATGPT_API_KEY", ""))
-    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", os.getenv("CLAUDE_API_KEY", ""))
+    database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
+    dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
+    telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
+    telegram_chat_id: str = _secret_or_env("TELEGRAM_CHAT_ID", "")
+    openai_api_key: str = _secret_or_env("OPENAI_API_KEY", _secret_or_env("CHATGPT_API_KEY", ""))
+    anthropic_api_key: str = _secret_or_env("ANTHROPIC_API_KEY", _secret_or_env("CLAUDE_API_KEY", ""))
 
     @property
     def db_path(self) -> Path:
@@ -73,8 +95,7 @@ class Settings:
             # Source-derived defaults remain 7/4; configuration may change them deliberately.
             pass
         if self.live_mode_requested:
-            # The actual engine applies the complete safety gate. This check only rejects malformed config.
-            if not os.getenv("DHAN_CLIENT_ID") or not os.getenv("DHAN_ACCESS_TOKEN"):
+            if not _secret_or_env("DHAN_CLIENT_ID") or not _secret_or_env("DHAN_ACCESS_TOKEN"):
                 raise ValueError("LIVE requested but Dhan credentials are missing")
 
 
