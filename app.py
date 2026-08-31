@@ -53,7 +53,7 @@ def today_mask(df: pd.DataFrame, col: str) -> pd.Series:
 
 
 def selected_mode() -> str:
-    return str(st.session_state.get("trading_mode", "PAPER")).upper()
+    return str(st.session_state.get("trading_mode", PAPER_MODE)).upper()
 
 
 def mode_switch() -> None:
@@ -106,7 +106,7 @@ def dashboard() -> None:
     else:
         cols=[c for c in ["symbol","decision","price","entry_low","entry_high","max_chase","stop","target","rr","quantity","capital_required","max_risk","potential_reward","trend_score","technical_score","fundamental_score","valuation_score","conviction_score","framework_agreement","ai_consensus","reason"] if c in candidates.columns]
         st.dataframe(candidates[cols],use_container_width=True,hide_index=True)
-    st.subheader("PAPER RESULT")
+    st.subheader("SIMULATED TRADE RESULT")
     trades=sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') ORDER BY closed_at DESC")
     if trades.empty: st.info("No completed simulated trades yet. Positions remain open until target, stop or EOD square-off.")
     else:
@@ -162,7 +162,10 @@ def live_page() -> None:
     header("🟠 Live Trading — Test Mode","This is deliberately a broker-safe test mode. It uses the same analysis/risk/entry/position workflow but creates simulated fills. It does NOT call Dhan /v2/orders and cannot place a real order.")
     st.warning("LIVE TRADING IS NOT ACTUAL LIVE EXECUTION YET. Because no live-order API/funded account is configured, this page is for end-to-end testing only.")
     s=status(); live_orders=sql("SELECT * FROM orders WHERE order_id LIKE 'LIVETEST-%' ORDER BY ts DESC")
-    a,b,c,d=st.columns(4); a.metric("Test Candidates",len(s.get("candidates",[])) if s.get("mode")==LIVE_TEST_MODE else 0); b.metric("Simulated Live-Test Orders",len(live_orders)); c.metric("Open Test Positions",len(sql("SELECT * FROM positions WHERE mode='LIVE_TEST' AND closed_at IS NULL"))); d.metric("Test P&L",f"₹{float(sql("SELECT COALESCE(SUM(net_pnl),0) AS x FROM trades WHERE mode='LIVE_TEST'").get('x',pd.Series([0])).iloc[0]):,.2f}")
+    test_pnl = sql("SELECT COALESCE(SUM(net_pnl),0) AS x FROM trades WHERE mode='LIVE_TEST'")
+    pnl_value = float(test_pnl.get("x", pd.Series([0])).iloc[0]) if not test_pnl.empty else 0.0
+    open_tests = sql("SELECT * FROM positions WHERE mode='LIVE_TEST' AND closed_at IS NULL")
+    a,b,c,d=st.columns(4); a.metric("Test Candidates",len(s.get("candidates",[])) if s.get("mode")==LIVE_TEST_MODE else 0); b.metric("Simulated Live-Test Orders",len(live_orders)); c.metric("Open Test Positions",len(open_tests)); d.metric("Test P&L",f"₹{pnl_value:,.2f}")
     if st.button("▶ Run Live Test Now", type="primary"):
         with st.spinner("Running live-style analysis with simulated execution..."):
             result=run_cycle(LIVE_TEST_MODE)
