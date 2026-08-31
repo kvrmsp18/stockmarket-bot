@@ -1,11 +1,8 @@
-"""Always-on 24/7 market worker with a real liveness heartbeat.
+"""Always-on 24/7 market worker.
 
-The worker is deliberately independent from Streamlit. It keeps running outside
-market hours, updates a heartbeat frequently, and runs the complete trading
-cycle every configured interval during the NSE cash-equity window.
-
-Paper trading remains the default and LIVE_TEST remains broker-safe simulated
-execution. This process never enables real Dhan order submission.
+The worker is independent from Streamlit. A dedicated heartbeat thread writes
+liveness every few seconds even while a market/research cycle is running.
+Paper trading is the default and LIVE_TEST uses simulated fills only.
 """
 from __future__ import annotations
 
@@ -14,6 +11,7 @@ import os
 import signal
 import socket
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -30,11 +28,33 @@ CYCLE_INTERVAL = max(60, int(os.getenv("WORKER_INTERVAL_SECONDS", "300")))
 HEARTBEAT_INTERVAL = max(10, min(60, int(os.getenv("HEARTBEAT_INTERVAL_SECONDS", "30"))))
 STALE_AFTER = max(90, HEARTBEAT_INTERVAL * 3)
 
-_STOP = False
+_STOP = threading.Event()
+_LOCK = threading.Lock()
+_STATE: dict[str, object] = {
+    "state": "STARTING",
+    "message": "Worker starting",
+    "worker_started_at": None,
+    "last_cycle_started_at": None,
+    "last_cycle_ended_at": None,
+    "last_cycle_id": None,
+    "last_cycle_errors": 0,
+    "last_cycle_duration_seconds": None,
+    "last_error": "",
+}
 
 
 def now_ist() -> datetime:
     return datetime.now(IST)
+
+
+def _snapshot() -> dict[str, object]:
+    with _LOCK:
+        return dict(_STATE)
+
+
+def _set(**changes: object) -> None:
+    with _LOCK:
+        _STATE.update(changes)
 
 
 def _atomic_write(payload: dict) -> None:
@@ -44,171 +64,87 @@ def _atomic_write(payload: dict) -> None:
     tmp.replace(HEARTBEAT)
 
 
-def write_heartbeat(
-    state: str,
-    message: str = "",
-    *,
-    started_at: str | None = None,
-    last_cycle_started_at: str | None = None,
-    last_cycle_ended_at: str | None = None,
-    last_cycle_id: str | None = None,
-    last_cycle_errors: int = 0,
-    last_cycle_duration_seconds: float | None = None,
-    last_error: str = "",
-) -> None:
-    now = now_ist()
-    _atomic_write(
-        {
-            "state": state,
-            "message": message,
-            "updated_at": now.isoformat(),
-            "pid": os.getpid(),
-            "hostname": socket.gethostname(),
-            "worker_started_at": started_at,
-            "last_cycle_started_at": last_cycle_started_at,
-            "last_cycle_ended_at": last_cycle_ended_at,
-            "last_cycle_id": last_cycle_id,
-            "last_cycle_errors": int(last_cycle_errors),
-            "last_cycle_duration_seconds": last_cycle_duration_seconds,
-            "last_error": last_error,
-            "market_open": market_open(),
-            "cycle_interval_seconds": CYCLE_INTERVAL,
-            "heartbeat_interval_seconds": HEARTBEAT_INTERVAL,
-            "heartbeat_stale_after_seconds": STALE_AFTER,
-        }
-    )
+def write_heartbeat() -> None:
+    payload = _snapshot()
+    payload.update({
+        "updated_at": now_ist().isoformat(),
+        "pid": os.getpid(),
+        "hostname": socket.gethostname(),
+        "market_open": market_open(),
+        "cycle_interval_seconds": CYCLE_INTERVAL,
+        "heartbeat_interval_seconds": HEARTBEAT_INTERVAL,
+        "heartbeat_stale_after_seconds": STALE_AFTER,
+    })
+    _atomic_write(payload)
+
+
+def heartbeat_loop() -> None:
+    while not _STOP.is_set():
+        try:
+            write_heartbeat()
+        except Exception:
+            pass
+        _STOP.wait(HEARTBEAT_INTERVAL)
 
 
 def _handle_stop(signum: int, _frame) -> None:
-    global _STOP
-    _STOP = True
+    _set(state="STOPPING", message=f"Received signal {signum}")
     try:
-        write_heartbeat("STOPPING", f"Received signal {signum}")
-    except Exception:
-        pass
+        write_heartbeat()
+    finally:
+        _STOP.set()
 
 
 def main() -> None:
-    global _STOP
     signal.signal(signal.SIGTERM, _handle_stop)
     signal.signal(signal.SIGINT, _handle_stop)
+    _set(state="RUNNING", message="Worker started; independent heartbeat active", worker_started_at=now_ist().isoformat())
+    write_heartbeat()
 
-    started = now_ist().isoformat()
-    last_cycle_started: str | None = None
-    last_cycle_ended: str | None = None
-    last_cycle_id: str | None = None
-    last_cycle_errors = 0
-    last_cycle_duration: float | None = None
-    last_error = ""
+    hb = threading.Thread(target=heartbeat_loop, name="worker-heartbeat", daemon=True)
+    hb.start()
     next_cycle = time.monotonic()
-    next_heartbeat = time.monotonic()
 
-    write_heartbeat(
-        "STARTING",
-        "Worker process started; waiting for first market-cycle decision",
-        started_at=started,
-    )
-
-    while not _STOP:
-        now_mono = time.monotonic()
-
-        if now_mono >= next_cycle:
+    while not _STOP.is_set():
+        if time.monotonic() >= next_cycle:
             if market_open():
-                last_cycle_started = now_ist().isoformat()
-                write_heartbeat(
-                    "RUNNING",
-                    "Starting market cycle",
-                    started_at=started,
-                    last_cycle_started_at=last_cycle_started,
-                    last_cycle_ended_at=last_cycle_ended,
-                    last_cycle_id=last_cycle_id,
-                    last_cycle_errors=last_cycle_errors,
-                    last_cycle_duration_seconds=last_cycle_duration,
-                    last_error=last_error,
-                )
-                cycle_start = time.monotonic()
+                started = now_ist().isoformat()
+                _set(state="RUNNING", message="Market cycle running; heartbeat remains active", last_cycle_started_at=started)
                 try:
                     result = run_cycle()
-                    last_cycle_duration = round(time.monotonic() - cycle_start, 3)
-                    last_cycle_ended = result.get("ended_at") or now_ist().isoformat()
-                    last_cycle_id = result.get("cycle_id")
-                    last_cycle_errors = len(result.get("errors", []))
-                    last_error = " | ".join(str(x) for x in result.get("errors", []))
-                    state = "RUNNING" if not result.get("errors") else "DEGRADED"
-                    write_heartbeat(
-                        state,
-                        f"Last cycle {last_cycle_ended}; errors={last_cycle_errors}",
-                        started_at=started,
-                        last_cycle_started_at=last_cycle_started,
-                        last_cycle_ended_at=last_cycle_ended,
-                        last_cycle_id=last_cycle_id,
-                        last_cycle_errors=last_cycle_errors,
-                        last_cycle_duration_seconds=last_cycle_duration,
-                        last_error=last_error,
+                    errors = result.get("errors", [])
+                    ended = result.get("ended_at") or now_ist().isoformat()
+                    _set(
+                        state="DEGRADED" if errors else "RUNNING",
+                        message=f"Last cycle {ended}; errors={len(errors)}",
+                        last_cycle_ended_at=ended,
+                        last_cycle_id=result.get("cycle_id"),
+                        last_cycle_errors=len(errors),
+                        last_cycle_duration_seconds=result.get("duration_seconds"),
+                        last_error=" | ".join(str(x) for x in errors),
                     )
                 except Exception as exc:
-                    last_cycle_duration = round(time.monotonic() - cycle_start, 3)
-                    last_cycle_ended = now_ist().isoformat()
-                    last_cycle_errors = 1
-                    last_error = str(exc)
-                    write_heartbeat(
-                        "DEGRADED",
-                        f"Cycle exception: {exc}",
-                        started_at=started,
-                        last_cycle_started_at=last_cycle_started,
-                        last_cycle_ended_at=last_cycle_ended,
-                        last_cycle_id=last_cycle_id,
-                        last_cycle_errors=last_cycle_errors,
-                        last_cycle_duration_seconds=last_cycle_duration,
-                        last_error=last_error,
+                    _set(
+                        state="DEGRADED",
+                        message=f"Cycle exception: {exc}",
+                        last_cycle_ended_at=now_ist().isoformat(),
+                        last_cycle_errors=1,
+                        last_error=str(exc),
                     )
             else:
-                write_heartbeat(
-                    "RUNNING",
-                    "Outside NSE market window; heartbeat-only mode",
-                    started_at=started,
-                    last_cycle_started_at=last_cycle_started,
-                    last_cycle_ended_at=last_cycle_ended,
-                    last_cycle_id=last_cycle_id,
-                    last_cycle_errors=last_cycle_errors,
-                    last_cycle_duration_seconds=last_cycle_duration,
-                    last_error=last_error,
-                )
-
-            # Keep the requested five-minute cadence without accumulating drift.
+                _set(state="RUNNING", message="Outside NSE market window; heartbeat-only mode")
+            try:
+                write_heartbeat()
+            except Exception:
+                pass
             next_cycle += CYCLE_INTERVAL
             if next_cycle < time.monotonic():
                 next_cycle = time.monotonic() + CYCLE_INTERVAL
+        _STOP.wait(1.0)
 
-        if time.monotonic() >= next_heartbeat:
-            # A heartbeat update is intentionally independent of the market-cycle
-            # cadence, so the UI can distinguish a live worker from stale state.
-            write_heartbeat(
-                "RUNNING" if not last_error else "DEGRADED",
-                "Heartbeat OK" if not last_error else f"Last cycle error: {last_error}",
-                started_at=started,
-                last_cycle_started_at=last_cycle_started,
-                last_cycle_ended_at=last_cycle_ended,
-                last_cycle_id=last_cycle_id,
-                last_cycle_errors=last_cycle_errors,
-                last_cycle_duration_seconds=last_cycle_duration,
-                last_error=last_error,
-            )
-            next_heartbeat = time.monotonic() + HEARTBEAT_INTERVAL
-
-        time.sleep(min(1.0, max(0.1, next_heartbeat - time.monotonic())))
-
-    write_heartbeat(
-        "STOPPED",
-        "Worker process stopped",
-        started_at=started,
-        last_cycle_started_at=last_cycle_started,
-        last_cycle_ended_at=last_cycle_ended,
-        last_cycle_id=last_cycle_id,
-        last_cycle_errors=last_cycle_errors,
-        last_cycle_duration_seconds=last_cycle_duration,
-        last_error=last_error,
-    )
+    _set(state="STOPPED", message="Worker process stopped")
+    write_heartbeat()
+    hb.join(timeout=HEARTBEAT_INTERVAL + 1)
 
 
 if __name__ == "__main__":
