@@ -1,30 +1,28 @@
-"""Always-on worker.
-
-The process stays alive 24/7. During NSE cash-equity hours it runs the complete
-paper cycle every configured interval. Outside market hours it writes a
-heartbeat so the service can be monitored without fabricating market data.
-"""
+"""Always-on 24/7 monitoring worker."""
 from __future__ import annotations
 
 import json
 import os
+import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from intraday_bot.runtime import market_open, run_cycle
 
 IST = ZoneInfo("Asia/Kolkata")
-HEARTBEAT = Path("data/worker_heartbeat.json")
+HEARTBEAT = ROOT / "data" / "worker_heartbeat.json"
 INTERVAL = max(60, int(os.getenv("WORKER_INTERVAL_SECONDS", "300")))
 
 
 def write_heartbeat(state: str, message: str = "") -> None:
     HEARTBEAT.parent.mkdir(exist_ok=True)
     now = datetime.now(IST)
-    payload = {"state": state, "message": message, "updated_at": now.isoformat(), "pid": os.getpid(), "interval_seconds": INTERVAL}
-    HEARTBEAT.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    HEARTBEAT.write_text(json.dumps({"state": state, "message": message, "updated_at": now.isoformat(), "pid": os.getpid(), "interval_seconds": INTERVAL}, indent=2), encoding="utf-8")
 
 
 def main() -> None:
