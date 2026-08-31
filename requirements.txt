@@ -1,16 +1,8 @@
-# Runtime dependencies actually imported by src/. Verified against the real
-# code with grep, not guessed — see the top-level README for how.
 requests>=2.31
 python-dotenv>=1.0
-
-# zoneinfo (stdlib since Python 3.9) needs the IANA database on some minimal
-# Linux images, including some GitHub Actions runners. Harmless if already present.
-tzdata>=2024.1
-
-# Dashboard (Phase 2 in the README). Not imported by src/ at module load time —
-# everywhere it's used, it's wrapped in try/except so the core package runs
-# without it — but the dashboard itself needs it installed.
+pandas>=2.2
+numpy>=1.26
+plotly>=5.24
 streamlit>=1.35
-
-# Test suite
 pytest>=8.0
+tzdata>=2024.1
