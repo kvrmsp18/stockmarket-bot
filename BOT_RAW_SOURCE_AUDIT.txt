@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: c6fbd2f6992f62c6d2a83b2188c4e1a59855137c
-Generated UTC: 2026-08-31T18:29:01.400999+00:00
+Commit SHA: dd7818400ee58e5f5c14f8c6b9fdd051cb30e3cf
+Generated UTC: 2026-08-31T18:29:27.658409+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -14,7 +14,7 @@ but their raw bytes are not embedded.
 FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
-.env.example	826 bytes
+.env.example	824 bytes
 .github/workflows/ci.yml	363 bytes
 .github/workflows/continuous-monitor.yml	4952 bytes
 .github/workflows/eod-close.yml	1709 bytes
@@ -159,7 +159,7 @@ SIZE: 1034 bytes
 
 ====================================================================
 FILE: .env.example
-SIZE: 826 bytes
+SIZE: 824 bytes
 ====================================================================
 # NEVER put real credentials in GitHub. Use local .env or GitHub/Streamlit secrets.
 BOT_MODE=PAPER
@@ -182,7 +182,7 @@ TWELVEDATA_API_KEY=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 
-BOT_RESEARCH_REFERENCE_CAPITAL=100000
+BOT_RESEARCH_REFERENCE_CAPITAL=1000
 RISK_PER_TRADE_PCT=0.5
 MAX_DAILY_LOSS=15000
 MAX_OPEN_POSITIONS=5
