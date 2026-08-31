@@ -6,7 +6,9 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -31,23 +33,10 @@ class BrokerInterface:
     def bulk_quotes(self, instruments: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         raise NotImplementedError
 
-    def history(
-        self,
-        security_id: str,
-        exchange_segment: str = "NSE_EQ",
-        interval: int = 5,
-    ) -> pd.DataFrame:
+    def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5) -> pd.DataFrame:
         raise NotImplementedError
 
-    def order(
-        self,
-        symbol: str,
-        side: str,
-        quantity: int,
-        price: float,
-        live: bool = False,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
+    def order(self, symbol: str, side: str, quantity: int, price: float, live: bool = False, **kwargs: Any) -> dict[str, Any]:
         raise NotImplementedError
 
     def positions(self) -> list[dict[str, Any]]:
@@ -67,30 +56,13 @@ class PaperTradingBroker(BrokerInterface):
     def funds(self) -> float | None:
         return self.capital
 
-    def bulk_quotes(
-        self, instruments: list[dict[str, Any]]
-    ) -> dict[str, dict[str, Any]]:
+    def bulk_quotes(self, instruments: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         return {}
 
-    def history(
-        self,
-        security_id: str,
-        exchange_segment: str = "NSE_EQ",
-        interval: int = 5,
-    ) -> pd.DataFrame:
-        return pd.DataFrame(
-            columns=["timestamp", "open", "high", "low", "close", "volume"]
-        )
+    def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5) -> pd.DataFrame:
+        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
-    def order(
-        self,
-        symbol: str,
-        side: str,
-        quantity: int,
-        price: float,
-        live: bool = False,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
+    def order(self, symbol: str, side: str, quantity: int, price: float, live: bool = False, **kwargs: Any) -> dict[str, Any]:
         if live:
             raise RuntimeError("PaperTradingBroker cannot place live orders")
         return {
@@ -120,14 +92,12 @@ class DhanBroker(BrokerInterface):
         self.token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
         self.base = settings.dhan_base_url.rstrip("/")
         self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "access-token": self.token,
-                "client-id": self.client_id,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            }
-        )
+        self.session.headers.update({
+            "access-token": self.token,
+            "client-id": self.client_id,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        })
 
     @classmethod
     def _throttle(cls, category: str) -> None:
@@ -150,7 +120,6 @@ class DhanBroker(BrokerInterface):
             payload = response.json()
         except ValueError:
             return str(response.status_code), response.text[:500]
-
         if isinstance(payload, dict):
             data = payload.get("data")
             if isinstance(data, dict) and data:
@@ -159,13 +128,7 @@ class DhanBroker(BrokerInterface):
             return str(response.status_code), str(payload)[:500]
         return str(response.status_code), str(payload)[:500]
 
-    def _request(
-        self,
-        method: str,
-        path: str,
-        category: str = "data",
-        **kwargs: Any,
-    ) -> Any:
+    def _request(self, method: str, path: str, category: str = "data", **kwargs: Any) -> Any:
         if not self.client_id or not self.token:
             raise RuntimeError("DHAN_AUTH_UNAVAILABLE")
 
@@ -173,12 +136,7 @@ class DhanBroker(BrokerInterface):
         for attempt in range(self._MAX_RETRIES + 1):
             self._throttle(category)
             try:
-                response = self.session.request(
-                    method,
-                    self.base + path,
-                    timeout=15,
-                    **kwargs,
-                )
+                response = self.session.request(method, self.base + path, timeout=15, **kwargs)
             except requests.RequestException as exc:
                 last_error = f"DHAN_NETWORK_ERROR: {exc}"
                 if attempt >= self._MAX_RETRIES:
@@ -186,25 +144,17 @@ class DhanBroker(BrokerInterface):
                 time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
                 continue
 
-            # Dhan can report error 805 either as HTTP 429 or as a JSON
-            # application-level failure. Both forms must be retried.
             error_code, error_message = self._response_code_and_message(response)
             is_rate_limited = response.status_code == 429 or error_code == "805"
-
             if is_rate_limited:
                 last_error = f"DHAN_HTTP_429: {{\"data\":{{\"805\":\"{error_message}\"}},\"status\":\"failed\"}}"
                 if attempt >= self._MAX_RETRIES:
                     raise RuntimeError(last_error)
-                delay = self._RETRY_BASE_SECONDS * (2**attempt)
-                # Keep retries spaced even when another workflow/process has
-                # recently consumed Dhan's account-level market-data quota.
-                time.sleep(delay)
+                time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
                 continue
 
             if response.status_code >= 400:
-                raise RuntimeError(
-                    f"DHAN_HTTP_{response.status_code}: {response.text[:500]}"
-                )
+                raise RuntimeError(f"DHAN_HTTP_{response.status_code}: {response.text[:500]}")
 
             try:
                 payload = response.json()
@@ -241,21 +191,13 @@ class DhanBroker(BrokerInterface):
         body = data.get("data", data) if isinstance(data, dict) else {}
         if not isinstance(body, dict):
             return None
-
-        for key in (
-            "availabelBalance",
-            "availableBalance",
-            "availabel_balance",
-            "available_balance",
-            "sodLimit",
-        ):
+        for key in ("availabelBalance", "availableBalance", "availabel_balance", "available_balance", "sodLimit"):
             if body.get(key) is not None:
                 return float(body[key])
         return None
 
     @staticmethod
     def _security_id(value: Any) -> int:
-        """Dhan marketfeed requires numeric security IDs, not strings."""
         text = str(value).strip()
         if not text:
             raise ValueError("EMPTY_DHAN_SECURITY_ID")
@@ -264,16 +206,10 @@ class DhanBroker(BrokerInterface):
         except (TypeError, ValueError) as exc:
             raise ValueError(f"INVALID_DHAN_SECURITY_ID: {text[:40]}") from exc
 
-    def bulk_quotes(
-        self, instruments: list[dict[str, Any]]
-    ) -> dict[str, dict[str, Any]]:
-        """Fetch Dhan quote data in numeric-ID batches with retry protection."""
+    def bulk_quotes(self, instruments: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         groups: dict[str, list[int]] = {}
-
         for item in instruments:
-            exchange_segment = str(
-                item.get("exchange_segment", "NSE_EQ")
-            ).strip().upper()
+            exchange_segment = str(item.get("exchange_segment", "NSE_EQ")).strip().upper()
             raw_id = item.get("security_id", "")
             if not str(raw_id).strip():
                 continue
@@ -284,87 +220,46 @@ class DhanBroker(BrokerInterface):
             groups.setdefault(exchange_segment, []).append(security_id)
 
         out: dict[str, dict[str, Any]] = {}
-
         for exchange_segment, ids in groups.items():
             unique_ids = list(dict.fromkeys(ids))
             for start in range(0, len(unique_ids), 500):
-                batch = unique_ids[start : start + 500]
-                payload = {exchange_segment: batch}
-                data = self._request(
-                    "POST",
-                    "/v2/marketfeed/quote",
-                    category="quote",
-                    json=payload,
-                )
+                batch = unique_ids[start:start + 500]
+                data = self._request("POST", "/v2/marketfeed/quote", category="quote", json={exchange_segment: batch})
                 body = data.get("data", data) if isinstance(data, dict) else {}
-                rows = (
-                    body.get(exchange_segment, body)
-                    if isinstance(body, dict)
-                    else {}
-                )
+                rows = body.get(exchange_segment, body) if isinstance(body, dict) else {}
                 if isinstance(rows, dict):
-                    out.update(
-                        {
-                            str(key): value
-                            for key, value in rows.items()
-                            if isinstance(value, dict)
-                        }
-                    )
-
+                    out.update({str(key): value for key, value in rows.items() if isinstance(value, dict)})
         return out
 
-    def history(
-        self,
-        security_id: str,
-        exchange_segment: str = "NSE_EQ",
-        interval: int = 5,
-    ) -> pd.DataFrame:
+    def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5) -> pd.DataFrame:
+        """Fetch today's Dhan intraday candles; fromDate/toDate are mandatory."""
+        now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+        today = now_ist.date().isoformat()
         payload = {
             "securityId": str(self._security_id(security_id)),
             "exchangeSegment": str(exchange_segment).strip().upper(),
             "instrument": "EQUITY",
             "interval": str(int(interval)),
+            "fromDate": today,
+            "toDate": today,
         }
-        data = self._request(
-            "POST",
-            "/v2/charts/intraday",
-            category="data",
-            json=payload,
-        )
+        data = self._request("POST", "/v2/charts/intraday", category="data", json=payload)
         body = data.get("data", data) if isinstance(data, dict) else {}
         keys = ["timestamp", "open", "high", "low", "close", "volume"]
         if not isinstance(body, dict) or not all(k in body for k in keys):
             return pd.DataFrame(columns=keys)
+        return pd.DataFrame({
+            "timestamp": pd.to_datetime(body["timestamp"], unit="s", utc=True),
+            "open": body["open"],
+            "high": body["high"],
+            "low": body["low"],
+            "close": body["close"],
+            "volume": body["volume"],
+        }).dropna(subset=["close"]).reset_index(drop=True)
 
-        return (
-            pd.DataFrame(
-                {
-                    "timestamp": pd.to_datetime(
-                        body["timestamp"], unit="s", utc=True
-                    ),
-                    "open": body["open"],
-                    "high": body["high"],
-                    "low": body["low"],
-                    "close": body["close"],
-                    "volume": body["volume"],
-                }
-            )
-            .dropna(subset=["close"])
-            .reset_index(drop=True)
-        )
-
-    def order(
-        self,
-        symbol: str,
-        side: str,
-        quantity: int,
-        price: float,
-        live: bool = False,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
+    def order(self, symbol: str, side: str, quantity: int, price: float, live: bool = False, **kwargs: Any) -> dict[str, Any]:
         if not live or not settings.live_mode_requested:
             raise RuntimeError("LIVE_EXECUTION_BLOCKED")
-
         payload = {
             "transactionType": side.upper(),
             "exchangeSegment": kwargs.get("exchange_segment", "NSE_EQ"),
@@ -397,10 +292,6 @@ def load_security_map() -> dict[str, dict[str, Any]]:
     except json.JSONDecodeError:
         return {}
     return {
-        str(symbol).upper(): (
-            value
-            if isinstance(value, dict)
-            else {"security_id": value, "exchange_segment": "NSE_EQ"}
-        )
+        str(symbol).upper(): (value if isinstance(value, dict) else {"security_id": value, "exchange_segment": "NSE_EQ"})
         for symbol, value in obj.items()
     }
