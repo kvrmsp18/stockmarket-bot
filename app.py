@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +13,8 @@ import streamlit as st
 from intraday_bot.brokers import DhanBroker
 from intraday_bot.config import settings
 from intraday_bot.database import Database
-from intraday_bot.research import FRAMEWORK_RULES, research_bundle
-from intraday_bot.runtime import run_cycle
+from intraday_bot.research import FRAMEWORK_RULES
+from intraday_bot.runtime import LIVE_TEST_MODE, PAPER_MODE, run_cycle
 
 st.set_page_config(page_title="NSE/BSE Intraday AI Trading Desk", layout="wide", initial_sidebar_state="expanded")
 DB = Database(); STATUS = Path("data/monitor_status.json"); HEARTBEAT = Path("data/worker_heartbeat.json")
@@ -52,19 +52,31 @@ def today_mask(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_datetime(df[col], errors="coerce", utc=True).dt.tz_convert("Asia/Kolkata").dt.date == date.today()
 
 
+def selected_mode() -> str:
+    return str(st.session_state.get("trading_mode", "PAPER")).upper()
+
+
 def mode_switch() -> None:
     st.sidebar.markdown("### Trading Mode")
-    st.sidebar.success("🟢 PAPER MODE — DEFAULT")
-    st.sidebar.radio("Mode", ["PAPER TRADING", "LIVE TRADING"], index=0, disabled=True)
-    st.sidebar.caption("LIVE TRADING: 🔴 DISABLED")
+    choice = st.sidebar.radio("Mode", ["PAPER TRADING", "LIVE TRADING"], index=0 if selected_mode() == PAPER_MODE else 1, key="mode_radio")
+    st.session_state["trading_mode"] = PAPER_MODE if choice == "PAPER TRADING" else LIVE_TEST_MODE
+    if selected_mode() == PAPER_MODE:
+        st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS")
+        st.sidebar.caption("Uses real Dhan market data. Orders/fills are simulated.")
+    else:
+        st.sidebar.warning("🟠 LIVE TRADING — TEST MODE ONLY")
+        st.sidebar.caption("No live broker order is sent. This mode exercises the live-style workflow with simulated fills.")
 
 
 def controls() -> None:
+    mode = selected_mode()
     st.sidebar.markdown("### Bot Controls")
     if st.sidebar.button("🔄 Refresh Dashboard", use_container_width=True): st.rerun()
-    if st.sidebar.button("▶ Run Analysis Now", type="primary", use_container_width=True):
-        with st.spinner("Running complete paper-analysis cycle..."):
-            result = run_cycle()
+    label = "▶ Run Paper Analysis" if mode == PAPER_MODE else "▶ Run Live Test Analysis"
+    if st.sidebar.button(label, type="primary", use_container_width=True):
+        description = "paper-analysis" if mode == PAPER_MODE else "live-test analysis"
+        with st.spinner(f"Running complete {description} cycle..."):
+            result = run_cycle(mode)
         if result.get("errors"): st.sidebar.error(f"Cycle completed with {len(result['errors'])} error(s)")
         else: st.sidebar.success(f"Cycle complete · {len(result.get('candidates', []))} candidate(s)")
         st.rerun()
@@ -82,12 +94,12 @@ def header(title: str, desc: str = "") -> None:
 
 def dashboard() -> None:
     s = status(); hb = heartbeat()
-    header("📈 NSE/BSE Intraday AI Trading Desk", "Paper trading uses real Dhan market data and simulated fills. Live execution remains hard-disabled.")
+    header("📈 NSE/BSE Intraday AI Trading Desk", "Paper mode uses real Dhan market data and simulated fills. Live Trading selection is TEST ONLY and also uses simulated fills; the Dhan order endpoint is never called by this test mode.")
     if hb.get("state") == "ERROR": st.error(f"24/7 WORKER ERROR: {hb.get('message','Unknown error')}")
     elif hb: st.success(f"24/7 WORKER: {hb.get('state','RUNNING')} · last heartbeat {hb.get('updated_at','—')}")
     else: st.warning("24/7 WORKER: heartbeat unavailable. Start scripts/worker.py on the always-on server.")
     a,b,c,d,e,f = st.columns(6)
-    a.metric("Mode", s.get("mode","PAPER")); b.metric("Universe", s.get("stocks_observed",0)); c.metric("Quotes", s.get("quotes",0)); d.metric("Candidates",len(s.get("candidates",[]))); e.metric("Open Positions",s.get("positions_open",0)); f.metric("Today's P&L",f"₹{s.get('today_realized_pnl',0):,.2f}")
+    a.metric("Mode", s.get("mode", selected_mode())); b.metric("Universe", s.get("stocks_observed",0)); c.metric("Quotes", s.get("quotes",0)); d.metric("Candidates",len(s.get("candidates",[]))); e.metric("Open Positions",s.get("positions_open",0)); f.metric("Today's P&L",f"₹{s.get('today_realized_pnl',0):,.2f}")
     st.subheader("TODAY'S RESEARCH / ACTIONABLE TRADES")
     candidates = pd.DataFrame(s.get("candidates", []))
     if candidates.empty: st.warning("No actionable candidates were recorded in the latest cycle. Check Diagnostics and Rejected Signals for the rejection funnel.")
@@ -95,8 +107,8 @@ def dashboard() -> None:
         cols=[c for c in ["symbol","decision","price","entry_low","entry_high","max_chase","stop","target","rr","quantity","capital_required","max_risk","potential_reward","trend_score","technical_score","fundamental_score","valuation_score","conviction_score","framework_agreement","ai_consensus","reason"] if c in candidates.columns]
         st.dataframe(candidates[cols],use_container_width=True,hide_index=True)
     st.subheader("PAPER RESULT")
-    trades=sql("SELECT * FROM trades WHERE mode='PAPER' ORDER BY closed_at DESC")
-    if trades.empty: st.info("No completed paper trades yet. Positions remain open until target, stop or EOD square-off.")
+    trades=sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') ORDER BY closed_at DESC")
+    if trades.empty: st.info("No completed simulated trades yet. Positions remain open until target, stop or EOD square-off.")
     else:
         t=trades[today_mask(trades,"closed_at")]; st.metric("Completed today",len(t)); st.metric("Today's realized net P&L",f"₹{pd.to_numeric(t.get('net_pnl',pd.Series(dtype=float)),errors='coerce').fillna(0).sum():,.2f}")
     st.subheader("BOT HEALTH")
@@ -141,23 +153,38 @@ def research_page(title: str) -> None:
 def paper_page() -> None:
     header("📝 Paper Trading","Real Dhan market data + deterministic simulated execution. No live order is placed.")
     s=status(); c=pd.DataFrame(s.get("candidates",[])); orders=sql("SELECT * FROM orders WHERE order_id LIKE 'PAPER-%' ORDER BY ts DESC")
-    a,b,c1,d=st.columns(4); a.metric("Actionable",len(c)); b.metric("Paper orders",len(orders[today_mask(orders,'ts')]) if not orders.empty else 0); b.metric("Open positions",s.get('positions_open',0)); d.metric("Today's P&L",f"₹{s.get('today_realized_pnl',0):,.2f}")
+    a,b,c1,d=st.columns(4); a.metric("Actionable",len(c)); b.metric("Paper orders",len(orders[today_mask(orders,'ts')]) if not orders.empty else 0); c1.metric("Open positions",s.get('positions_open',0)); d.metric("Today's P&L",f"₹{s.get('today_realized_pnl',0):,.2f}")
     if not c.empty: st.dataframe(c,use_container_width=True,hide_index=True)
     st.subheader("Paper Order Ledger"); st.dataframe(orders,use_container_width=True,hide_index=True) if not orders.empty else st.info("No paper orders yet.")
 
 
+def live_page() -> None:
+    header("🟠 Live Trading — Test Mode","This is deliberately a broker-safe test mode. It uses the same analysis/risk/entry/position workflow but creates simulated fills. It does NOT call Dhan /v2/orders and cannot place a real order.")
+    st.warning("LIVE TRADING IS NOT ACTUAL LIVE EXECUTION YET. Because no live-order API/funded account is configured, this page is for end-to-end testing only.")
+    s=status(); live_orders=sql("SELECT * FROM orders WHERE order_id LIKE 'LIVETEST-%' ORDER BY ts DESC")
+    a,b,c,d=st.columns(4); a.metric("Test Candidates",len(s.get("candidates",[])) if s.get("mode")==LIVE_TEST_MODE else 0); b.metric("Simulated Live-Test Orders",len(live_orders)); c.metric("Open Test Positions",len(sql("SELECT * FROM positions WHERE mode='LIVE_TEST' AND closed_at IS NULL"))); d.metric("Test P&L",f"₹{float(sql("SELECT COALESCE(SUM(net_pnl),0) AS x FROM trades WHERE mode='LIVE_TEST'").get('x',pd.Series([0])).iloc[0]):,.2f}")
+    if st.button("▶ Run Live Test Now", type="primary"):
+        with st.spinner("Running live-style analysis with simulated execution..."):
+            result=run_cycle(LIVE_TEST_MODE)
+        if result.get("errors"): st.error(f"Test cycle completed with {len(result['errors'])} error(s)")
+        else: st.success(f"Test cycle complete · {len(result.get('candidates',[]))} candidate(s)")
+        st.rerun()
+    st.subheader("Live-Test Order Ledger")
+    st.dataframe(live_orders,use_container_width=True,hide_index=True) if not live_orders.empty else st.info("No simulated live-test orders yet.")
+
+
 def portfolio_page() -> None:
-    header("📊 Portfolio","Paper positions and completed trades from the persisted ledger.")
-    pos=sql("SELECT * FROM positions ORDER BY opened_at DESC"); trades=sql("SELECT * FROM trades WHERE mode='PAPER' ORDER BY closed_at DESC")
+    header("📊 Portfolio","Paper and live-test simulated positions and completed trades from the persisted ledger.")
+    pos=sql("SELECT * FROM positions ORDER BY opened_at DESC"); trades=sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') ORDER BY closed_at DESC")
     openp=pos[pos["closed_at"].isna()] if not pos.empty and "closed_at" in pos else pd.DataFrame(); realized=pd.to_numeric(trades.get("net_pnl",pd.Series(dtype=float)),errors="coerce").fillna(0).sum()
     a,b,c,d=st.columns(4); a.metric("Open Positions",len(openp)); b.metric("Open Exposure",f"₹{(pd.to_numeric(openp.get('entry_price',pd.Series(dtype=float)),errors='coerce').fillna(0)*pd.to_numeric(openp.get('quantity',pd.Series(dtype=float)),errors='coerce').fillna(0)).sum():,.2f}"); c.metric("Realized P&L",f"₹{realized:,.2f}"); d.metric("Reference Capital",f"₹{settings.reference_capital:,.2f}")
-    st.dataframe(openp,use_container_width=True,hide_index=True) if not openp.empty else st.info("No open paper positions.")
+    st.dataframe(openp,use_container_width=True,hide_index=True) if not openp.empty else st.info("No open simulated positions.")
 
 
 def pnl_page() -> None:
-    header("💰 P&L","Completed-trade P&L only; unrealized positions are not counted as realized P&L.")
-    df=sql("SELECT * FROM trades ORDER BY closed_at ASC")
-    if df.empty: st.info("No completed trades yet."); return
+    header("💰 P&L","Completed simulated-trade P&L only; unrealized positions are not counted as realized P&L.")
+    df=sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') ORDER BY closed_at ASC")
+    if df.empty: st.info("No completed simulated trades yet."); return
     df["net_pnl"]=pd.to_numeric(df["net_pnl"],errors="coerce").fillna(0); t=df[today_mask(df,"closed_at")]
     a,b,c,d=st.columns(4); a.metric("Today's P&L",f"₹{t.net_pnl.sum():,.2f}"); b.metric("Total P&L",f"₹{df.net_pnl.sum():,.2f}"); c.metric("Win Rate",f"{(df.net_pnl>0).mean()*100:.1f}%"); losses=abs(df.loc[df.net_pnl<0,'net_pnl'].sum()); wins=df.loc[df.net_pnl>0,'net_pnl'].sum(); d.metric("Profit Factor",f"{wins/losses:.2f}" if losses else "∞"); st.dataframe(df,use_container_width=True,hide_index=True)
 
@@ -203,6 +230,7 @@ def live_charts() -> None:
 def generic_page(page: str) -> None:
     if page in {"AI Baskets","Basket Detail","Stocks","Stock Screener","Stock Detail","360° Stock Analysis","Deep Research","Watchlist","Trend Scanner","Top Bullish","Top Bearish","Shift to Bullish","Shift to Bearish","Sector Analysis","Theme Analysis","Value Migration","Inflection Points","Value Chain","Profit Pool","SCRAP Analysis","Fundamental Analysis","Technical Analysis"}: research_page(page)
     elif page=="Paper Trading": paper_page()
+    elif page=="Live Trading": live_page()
     elif page in {"Portfolio","Positions"}: portfolio_page()
     elif page=="P&L": pnl_page()
     elif page=="System Health": health_page()
@@ -216,10 +244,9 @@ def generic_page(page: str) -> None:
 
 
 def main() -> None:
-    mode_switch(); controls(); page=st.sidebar.selectbox("Desk",PAGES,key="desk_page"); st.sidebar.markdown("---"); st.sidebar.caption("Always-on worker preferred · 5-minute GitHub fallback · paper mode")
+    mode_switch(); controls(); page=st.sidebar.selectbox("Desk",PAGES,key="desk_page"); st.sidebar.markdown("---"); st.sidebar.caption("Always-on worker preferred · 5-minute market-cycle interval · paper mode by default")
     if page=="Dashboard": dashboard()
     elif page in {"New Chat","AI Prompt Guide"}: header(page,"AI remains advisory only. Missing data must be reported, never invented.")
-    elif page in {"Bot Performance","Trade Journal","Orders","Backtesting","News","Live Trading","Settings"}: generic_page(page)
     else: generic_page(page)
 
 main()
