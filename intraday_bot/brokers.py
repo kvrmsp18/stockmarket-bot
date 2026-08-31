@@ -105,13 +105,15 @@ class PaperTradingBroker(BrokerInterface):
 
 
 class DhanBroker(BrokerInterface):
-    """Dhan adapter with correct market-data payload types and API throttling."""
+    """Dhan adapter with numeric market-data payloads and resilient throttling."""
 
     _rate_lock = threading.Lock()
     _last_quote_call = 0.0
     _last_data_call = 0.0
-    _QUOTE_INTERVAL = 1.1
-    _DATA_INTERVAL = 0.21
+    _QUOTE_INTERVAL = 1.15
+    _DATA_INTERVAL = 0.22
+    _MAX_RETRIES = 5
+    _RETRY_BASE_SECONDS = 2.0
 
     def __init__(self) -> None:
         self.client_id = os.getenv("DHAN_CLIENT_ID", "").strip()
@@ -142,27 +144,88 @@ class DhanBroker(BrokerInterface):
             else:
                 cls._last_data_call = stamp
 
-    def _request(self, method: str, path: str, category: str = "data", **kwargs: Any) -> Any:
+    @staticmethod
+    def _response_code_and_message(response: requests.Response) -> tuple[str, str]:
+        try:
+            payload = response.json()
+        except ValueError:
+            return str(response.status_code), response.text[:500]
+
+        if isinstance(payload, dict):
+            data = payload.get("data")
+            if isinstance(data, dict) and data:
+                code, message = next(iter(data.items()))
+                return str(code), str(message)
+            return str(response.status_code), str(payload)[:500]
+        return str(response.status_code), str(payload)[:500]
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        category: str = "data",
+        **kwargs: Any,
+    ) -> Any:
         if not self.client_id or not self.token:
             raise RuntimeError("DHAN_AUTH_UNAVAILABLE")
 
-        self._throttle(category)
-        response = self.session.request(
-            method,
-            self.base + path,
-            timeout=15,
-            **kwargs,
-        )
+        last_error = ""
+        for attempt in range(self._MAX_RETRIES + 1):
+            self._throttle(category)
+            try:
+                response = self.session.request(
+                    method,
+                    self.base + path,
+                    timeout=15,
+                    **kwargs,
+                )
+            except requests.RequestException as exc:
+                last_error = f"DHAN_NETWORK_ERROR: {exc}"
+                if attempt >= self._MAX_RETRIES:
+                    raise RuntimeError(last_error) from exc
+                time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
+                continue
 
-        if response.status_code >= 400:
-            raise RuntimeError(
-                f"DHAN_HTTP_{response.status_code}: {response.text[:500]}"
-            )
+            # Dhan can report error 805 either as HTTP 429 or as a JSON
+            # application-level failure. Both forms must be retried.
+            error_code, error_message = self._response_code_and_message(response)
+            is_rate_limited = response.status_code == 429 or error_code == "805"
 
-        try:
-            return response.json()
-        except ValueError as exc:
-            raise RuntimeError("DHAN_INVALID_JSON_RESPONSE") from exc
+            if is_rate_limited:
+                last_error = f"DHAN_HTTP_429: {{\"data\":{{\"805\":\"{error_message}\"}},\"status\":\"failed\"}}"
+                if attempt >= self._MAX_RETRIES:
+                    raise RuntimeError(last_error)
+                delay = self._RETRY_BASE_SECONDS * (2**attempt)
+                # Keep retries spaced even when another workflow/process has
+                # recently consumed Dhan's account-level market-data quota.
+                time.sleep(delay)
+                continue
+
+            if response.status_code >= 400:
+                raise RuntimeError(
+                    f"DHAN_HTTP_{response.status_code}: {response.text[:500]}"
+                )
+
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise RuntimeError("DHAN_INVALID_JSON_RESPONSE") from exc
+
+            if isinstance(payload, dict) and payload.get("status") == "failed":
+                data = payload.get("data", {})
+                code = str(next(iter(data), "unknown")) if isinstance(data, dict) else "unknown"
+                message = str(data.get(code, "Unknown error")) if isinstance(data, dict) else "Unknown error"
+                if code == "805":
+                    last_error = f"DHAN_HTTP_429: {{\"data\":{{\"805\":\"{message}\"}},\"status\":\"failed\"}}"
+                    if attempt >= self._MAX_RETRIES:
+                        raise RuntimeError(last_error)
+                    time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
+                    continue
+                raise RuntimeError(f"DHAN_API_ERROR_{code}: {message}")
+
+            return payload
+
+        raise RuntimeError(last_error or "DHAN_REQUEST_FAILED")
 
     def health(self) -> BrokerHealth:
         if not self.client_id or not self.token:
@@ -204,7 +267,7 @@ class DhanBroker(BrokerInterface):
     def bulk_quotes(
         self, instruments: list[dict[str, Any]]
     ) -> dict[str, dict[str, Any]]:
-        """Fetch Dhan quote data in valid numeric-ID batches."""
+        """Fetch Dhan quote data in numeric-ID batches with retry protection."""
         groups: dict[str, list[int]] = {}
 
         for item in instruments:
@@ -223,8 +286,6 @@ class DhanBroker(BrokerInterface):
         out: dict[str, dict[str, Any]] = {}
 
         for exchange_segment, ids in groups.items():
-            # Dhan's marketfeed endpoints accept numeric security IDs.
-            # Keep batches conservative and well below the endpoint maximum.
             unique_ids = list(dict.fromkeys(ids))
             for start in range(0, len(unique_ids), 500):
                 batch = unique_ids[start : start + 500]
