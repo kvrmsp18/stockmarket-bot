@@ -61,7 +61,7 @@ class Settings:
     cycle_budget_seconds: int = _int("CYCLE_BUDGET_SECONDS", 240)
     square_off_hour: int = _int("SQUARE_OFF_HOUR", 15)
     square_off_minute: int = _int("SQUARE_OFF_MINUTE", 20)
-    reference_capital: float = _float("BOT_RESEARCH_REFERENCE_CAPITAL", 100000.0)
+    reference_capital: float = _float("BOT_RESEARCH_REFERENCE_CAPITAL", 1000.0)
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _secret_or_env("DHAN_CLIENT_ID", "")
