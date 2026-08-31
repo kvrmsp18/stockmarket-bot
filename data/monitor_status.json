@@ -1,5 +1,5 @@
 {
-  "cycle_id": "a74f09b38ce348979a9c564a62219da5",
+  "cycle_id": "ed200dc852bd4d788290d97eb2869b04",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 2672,
@@ -10,8 +10,8 @@
   "errors": [
     "DATA_ERROR: DHAN_HTTP_401: {\"data\":{\"808\":\"Authentication Failed - Client ID or Token invalid\"},\"status\":\"failed\"}"
   ],
-  "duration_seconds": 0.37,
-  "ended_at": "2026-08-31T10:19:57.361884+05:30",
+  "duration_seconds": 0.409,
+  "ended_at": "2026-08-31T10:25:57.614536+05:30",
   "positions_open": 0,
   "realized_pnl": 0.0
 }
