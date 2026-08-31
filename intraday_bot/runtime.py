@@ -17,6 +17,10 @@ from .risk import position_size, risk_gate
 from .technical import technical_setup
 
 
+LIVE_TEST_MODE = "LIVE_TEST"
+PAPER_MODE = "PAPER"
+
+
 def market_open() -> bool:
     n = datetime.now(IST)
     return n.weekday() < 5 and clock(9, 15) <= n.time() <= clock(15, 30)
@@ -117,20 +121,28 @@ def _manage_positions(db: Database, qmap: dict[str, dict[str, Any]], uni: list[d
             db.event("execution", "INFO", "POSITION_CLOSED", {"trade_id": trade_id, "net_pnl": net, "exit_reason": reason}, p["symbol"], p["mode"])
 
 
-def _record_rejection(db: Database, cycle_id: str, candidate: dict[str, Any]) -> None:
+def _record_rejection(db: Database, cycle_id: str, candidate: dict[str, Any], mode: str) -> None:
     payload = dict(candidate); payload["cycle_id"] = cycle_id; payload["record_type"] = "REJECTED_SIGNAL"
-    db.event("strategy", "INFO", "SIGNAL_REJECTED", payload, candidate.get("symbol"), "PAPER")
+    db.event("strategy", "INFO", "SIGNAL_REJECTED", payload, candidate.get("symbol"), mode)
 
 
-def run_cycle() -> dict[str, Any]:
+def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
+    """Run one cycle. LIVE_TEST uses real market data and simulated fills only.
+
+    It deliberately never calls the Dhan order endpoint. Real LIVE execution remains
+    gated separately by the broker/config safety controls.
+    """
+    mode = str(mode or PAPER_MODE).upper()
+    if mode not in {PAPER_MODE, LIVE_TEST_MODE}:
+        raise ValueError("mode must be PAPER or LIVE_TEST")
     start = time.monotonic(); db = Database(); cycle_id = uuid.uuid4().hex
-    result: dict[str, Any] = {"cycle_id": cycle_id, "started_at": datetime.now(timezone.utc).isoformat(), "mode": "PAPER", "market_open": market_open(), "stocks_observed": 0, "quotes": 0, "candidates": [], "rejections": {}, "rejection_details": [], "orders": [], "errors": [], "suggested_buy_investment": 0.0, "suggested_sell_value": 0.0}
+    result: dict[str, Any] = {"cycle_id": cycle_id, "started_at": datetime.now(timezone.utc).isoformat(), "mode": mode, "market_open": market_open(), "stocks_observed": 0, "quotes": 0, "candidates": [], "rejections": {}, "rejection_details": [], "orders": [], "errors": [], "suggested_buy_investment": 0.0, "suggested_sell_value": 0.0}
     db.event("engine", "INFO", "CYCLE_START", result)
     uni = universe(); result["stocks_observed"] = len(uni)
     if not uni: result["errors"].append("DATA_UNAVAILABLE: empty universe"); return finish(result, start, db)
     broker = DhanBroker()
     try: qmap = broker.bulk_quotes(uni); result["quotes"] = len(qmap)
-    except Exception as exc: result["errors"].append("DATA_ERROR: " + str(exc)); db.event("market_data", "ERROR", "DATA_ERROR", {"error": str(exc)}); return finish(result, start, db)
+    except Exception as exc: result["errors"].append("DATA_ERROR: " + str(exc)); db.event("market_data", "ERROR", "DATA_ERROR", {"error": str(exc)}, mode=mode); return finish(result, start, db)
     ranked = []
     for item in uni:
         p, prev, v = quote(qmap.get(str(item["security_id"]), {}))
@@ -142,10 +154,10 @@ def run_cycle() -> dict[str, Any]:
         futures = [ex.submit(analyse, broker, item, p, v, funds) for _, item, p, v in shortlist]
         for fut in as_completed(futures):
             try:
-                c = fut.result(); db.event("research", "INFO", "FRAMEWORK_ANALYSIS", c.get("research", {}), c.get("symbol"), "PAPER")
+                c = fut.result(); db.event("research", "INFO", "FRAMEWORK_ANALYSIS", c.get("research", {}), c.get("symbol"), mode)
                 if c["decision"] in {"BUY", "SELL"}: result["candidates"].append(c)
                 else:
-                    reason = c.get("rejection_reason") or "NO_TRADE"; result["rejections"][reason] = result["rejections"].get(reason, 0) + 1; result["rejection_details"].append(c); _record_rejection(db, cycle_id, c)
+                    reason = c.get("rejection_reason") or "NO_TRADE"; result["rejections"][reason] = result["rejections"].get(reason, 0) + 1; result["rejection_details"].append(c); _record_rejection(db, cycle_id, c, mode)
             except Exception as exc: result["errors"].append("ANALYSIS_ERROR: " + str(exc))
     result["candidates"].sort(key=lambda x: x.get("overall_score", 0), reverse=True); _manage_positions(db, qmap, uni)
     buys = [x for x in result["candidates"] if x.get("decision") == "BUY"]; sells = [x for x in result["candidates"] if x.get("decision") == "SELL"]
@@ -153,15 +165,15 @@ def run_cycle() -> dict[str, Any]:
     if result["market_open"]:
         open_symbols = {r["symbol"] for r in db.recent("positions", 100) if not r.get("closed_at")}
         for c in result["candidates"][:settings.max_positions]:
-            if c["symbol"] in open_symbols: db.event("execution", "INFO", "DUPLICATE_ORDER", {"reason":"position already open"}, c["symbol"], "PAPER"); continue
+            if c["symbol"] in open_symbols: db.event("execution", "INFO", "DUPLICATE_ORDER", {"reason":"position already open"}, c["symbol"], mode); continue
             if c["decision"] == "BUY" and c["price"] > c["max_chase"]:
-                c["decision"] = "NO TRADE"; c["rejection_reason"] = "ENTRY_EXPIRED"; c["reason"] = "BUY entry exceeded max-chase price"; result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1; _record_rejection(db, cycle_id, c); continue
-            sid = "SIG-" + uuid.uuid4().hex[:16]; c["signal_id"] = sid; db.signal(sid, c["symbol"], c["decision"], c); oid = fill(db, c, mode="PAPER"); result["orders"].append({"order_id":oid,"signal_id":sid,"status":"FILLED","mode":"PAPER","symbol":c["symbol"],"side":c["decision"],"quantity":c["quantity"],"price":c["entry"]})
-    result["execution_gate"] = "PAPER_MODE"
+                c["decision"] = "NO TRADE"; c["rejection_reason"] = "ENTRY_EXPIRED"; c["reason"] = "BUY entry exceeded max-chase price"; result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1; _record_rejection(db, cycle_id, c, mode); continue
+            sid = "SIG-" + uuid.uuid4().hex[:16]; c["signal_id"] = sid; db.signal(sid, c["symbol"], c["decision"], c); oid = fill(db, c, mode=mode); result["orders"].append({"order_id":oid,"signal_id":sid,"status":"FILLED","mode":mode,"symbol":c["symbol"],"side":c["decision"],"quantity":c["quantity"],"price":c["entry"]})
+    result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"
     return finish(result, start, db)
 
 
 def finish(result: dict[str, Any], start: float, db: Database) -> dict[str, Any]:
-    result["duration_seconds"] = round(time.monotonic() - start, 3); result["ended_at"] = datetime.now(IST).isoformat(); result["positions_open"] = int(db.scalar("SELECT COUNT(*) FROM positions WHERE closed_at IS NULL") or 0); result["realized_pnl"] = float(db.scalar("SELECT COALESCE(SUM(net_pnl),0) FROM trades") or 0); result["today_realized_pnl"] = float(db.scalar("SELECT COALESCE(SUM(net_pnl),0) FROM trades WHERE mode='PAPER' AND substr(closed_at,1,10)=?", (datetime.now(IST).date().isoformat(),)) or 0)
+    result["duration_seconds"] = round(time.monotonic() - start, 3); result["ended_at"] = datetime.now(IST).isoformat(); result["positions_open"] = int(db.scalar("SELECT COUNT(*) FROM positions WHERE closed_at IS NULL") or 0); result["realized_pnl"] = float(db.scalar("SELECT COALESCE(SUM(net_pnl),0) FROM trades") or 0); result["today_realized_pnl"] = float(db.scalar("SELECT COALESCE(SUM(net_pnl),0) FROM trades WHERE mode IN ('PAPER','LIVE_TEST') AND substr(closed_at,1,10)=?", (datetime.now(IST).date().isoformat(),)) or 0)
     with db.connect() as con: con.execute("INSERT OR REPLACE INTO cycles(cycle_id,started_at,ended_at,status,payload) VALUES(?,?,?,?,?)", (result["cycle_id"], result["started_at"], result["ended_at"], "ERROR" if result.get("errors") else "COMPLETED", json.dumps(result, default=str)))
-    Path("data").mkdir(exist_ok=True); Path("data/monitor_status.json").write_text(json.dumps(result, indent=2, default=str), encoding="utf-8"); db.event("engine", "ERROR" if result.get("errors") else "INFO", "CYCLE_END", result); return result
+    Path("data").mkdir(exist_ok=True); Path("data/monitor_status.json").write_text(json.dumps(result, indent=2, default=str), encoding="utf-8"); db.event("engine", "ERROR" if result.get("errors") else "INFO", "CYCLE_END", result, mode=result.get("mode", PAPER_MODE)); return result
