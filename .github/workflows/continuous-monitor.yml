@@ -1,79 +1,104 @@
-name: Continuous Intraday Monitor
+name: Complete Intraday Monitor
 
 on:
   schedule:
-    # Every 5 minutes during market hours (9:15-3:30 IST = 3:45-10:00 UTC)
-    - cron: '*/5 3-10 * * 1-5'
+    - cron: '45,50,55 3 * * 1-5'
+    - cron: '*/5 4-9 * * 1-5'
+    - cron: '0 10 * * 1-5'
+  push:
+    branches: [main]
+    paths:
+      - 'intraday_bot/**'
+      - 'scripts/**'
+      - 'config/**'
+      - '.github/workflows/continuous-monitor.yml'
+      - 'requirements.txt'
   workflow_dispatch: {}
 
 concurrency:
-  group: continuous-monitor
-  cancel-in-progress: false
+  group: complete-intraday-monitor
+  cancel-in-progress: true
 
 permissions:
   contents: write
 
+env:
+  PYTHONUNBUFFERED: '1'
+  USE_DHAN_DATA: 'true'
+  SCAN_WORKERS: '8'
+  CYCLE_BUDGET_SECONDS: '240'
+  DHAN_LIVE_TRADING_ENABLED: 'false'
+
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 10   # Increased from 2 to 10 minutes
-
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Check NSE market window
+        id: market
+        shell: bash
         run: |
-          python - <<'EOF'
-          from datetime import datetime, timezone, timedelta
-          IST = timezone(timedelta(hours=5, minutes=30))
-          now = datetime.now(IST)
-          open_t = now.replace(hour=9,  minute=15, second=0, microsecond=0)
-          close_t = now.replace(hour=15, minute=30, second=0, microsecond=0)
-          in_window = open_t <= now <= close_t and now.weekday() < 5
-          print(f"IST now: {now.strftime('%H:%M')} | Market open: {in_window}")
-          import sys; sys.exit(0 if in_window else 0)
-          EOF
+          python - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          now=datetime.now(ZoneInfo('Asia/Kolkata'))
+          opened=now.replace(hour=9,minute=15,second=0,microsecond=0)
+          closed=now.replace(hour=15,minute=30,second=0,microsecond=0)
+          in_window=now.weekday()<5 and opened<=now<=closed
+          manual=os.getenv('GITHUB_EVENT_NAME') in {'workflow_dispatch','push'}
+          run_cycle=in_window or manual
+          print('IST:',now.isoformat(),'run_cycle:',run_cycle)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write(f'run_cycle={str(run_cycle).lower()}\n')
+          PY
+
+      - name: Setup Python
+        if: steps.market.outputs.run_cycle == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
 
       - name: Install dependencies
+        if: steps.market.outputs.run_cycle == 'true'
         run: pip install -r requirements.txt --quiet
 
-      - name: Load complete NSE cash-equity universe
-        id: universe
-        run: |
-          # Top 25 most liquid NSE stocks for fast scanning
-          # Expand this list as scan speed improves
-          UNIVERSE="RELIANCE,TCS,INFY,HDFCBANK,ICICIBANK,SBIN,WIPRO,BAJAJFINSV,LT,ITC,MARUTI,AXISBANK,KOTAKBANK,BHARTI,M&M,NTPC,TATASTEEL,ADANIPORTS,SUNPHARMA,TITAN,HINDUNILVR,ONGC,POWERGRID,COALINDIA,EICHERMOT"
-          echo "BOT_MARKET_UNIVERSE=$UNIVERSE" >> $GITHUB_ENV
-          echo "Loaded $(echo $UNIVERSE | tr ',' '\n' | wc -l) symbols"
+      - name: Build complete NSE cash-equity universe
+        if: steps.market.outputs.run_cycle == 'true'
+        run: python scripts/load_universe.py
 
-      - name: Run one complete paper-trading market cycle
+      - name: Run complete 5-minute paper cycle
+        if: steps.market.outputs.run_cycle == 'true'
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
-          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BOT_RESEARCH_REFERENCE_CAPITAL: ${{ vars.BOT_RESEARCH_REFERENCE_CAPITAL }}
-          BOT_MARKET_UNIVERSE: ${{ env.BOT_MARKET_UNIVERSE }}
+          BOT_MODE: PAPER
           DHAN_LIVE_TRADING_ENABLED: 'false'
-        run: python -m scripts.run_daily_cycle
+        run: python scripts/run_daily_cycle.py
 
-      - name: Commit journal, reports and monitor health
+      - name: Persist health and journal
+        if: always() && steps.market.outputs.run_cycle == 'true'
+        shell: bash
         run: |
-          git config user.name "stockmarket-bot"
-          git config user.email "actions@users.noreply.github.com"
+          set -e
+          git config user.name 'stockmarket-bot'
+          git config user.email 'actions@users.noreply.github.com'
           git add data/ reports/
           if ! git diff --cached --quiet; then
             git pull --rebase --autostash
-            git commit -m "Update paper-trading journal [skip ci]"
+            git commit -m 'Update complete paper-trading state [skip ci]'
             git push
           else
-            echo "No changes to commit."
+            echo 'No state changes.'
           fi
