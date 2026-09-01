@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import numpy as np
 
+from intraday_bot.config import settings
 from intraday_bot.research import source_roce, source_valuation, scrap_analysis
 from intraday_bot.risk import position_size, risk_reward, risk_gate
 from intraday_bot.technical import indicators, trend_state
@@ -36,8 +37,20 @@ def test_quantity_is_minimum_of_safety_limits():
     assert r.risk_safe>=r.quantity and r.funds_safe>=r.quantity
 
 
+def test_paper_quantity_ignores_real_broker_cash():
+    # PAPER must use the virtual capital ceiling, not a zero/low Dhan balance.
+    r=position_size(100,98,106,1000,available_funds=0,liquidity_qty=100,broker_max_qty=100)
+    assert r.quantity == 4
+    assert r.capital_required == 400
+
+
 def test_rr_and_risk_gate():
     assert risk_reward(100,98,106)==3
-    assert risk_gate(3,0,0,0)[0]
-    assert risk_gate(2.9,0,0,0)[0] is False
-    assert risk_gate(3,20000,0,0)[1]=="DAILY_LOSS_LIMIT"
+    assert risk_gate(3,0,0,0,consecutive_losses=0)[0]
+    assert risk_gate(2.9,0,0,0,consecutive_losses=0)[0] is False
+    assert risk_gate(3,20000,0,0,consecutive_losses=0)[1]=="DAILY_LOSS_LIMIT"
+
+
+def test_emergency_stop_and_consecutive_loss_gates():
+    assert risk_gate(3,0,0,0,emergency_stop=True,consecutive_losses=0)[1] == "EMERGENCY_STOP"
+    assert risk_gate(3,0,0,0,emergency_stop=False,consecutive_losses=settings.max_consecutive_losses)[1] == "MAX_CONSECUTIVE_LOSSES"
