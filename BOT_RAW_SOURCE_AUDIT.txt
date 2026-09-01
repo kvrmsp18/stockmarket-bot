@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 318ff02566237d3c9b29f2e231a4d893291c621d
-Generated UTC: 2026-09-01T05:32:09.077155+00:00
+Commit SHA: 26dfeab5fde51684814915db249595218ca5bd5d
+Generated UTC: 2026-09-01T05:32:49.150966+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	924 bytes
 .github/workflows/ci.yml	363 bytes
-.github/workflows/continuous-monitor.yml	7447 bytes
+.github/workflows/continuous-monitor.yml	8527 bytes
 .github/workflows/eod-close.yml	1709 bytes
 .github/workflows/export-source-audit.yml	5380 bytes
 .gitignore	684 bytes
@@ -49,7 +49,7 @@ intraday_bot/ai_advisor.py	2731 bytes
 intraday_bot/alerts.py	860 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
-intraday_bot/brokers.py	12197 bytes
+intraday_bot/brokers.py	12752 bytes
 intraday_bot/config.py	5865 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/engine.py	16163 bytes
@@ -229,7 +229,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 7447 bytes
+SIZE: 8527 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -331,6 +331,30 @@ jobs:
       - name: Install Python dependencies
         if: steps.market.outputs.run_cycle == 'true'
         run: pip install -r requirements.txt --quiet
+
+      - name: Dhan authentication preflight
+        if: steps.market.outputs.run_cycle == 'true'
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from intraday_bot.brokers import DhanBroker
+          from intraday_bot.config import settings
+
+          print('Dhan credential source:', settings.dhan_market_data_credential_source)
+          print('Dhan client configured:', bool(settings.dhan_client_id))
+          print('Dhan credential configured:', bool(settings.dhan_market_data_token))
+          print('Dhan credential length:', len(settings.dhan_market_data_token))
+          health = DhanBroker().health()
+          print('Dhan authentication:', health.message)
+          if not health.authenticated:
+              raise SystemExit('DHAN_AUTH_PREFLIGHT_FAILED: ' + health.message)
+          print('DHAN_AUTH_PREFLIGHT_PASSED')
+          PY
 
       - name: Build complete NSE cash-equity universe
         if: steps.market.outputs.run_cycle == 'true'
@@ -1430,9 +1454,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor invocation is active",
-  "updated_at": "2026-09-01T10:49:12.899160+05:30",
+  "updated_at": "2026-09-01T11:01:18.653982+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33473135110",
+  "workflow_run_id": "33473912488",
   "event": "schedule",
   "market_open": true,
   "scheduled_interval_seconds": 300,
@@ -17514,10 +17538,10 @@ SIZE: 438 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect Diagnostics",
-  "updated_at": "2026-09-01T10:49:40.368480+05:30",
+  "updated_at": "2026-09-01T11:01:45.180581+05:30",
   "source": "github-actions-24x7-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33473135110",
+  "workflow_run_id": "33473912488",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -17907,7 +17931,7 @@ def run(df:pd.DataFrame, capital:float=100000)->dict:
 
 ====================================================================
 FILE: intraday_bot/brokers.py
-SIZE: 12197 bytes
+SIZE: 12752 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18003,6 +18027,7 @@ class DhanBroker(BrokerInterface):
         # the legacy DHAN_ACCESS_TOKEN so the deployed Bot uses the credential
         # selected by the user. The legacy token remains a compatibility fallback.
         self.token = settings.dhan_market_data_token
+        self.credential_source = settings.dhan_market_data_credential_source
         self.base = settings.dhan_base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({
@@ -18041,9 +18066,16 @@ class DhanBroker(BrokerInterface):
             return str(response.status_code), str(payload)[:500]
         return str(response.status_code), str(payload)[:500]
 
+    def _auth_context(self) -> str:
+        return (
+            f"credential_source={self.credential_source}; "
+            f"client_id_configured={'yes' if bool(self.client_id) else 'no'}; "
+            f"credential_length={len(self.token)}"
+        )
+
     def _request(self, method: str, path: str, category: str = "data", **kwargs: Any) -> Any:
         if not self.client_id or not self.token:
-            raise RuntimeError("DHAN_AUTH_UNAVAILABLE")
+            raise RuntimeError(f"DHAN_AUTH_UNAVAILABLE: {self._auth_context()}")
 
         last_error = ""
         for attempt in range(self._MAX_RETRIES + 1):
@@ -18065,6 +18097,9 @@ class DhanBroker(BrokerInterface):
                     raise RuntimeError(last_error)
                 time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
                 continue
+
+            if response.status_code == 401:
+                raise RuntimeError(f"DHAN_HTTP_401: {response.text[:500]} [{self._auth_context()}]")
 
             if response.status_code >= 400:
                 raise RuntimeError(f"DHAN_HTTP_{response.status_code}: {response.text[:500]}")
@@ -18092,10 +18127,10 @@ class DhanBroker(BrokerInterface):
 
     def health(self) -> BrokerHealth:
         if not self.client_id or not self.token:
-            return BrokerHealth(False, False, "Dhan credentials unavailable")
+            return BrokerHealth(False, False, f"Dhan credentials unavailable [{self._auth_context()}]")
         try:
             self.funds()
-            return BrokerHealth(True, True, "DHAN CONNECTED")
+            return BrokerHealth(True, True, f"DHAN CONNECTED [{self._auth_context()}]")
         except Exception as exc:
             return BrokerHealth(False, False, str(exc))
 
