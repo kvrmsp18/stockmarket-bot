@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import floor
+from datetime import datetime
 
-from .config import settings
+from .config import IST, settings
 
 
 @dataclass(frozen=True)
@@ -48,8 +49,6 @@ def position_size(
     risk_qty = floor(max_risk / risk_per_share)
 
     if settings.mode == "PAPER":
-        # Paper capital is virtual and must not be reduced by the real Dhan
-        # account balance. Broker cash is deliberately ignored here.
         funds_base = capital
     elif available_funds is None:
         funds_base = capital
@@ -109,8 +108,26 @@ def _consecutive_losses_from_db() -> int:
                 break
         return count
     except Exception:
-        # A risk gate must fail closed if loss history cannot be inspected.
         return settings.max_consecutive_losses
+
+
+def _trades_today_from_db() -> int:
+    """Count terminal trades opened/closed in today's IST session."""
+    try:
+        from .database import Database
+
+        db = Database()
+        today = datetime.now(IST).date().isoformat()
+        with db.connect() as con:
+            row = con.execute(
+                "SELECT COUNT(*) FROM trades "
+                "WHERE mode IN ('PAPER','LIVE_TEST') AND closed_at IS NOT NULL "
+                "AND substr(closed_at,1,10)=?",
+                (today,),
+            ).fetchone()
+        return int(row[0] or 0) if row else 0
+    except Exception:
+        return settings.max_trades_per_day
 
 
 def risk_gate(
@@ -135,6 +152,8 @@ def risk_gate(
         consecutive_losses = _consecutive_losses_from_db()
     if consecutive_losses >= settings.max_consecutive_losses:
         return False, "MAX_CONSECUTIVE_LOSSES"
+    if _trades_today_from_db() >= settings.max_trades_per_day:
+        return False, "MAX_TRADES_PER_DAY"
     if rr < settings.min_rr:
         return False, "RISK_REJECTION"
     return True, None
