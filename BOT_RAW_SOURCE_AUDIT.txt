@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 94a24ee4d05f3e46809073c464f1bec4255eba6a
-Generated UTC: 2026-09-01T00:48:25.971187+00:00
+Commit SHA: ac8a14af26c1e5e669c260d35d6b48424021ca32
+Generated UTC: 2026-09-01T00:48:48.965031+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -72,7 +72,7 @@ reports/daily/2026-08-31.md	428 bytes
 reports/readiness/.gitkeep	1 bytes
 reports/weekly/.gitkeep	1 bytes
 requirements.txt	114 bytes
-runtime-fix-trigger.txt	60 bytes
+runtime-fix-trigger.txt	26 bytes
 scripts/__init__.py	0 bytes
 scripts/eod_report.py	1419 bytes
 scripts/load_universe.py	2067 bytes
@@ -43212,9 +43212,9 @@ tzdata>=2024.1
 
 ====================================================================
 FILE: runtime-fix-trigger.txt
-SIZE: 60 bytes
+SIZE: 26 bytes
 ====================================================================
-Trigger one-shot runtime dashboard and worker-health repair.
+Trigger runtime repair v2.
 
 ====================================================================
 FILE: scripts/__init__.py
