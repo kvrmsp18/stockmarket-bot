@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 import uuid
@@ -77,7 +76,7 @@ class PaperTradingBroker(BrokerInterface):
 
 
 class DhanBroker(BrokerInterface):
-    """Dhan adapter with numeric market-data payloads and resilient throttling."""
+    """Dhan adapter using the configured one-month API key for authentication."""
 
     _rate_lock = threading.Lock()
     _last_quote_call = 0.0
@@ -89,7 +88,10 @@ class DhanBroker(BrokerInterface):
 
     def __init__(self) -> None:
         self.client_id = settings.dhan_client_id
-        self.token = settings.dhan_access_token
+        # The one-month credential is stored as DHAN_API_KEY. Prefer it over
+        # the legacy DHAN_ACCESS_TOKEN so the deployed Bot uses the credential
+        # selected by the user. The legacy token remains a compatibility fallback.
+        self.token = settings.dhan_market_data_token
         self.base = settings.dhan_base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({
@@ -179,7 +181,7 @@ class DhanBroker(BrokerInterface):
 
     def health(self) -> BrokerHealth:
         if not self.client_id or not self.token:
-            return BrokerHealth(False, False, "DHAN credentials unavailable")
+            return BrokerHealth(False, False, "Dhan credentials unavailable")
         try:
             self.funds()
             return BrokerHealth(True, True, "DHAN CONNECTED")
