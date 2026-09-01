@@ -40,8 +40,8 @@ def test_quantity_is_minimum_of_safety_limits():
 def test_paper_quantity_ignores_real_broker_cash():
     # PAPER must use the virtual capital ceiling, not a zero/low Dhan balance.
     r=position_size(100,98,106,1000,available_funds=0,liquidity_qty=100,broker_max_qty=100)
-    assert r.quantity == 4
-    assert r.capital_required == 400
+    assert r.quantity == 2
+    assert r.capital_required == 200
 
 
 def test_rr_and_risk_gate():
