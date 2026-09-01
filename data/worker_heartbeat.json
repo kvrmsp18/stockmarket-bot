@@ -1,0 +1,14 @@
+{
+  "state": "DEGRADED",
+  "message": "Market-cycle invocation completed with errors; inspect Diagnostics",
+  "updated_at": "2026-09-01T10:38:23.247841+05:30",
+  "source": "github-actions-24x7-monitor",
+  "hostname": "runnervmgx7h7",
+  "workflow_run_id": "33472411567",
+  "heartbeat_interval_seconds": 300,
+  "is_persistent_worker": false,
+  "market_open": true,
+  "market_cycle": true,
+  "cycle_success": false,
+  "scheduler_based_24x7_monitor": true
+}
