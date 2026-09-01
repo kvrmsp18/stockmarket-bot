@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: ac8a14af26c1e5e669c260d35d6b48424021ca32
-Generated UTC: 2026-09-01T00:48:48.965031+00:00
+Commit SHA: ee32fa3831bf19ca488e113a957a5a521208482b
+Generated UTC: 2026-09-01T00:49:23.404973+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	874 bytes
 .github/workflows/ci.yml	9016 bytes
-.github/workflows/continuous-monitor.yml	12461 bytes
+.github/workflows/continuous-monitor.yml	12198 bytes
 .github/workflows/eod-close.yml	1709 bytes
 .github/workflows/eod-report.yml	800 bytes
 .github/workflows/export-source-audit.yml	5122 bytes
@@ -383,14 +383,11 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 12461 bytes
+SIZE: 12198 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
 on:
-  # The scheduler stays active all day. During NSE hours it runs the full
-  # paper-trading cycle every 5 minutes. Outside market hours it records
-  # scheduler health only and NEVER executes trading analysis/orders.
   schedule:
     - cron: '*/5 * * * 1-5'
     - cron: '0 * * * 0,6'
@@ -428,7 +425,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Apply dashboard runtime fix
-        if: github.event_name == 'push' && hashFiles('runtime-fix-trigger.txt') != ''
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
