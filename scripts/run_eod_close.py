@@ -1,248 +1,84 @@
-"""Close open paper signals and publish a complete daily EOD report.
+"""Close all open simulated positions at the configured EOD square-off time.
 
-Paper-trading only: no broker order is ever placed. The EOD report combines
-paper-trade outcomes with the latest completed monitor health snapshot so the
-Telegram report still explains what the bot scanned, what qualified, and what
-happened to today's paper signals.
+This script uses the same intraday_bot ledger as the monitor. It never submits a
+real broker order. Dhan is used only for the latest observable market prices so
+paper positions can be reconciled before the daily report is produced.
 """
 
 from __future__ import annotations
 
-import json
 import os
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
-from src.paper_trading_validation import (
-    PaperOutcome,
-    PaperSignal,
-    close_at_eod,
-    render_validation_report,
-    summarize_outcomes,
-    week_bounds,
-)
-from src.production_market_data import ProductionMarketDataProvider
-from src.telegram_notify import TelegramNotifier
-from src.validation_store import ValidationStore
-
-DEFAULT_JOURNAL_PATH = "data/paper_trading_journal.jsonl"
-DEFAULT_STATUS_PATH = "data/monitor_status.json"
-DEFAULT_CRITERIA_PATH = "config/validation_criteria.json"
-IST = ZoneInfo("Asia/Kolkata")
-UTC = ZoneInfo("UTC")
-
-
-def _parse_datetime(value: object) -> datetime:
-    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
-
-
-def _load_signals(store: ValidationStore) -> tuple[list[PaperSignal], set[str]]:
-    signals: list[PaperSignal] = []
-    for record in store.signals():
-        payload = dict(record["payload"])
-        payload["generated_at"] = _parse_datetime(payload["generated_at"])
-        signals.append(PaperSignal(**payload))
-    resolved_ids = {record["payload"]["signal_id"] for record in store.outcomes()}
-    return signals, resolved_ids
-
-
-def _payload_date(payload: dict) -> date:
-    return _parse_datetime(payload["generated_at"]).astimezone(IST).date()
-
-
-def _outcome_from_payload(payload: dict) -> PaperOutcome:
-    value = dict(payload)
-    value["generated_at"] = _parse_datetime(value["generated_at"])
-    if value.get("exit_at"):
-        value["exit_at"] = _parse_datetime(value["exit_at"])
-    return PaperOutcome(**value)
-
-
-def _validation_start() -> date | None:
-    path = Path(os.getenv("VALIDATION_CRITERIA_PATH", DEFAULT_CRITERIA_PATH))
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        return date.fromisoformat(str(payload["validation_period_start"]))
-    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
-        return None
-
-
-def _append_summary_once(store: ValidationStore, summary, report_type: str) -> bool:
-    for record in store.summaries(report_type):
-        payload = record["payload"]
-        if (
-            payload.get("period_start") == summary.period_start.isoformat()
-            and payload.get("period_end") == summary.period_end.isoformat()
-        ):
-            return False
-    store.append_summary(summary, report_type=report_type)
-    return True
-
-
-def _write_report(summary, report_type: str) -> Path:
-    if report_type == "daily":
-        path = Path("reports/daily") / f"{summary.period_start.isoformat()}.md"
-        title = "Paper-Trading Daily Report"
-    else:
-        iso = summary.period_start.isocalendar()
-        path = Path("reports/weekly") / f"{iso.year}-W{iso.week:02d}.md"
-        title = "Paper-Trading Weekly Report"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_validation_report(summary, title=title), encoding="utf-8")
-    return path
-
-
-def _load_latest_monitor_status(today: date) -> dict:
-    """Read the latest completed monitor snapshot if it belongs to today."""
-    path = Path(os.getenv("MONITOR_STATUS_PATH", DEFAULT_STATUS_PATH))
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    try:
-        updated = _parse_datetime(payload.get("updated_at", "" )).astimezone(IST).date()
-    except (TypeError, ValueError):
-        return {}
-    return payload if updated == today and payload.get("status") == "OK" else {}
+from intraday_bot.alerts import telegram
+from intraday_bot.brokers import DhanBroker
+from intraday_bot.config import IST, settings
+from intraday_bot.database import Database
+from intraday_bot.runtime import _manage_positions, universe
 
 
 def main() -> int:
-    today = datetime.now(IST).date()
-    store = ValidationStore(os.getenv("VALIDATION_JOURNAL_PATH", DEFAULT_JOURNAL_PATH))
-    notifier = TelegramNotifier()
-    provider = ProductionMarketDataProvider(timeout=12.0)
+    db = Database()
+    uni = universe()
+    if not uni:
+        raise RuntimeError("DATA_UNAVAILABLE: NSE universe is empty")
 
-    signals, resolved_ids = _load_signals(store)
-    open_signals = [signal for signal in signals if signal.signal_id not in resolved_ids]
-    closed = 0
-    no_data = 0
-    errors: list[str] = []
+    with db.connect() as con:
+        open_positions = int(
+            con.execute(
+                "SELECT COUNT(*) FROM positions WHERE closed_at IS NULL AND mode IN ('PAPER','LIVE_TEST')"
+            ).fetchone()[0]
+        )
 
-    for signal in open_signals:
+    if open_positions:
+        broker = DhanBroker()
         try:
-            bars = provider.history(signal.symbol, period="5d", interval="15m")
-            outcome = close_at_eod(signal, bars)
-            if outcome.outcome in {"TARGET", "STOP", "EOD_CLOSE"}:
-                store.append_outcome(outcome)
-                closed += 1
-            else:
-                no_data += 1
-                print(
-                    f"{signal.symbol}: outcome remains {outcome.outcome}; "
-                    "not recorded as terminal."
-                )
+            qmap = broker.bulk_quotes(uni)
         except Exception as exc:
-            errors.append(f"{signal.symbol}: {exc}")
+            db.event("eod", "ERROR", "EOD_MARKET_DATA_ERROR", {"error": str(exc)}, mode="PAPER")
+            raise RuntimeError(f"EOD market data unavailable; open positions were NOT fabricated closed: {exc}") from exc
+        _manage_positions(db, qmap, uni)
 
-    outcomes = [
-        _outcome_from_payload(record["payload"])
-        for record in store.outcomes()
-    ]
-    today_outcomes = [
-        item for item in outcomes if _payload_date(item.__dict__) == today
-    ]
-    daily = summarize_outcomes(today_outcomes, period_start=today, period_end=today)
-    daily_added = _append_summary_once(store, daily, "daily")
-    daily_report_path = _write_report(daily, "daily")
-
-    monitor = _load_latest_monitor_status(today)
-    scan = monitor.get("scan", {}) if isinstance(monitor.get("scan"), dict) else {}
-    rejection_breakdown = monitor.get("rejection_breakdown", {})
-    data_sources = monitor.get("data_sources", {})
-
-    weekly_added = False
-    if today.weekday() == 4:
-        week_start, week_end = week_bounds(today)
-        validation_start = _validation_start()
-        summary_start = max(week_start, validation_start) if validation_start else week_start
-        weekly_outcomes = [
-            item
-            for item in outcomes
-            if summary_start <= _payload_date(item.__dict__) <= week_end
-        ]
-        weekly = summarize_outcomes(
-            weekly_outcomes,
-            period_start=summary_start,
-            period_end=week_end,
+    now = datetime.now(IST)
+    with db.connect() as con:
+        remaining = int(
+            con.execute(
+                "SELECT COUNT(*) FROM positions WHERE closed_at IS NULL AND mode IN ('PAPER','LIVE_TEST')"
+            ).fetchone()[0]
         )
-        weekly_added = _append_summary_once(store, weekly, "weekly")
-        _write_report(weekly, "weekly")
+        rows = con.execute(
+            "SELECT symbol,side,quantity,entry_price,current_price,stop,target,closed_at,pnl "
+            "FROM positions WHERE substr(opened_at,1,10)=? ORDER BY opened_at DESC",
+            (now.date().isoformat(),),
+        ).fetchall()
 
-    scanned = scan.get("scanned", 0)
-    requested = scan.get("requested", 0)
-    actionable = scan.get("actionable", 0)
-    buy = scan.get("buy", 0)
-    sell = scan.get("sell", 0)
-    candidates = scan.get("candidate_count", 0)
-
-    message_lines = [
-        "📊 Stockmarket Bot — EOD paper-trading analysis",
-        f"Date: {today.strftime('%d-%b-%Y')} IST",
-        "Mode: PAPER-TRADING (no real orders)",
-        "",
-        "🔎 Today's market scan",
-        f"Universe requested: {requested}",
-        f"Stocks scanned: {scanned}",
-        f"Technical candidates: {candidates}",
-        f"Actionable: {actionable} | BUY: {buy} | SELL: {sell}",
-        "",
-        "📈 Today's paper-trading outcome",
-        f"Signals closed this EOD run: {closed}",
-        f"Daily signals: {daily.signals} | Target: {daily.target_count} | "
-        f"Stop: {daily.stop_count} | EOD close: {daily.eod_close_count}",
-        f"Daily net P&L after estimated charges: ₹{daily.net_pnl:,.2f}",
-        f"Daily profit factor: {'N/A' if daily.profit_factor is None else f'{daily.profit_factor:.2f}'}",
-        f"Daily max drawdown: ₹{daily.max_drawdown:,.2f}",
-        f"Daily report: {'updated' if daily_added else 'already recorded'}",
-    ]
-
-    if rejection_breakdown:
-        top = sorted(
-            ((str(name), int(count)) for name, count in rejection_breakdown.items()),
-            key=lambda item: item[1],
-            reverse=True,
-        )[:5]
-        message_lines.append("")
-        message_lines.append("Filters: " + ", ".join(f"{name}={count}" for name, count in top))
-
-    if data_sources:
-        message_lines.append(
-            "Data sources: "
-            + ", ".join(f"{name}={count}" for name, count in data_sources.items())
+    if remaining:
+        db.event(
+            "eod",
+            "WARN",
+            "EOD_POSITIONS_REMAIN_OPEN",
+            {"remaining_open_positions": remaining, "reason": "No valid current Dhan price was available for one or more paper positions"},
+            mode="PAPER",
         )
 
-    if not monitor:
-        message_lines.append("")
-        message_lines.append(
-            "⚠️ No completed monitor snapshot was available for today. "
-            "The EOD report was still generated from the paper-trading journal."
-        )
+    report_lines = [
+        "📌 STOCKMARKET BOT — EOD CLOSE",
+        f"Date: {now.strftime('%d-%b-%Y %H:%M:%S')} IST",
+        f"Configured square-off: {settings.square_off_hour:02d}:{settings.square_off_minute:02d} IST",
+        f"Positions before close: {open_positions}",
+        f"Positions still open: {remaining}",
+        "Mode: PAPER / simulated only",
+    ]
+    message = "\n".join(report_lines)
+    print(message)
+    if settings.telegram_token and settings.telegram_chat_id:
+        telegram(message[:3900])
 
-    if no_data:
-        message_lines.append(f"⚠️ Signals without terminal data: {no_data}")
-    if errors:
-        message_lines.append(f"⚠️ Data errors: {len(errors)}")
-        message_lines.extend(errors[:3])
-
-    message_lines.append(f"Daily report file: {daily_report_path}")
-    if today.weekday() == 4:
-        message_lines.append(f"Weekly report: {'updated' if weekly_added else 'already recorded'}")
-
-    report_message = "\n".join(message_lines)
-    print(report_message)
-    try:
-        if notifier.send(report_message[:3900]):
-            print("Telegram EOD report delivered.")
-        else:
-            print("Telegram is not configured; EOD report remains in GitHub reports.")
-    except Exception as exc:
-        print(f"Telegram EOD report failed: {exc}")
-
-    return 0
+    # The dedicated daily report reads the same authoritative ledger and sends
+    # the complete daily P&L separately.
+    from scripts.eod_report import main as report_main
+    return report_main()
 
 
 if __name__ == "__main__":
