@@ -68,8 +68,11 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _secret_or_env("DHAN_CLIENT_ID", "")
-    dhan_access_token: str = _secret_or_env("DHAN_ACCESS_TOKEN", "")
+    # Dhan's one-month credential is stored in DHAN_API_KEY.  Keep the
+    # legacy access-token field for compatibility, but prefer API key for
+    # market-data authentication and use the access token only as fallback.
     dhan_api_key: str = _secret_or_env("DHAN_API_KEY", "")
+    dhan_access_token: str = _secret_or_env("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
     telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
@@ -80,6 +83,11 @@ class Settings:
     @property
     def db_path(self) -> Path:
         return ROOT / "data" / "trading.db"
+
+    @property
+    def dhan_market_data_token(self) -> str:
+        """Credential used for Dhan market-data API calls."""
+        return self.dhan_api_key or self.dhan_access_token
 
     @property
     def live_mode_requested(self) -> bool:
@@ -99,7 +107,7 @@ class Settings:
         if self.reference_capital <= 0:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.live_mode_requested:
-            if not self.dhan_client_id or not self.dhan_access_token:
+            if not self.dhan_client_id or not self.dhan_market_data_token:
                 raise ValueError("LIVE requested but Dhan credentials are missing")
 
 
