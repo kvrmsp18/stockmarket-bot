@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 import time
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -33,26 +33,43 @@ def secret(name: str, default: str = "") -> str:
 
 
 def sync_remote_state(force: bool = False) -> bool:
-    """Keep Streamlit Cloud synchronized with the GitHub Actions state store."""
-    now=time.time()
-    last=float(st.session_state.get("_remote_state_sync",0.0))
-    if not force and now-last < 60: return True
-    base="https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
-    targets={"trading.db":Path("data/trading.db"),"monitor_status.json":Path("data/monitor_status.json"),"scheduler_heartbeat.json":Path("data/scheduler_heartbeat.json"),"worker_heartbeat.json":Path("data/worker_heartbeat.json"),"watchdog_heartbeat.json":Path("data/watchdog_heartbeat.json")}
-    ok=False
-    for name,dest in targets.items():
+    """Synchronize the Streamlit copy with the latest committed Bot state."""
+    now = time.time()
+    last = float(st.session_state.get("_remote_state_sync", 0.0))
+    if not force and now - last < 60:
+        return True
+    base = "https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
+    targets = {
+        "trading.db": Path("data/trading.db"),
+        "monitor_status.json": Path("data/monitor_status.json"),
+        "scheduler_heartbeat.json": Path("data/scheduler_heartbeat.json"),
+        "worker_heartbeat.json": Path("data/worker_heartbeat.json"),
+        "watchdog_heartbeat.json": Path("data/watchdog_heartbeat.json"),
+    }
+    ok = False
+    for name, dest in targets.items():
+        tmp = None
         try:
-            dest.parent.mkdir(parents=True,exist_ok=True)
-            with urlopen(base+name,timeout=8) as r: data=r.read()
-            fd,tmp=tempfile.mkstemp(prefix="remote-state-",dir=str(dest.parent))
-            with os.fdopen(fd,"wb") as f: f.write(data)
-            os.replace(tmp,dest); ok=True
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            url = f"{base}{name}?dashboard_sync={int(now * 1000)}"
+            request = Request(url, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
+            with urlopen(request, timeout=15) as response:
+                data = response.read()
+            import tempfile
+            fd, tmp = tempfile.mkstemp(prefix="remote-state-", dir=str(dest.parent))
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            os.replace(tmp, dest)
+            ok = True
         except Exception:
-            try:
-                if 'tmp' in locals() and os.path.exists(tmp): os.unlink(tmp)
-            except Exception: pass
-    st.session_state["_remote_state_sync"]=now
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.unlink(tmp)
+                except Exception:
+                    pass
+    st.session_state["_remote_state_sync"] = now
     return ok
+
 
 
 def status() -> dict[str, Any]:
@@ -61,16 +78,15 @@ def status() -> dict[str, Any]:
 
 
 def heartbeat() -> dict[str, Any]:
-    """Return the freshest persisted heartbeat available on Streamlit Cloud."""
-    candidates = []
-    for path in (HEARTBEAT, SCHEDULER_HEARTBEAT, WATCHDOG_HEARTBEAT):
-        if not path.exists(): continue
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            if payload: candidates.append(payload)
-        except Exception: continue
-    if not candidates: return {}
-    return max(candidates, key=lambda x: str(x.get("updated_at", "")))
+    """Return only the real trading-worker heartbeat, never scheduler/watchdog state."""
+    if not HEARTBEAT.exists():
+        return {}
+    try:
+        payload = json.loads(HEARTBEAT.read_text(encoding="utf-8"))
+        return payload if payload else {}
+    except Exception:
+        return {}
+
 
 
 def sql(sql: str, params: tuple[Any, ...] = ()) -> pd.DataFrame:
@@ -106,9 +122,15 @@ def mode_switch() -> None:
 def controls() -> None:
     mode = selected_mode()
     st.sidebar.markdown("### Bot Controls")
-    if st.sidebar.button("🔄 Refresh Search / Dashboard", use_container_width=True):
-        sync_remote_state(force=True)
+    if st.session_state.pop("_refresh_message", False):
+        st.sidebar.success("Dashboard state refreshed from GitHub.")
+    if st.session_state.pop("_refresh_failed", False):
+        st.sidebar.error("Dashboard refresh could not reach the persisted GitHub state.")
+    if st.sidebar.button("🔄 Refresh Search / Dashboard", key="refresh_dashboard_button", use_container_width=True):
+        ok = sync_remote_state(force=True)
         st.cache_data.clear()
+        st.session_state["_refresh_message"] = bool(ok)
+        st.session_state["_refresh_failed"] = not bool(ok)
         st.rerun()
     label = "▶ Run Paper Analysis" if mode == PAPER_MODE else "▶ Run Live Test Analysis"
     if st.sidebar.button(label, type="primary", use_container_width=True):
@@ -131,9 +153,28 @@ def header(title: str, desc: str = "") -> None:
 def dashboard() -> None:
     s = status(); hb = heartbeat()
     header("📈 NSE/BSE Intraday AI Trading Desk", "Paper mode uses real Dhan market data and simulated fills. Live Trading selection is TEST ONLY and also uses simulated fills; the Dhan order endpoint is never called by this test mode.")
-    if hb.get("state") == "ERROR": st.error(f"24/7 WORKER ERROR: {hb.get('message','Unknown error')}")
-    elif hb: st.success(f"24/7 WORKER: {hb.get('state','RUNNING')} · last heartbeat {hb.get('updated_at','—')}")
-    else: st.warning("24/7 WORKER: heartbeat unavailable. Start scripts/worker.py on the always-on server.")
+    if hb:
+        try:
+            from datetime import datetime, timezone
+            stamp = str(hb.get("updated_at", ""))
+            age_seconds = max(0.0, (datetime.now(timezone.utc) - datetime.fromisoformat(stamp).astimezone(timezone.utc)).total_seconds())
+        except Exception:
+            age_seconds = float("inf")
+        if hb.get("state") == "ERROR":
+            st.error(f"24/7 WORKER ERROR: {hb.get('message','Unknown error')} · last heartbeat {hb.get('updated_at','—')}")
+        elif age_seconds > 900:
+            st.error(f"24/7 WORKER: OFFLINE · last real worker heartbeat {hb.get('updated_at','—')} ({age_seconds/60:.1f} min ago)")
+        else:
+            st.success(f"24/7 WORKER: ONLINE · last real worker heartbeat {hb.get('updated_at','—')}")
+    else:
+        st.error("24/7 WORKER: OFFLINE · no real trading-worker heartbeat is available")
+    scheduler_path = Path("data/scheduler_heartbeat.json")
+    if scheduler_path.exists():
+        try:
+            sh = json.loads(scheduler_path.read_text(encoding="utf-8"))
+            st.caption(f"Automation scheduler: {sh.get('state','UNKNOWN')} · last invocation {sh.get('updated_at','—')} · market window {'ACTIVE' if sh.get('market_open') else 'CLOSED'}")
+        except Exception:
+            pass
     a,b,c,d,e,f = st.columns(6)
     a.metric("Mode", s.get("mode", selected_mode())); b.metric("Universe", s.get("stocks_observed",0)); c.metric("Quotes", s.get("quotes",0)); d.metric("Candidates",len(s.get("candidates",[]))); e.metric("Open Positions",s.get("positions_open",0)); f.metric("Today's P&L",f"₹{s.get('today_realized_pnl',0):,.2f}")
     st.subheader("TODAY'S RESEARCH / ACTIONABLE TRADES")
