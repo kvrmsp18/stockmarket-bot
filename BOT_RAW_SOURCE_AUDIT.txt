@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: e00f81188828edc13518d0cf16fabb01ec175b16
-Generated UTC: 2026-09-01T00:26:22.088549+00:00
+Commit SHA: 3a03eebab79950e8292e30a8af6bd7410b9ffdc4
+Generated UTC: 2026-09-01T00:26:55.677847+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -28,7 +28,7 @@ Dockerfile	229 bytes
 README.md	6040 bytes
 SOURCE_RULES.md	3206 bytes
 app.py	24013 bytes
-config/risk.yaml	217 bytes
+config/risk.yaml	244 bytes
 config/settings.yaml	303 bytes
 config/strategy.yaml	451 bytes
 config/validation_criteria.json	1063 bytes
@@ -37,7 +37,7 @@ dashboard/app.py	742 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	719072 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	354 bytes
+data/scheduler_heartbeat.json	350 bytes
 data/trading.db	10891264 bytes
 data/universe.json	307850 bytes
 data/watchdog_heartbeat.json	422 bytes
@@ -57,7 +57,7 @@ intraday_bot/engine.py	16458 bytes
 intraday_bot/news.py	830 bytes
 intraday_bot/paper.py	1447 bytes
 intraday_bot/research.py	8014 bytes
-intraday_bot/risk.py	3199 bytes
+intraday_bot/risk.py	4461 bytes
 intraday_bot/runtime.py	15633 bytes
 intraday_bot/runtime_v2.py	6784 bytes
 intraday_bot/safety.py	715 bytes
@@ -1223,7 +1223,7 @@ main()
 
 ====================================================================
 FILE: config/risk.yaml
-SIZE: 217 bytes
+SIZE: 244 bytes
 ====================================================================
 risk_per_trade_pct: 0.5
 daily_loss_limit: 15000
@@ -1233,7 +1233,8 @@ max_sector_exposure: 0.30
 max_capital_deployment: 0.80
 cash_reserve_pct: 0.20
 min_risk_reward: 3.0
-kill_switch: true
+max_consecutive_losses: 3
+kill_switch: false
 
 ====================================================================
 FILE: config/settings.yaml
@@ -24147,15 +24148,15 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 354 bytes
+SIZE: 350 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "GitHub Actions scheduler invocation completed",
-  "updated_at": "2026-09-01T05:39:47.331071+05:30",
+  "updated_at": "2026-09-01T05:56:34.951220+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33453625930",
-  "event": "schedule",
+  "workflow_run_id": "33454755917",
+  "event": "push",
   "market_open": false,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -41616,7 +41617,7 @@ def research_dict(result: ResearchResult) -> dict[str, Any]:
 
 ====================================================================
 FILE: intraday_bot/risk.py
-SIZE: 3199 bytes
+SIZE: 4461 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -41669,8 +41670,7 @@ def position_size(
 
     if settings.mode == "PAPER":
         # Paper capital is virtual and must not be reduced by the real Dhan
-        # account balance. The caller may still pass broker funds, but they
-        # are intentionally ignored for the PAPER funds gate.
+        # account balance. Broker cash is deliberately ignored here.
         funds_base = capital
     elif available_funds is None:
         funds_base = capital
@@ -41684,6 +41684,7 @@ def position_size(
     broker = broker_max_qty if broker_max_qty is not None else risk_qty
     qty = max(0, min(risk_qty, funds_qty, position_qty, liquidity, broker))
 
+    reason = None if qty else "INSUFFICIENT_FUNDS_OR_RISK"
     return SizeResult(
         risk_qty,
         funds_qty,
@@ -41695,7 +41696,7 @@ def position_size(
         qty * risk_per_share,
         qty * reward_per_share,
         reward_per_share / risk_per_share,
-        None if qty else "INSUFFICIENT_FUNDS_OR_RISK",
+        reason,
     )
 
 
@@ -41704,14 +41705,46 @@ def risk_reward(entry: float, stop: float, target: float) -> float:
     return abs(target - entry) / risk if risk else 0.0
 
 
+def _consecutive_losses_from_db() -> int:
+    """Return consecutive losing closed trades for the configured mode."""
+    try:
+        from .database import Database
+
+        db = Database()
+        with db.connect() as con:
+            rows = con.execute(
+                "SELECT net_pnl FROM trades WHERE mode=? AND closed_at IS NOT NULL "
+                "ORDER BY closed_at DESC LIMIT ?",
+                (settings.mode, max(1, settings.max_consecutive_losses)),
+            ).fetchall()
+
+        count = 0
+        for row in rows:
+            try:
+                pnl = float(row[0])
+            except (TypeError, ValueError):
+                break
+            if pnl < 0:
+                count += 1
+            else:
+                break
+        return count
+    except Exception:
+        # A risk gate must fail closed if loss history cannot be inspected.
+        return settings.max_consecutive_losses
+
+
 def risk_gate(
     rr: float,
     daily_loss: float,
     open_positions: int,
     sector_exposure: float,
-    emergency_stop: bool = False,
+    emergency_stop: bool | None = None,
+    consecutive_losses: int | None = None,
 ) -> tuple[bool, str | None]:
-    if emergency_stop:
+    """Deterministic risk gate shared by paper and live-test execution."""
+    stop = settings.emergency_stop if emergency_stop is None else emergency_stop
+    if stop:
         return False, "EMERGENCY_STOP"
     if daily_loss >= settings.daily_loss_limit:
         return False, "DAILY_LOSS_LIMIT"
@@ -41719,6 +41752,10 @@ def risk_gate(
         return False, "POSITION_LIMIT"
     if sector_exposure >= settings.max_sector_exposure:
         return False, "SECTOR_EXPOSURE_LIMIT"
+    if consecutive_losses is None:
+        consecutive_losses = _consecutive_losses_from_db()
+    if consecutive_losses >= settings.max_consecutive_losses:
+        return False, "MAX_CONSECUTIVE_LOSSES"
     if rr < settings.min_rr:
         return False, "RISK_REJECTION"
     return True, None
