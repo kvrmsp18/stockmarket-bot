@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 618827ed52614b02a03d281e078f249e2d5203a1
-Generated UTC: 2026-09-01T00:28:08.521663+00:00
+Commit SHA: 64e2e8ce7c5f03bb11f5572000a00f2b6055c8b5
+Generated UTC: 2026-09-01T00:35:31.342311+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -20,6 +20,7 @@ FILE INVENTORY
 .github/workflows/eod-close.yml	1709 bytes
 .github/workflows/eod-report.yml	800 bytes
 .github/workflows/export-source-audit.yml	5122 bytes
+.github/workflows/finish-dashboard-fix.yml	9814 bytes
 .github/workflows/heartbeat-watchdog.yml	1985 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
@@ -599,6 +600,75 @@ jobs:
             git commit -m 'chore: refresh complete raw source audit'
             git push
           fi
+
+====================================================================
+FILE: .github/workflows/finish-dashboard-fix.yml
+SIZE: 9814 bytes
+====================================================================
+name: Finish Dashboard State Fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finish-dashboard-fix.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Apply dashboard state and report fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py')
+          s=p.read_text(encoding='utf-8')
+
+          s=s.replace('import os\nfrom datetime import date', 'import os\nimport shutil\nimport tempfile\nimport time\nfrom urllib.request import urlopen\nfrom datetime import date')
+
+          marker='def status() -> dict[str, Any]:\n'
+          sync='''def sync_remote_state(force: bool = False) -> bool:\n    """Synchronize persisted GitHub Actions state into Streamlit's local disk.\n\n    Streamlit Cloud and GitHub Actions do not share a filesystem. This keeps the\n    dashboard pointed at the same committed SQLite/JSON state without a paid DB.\n    Manual refresh always forces synchronization; normal page loads refresh at\n    most once per minute. Local state remains a fallback if GitHub is unreachable.\n    """\n    now = time.time()\n    last = float(st.session_state.get("_remote_state_sync", 0.0))\n    if not force and now - last < 60:\n        return True\n    base = "https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"\n    targets = {"trading.db": Path("data/trading.db"), "monitor_status.json": Path("data/monitor_status.json"),\n               "scheduler_heartbeat.json": Path("data/scheduler_heartbeat.json"), "worker_heartbeat.json": Path("data/worker_heartbeat.json"),\n               "watchdog_heartbeat.json": Path("data/watchdog_heartbeat.json")}\n    ok = False\n    for name, dest in targets.items():\n        try:\n            dest.parent.mkdir(parents=True, exist_ok=True)\n            with urlopen(base + name, timeout=8) as response:\n                data = response.read()\n            fd, tmp = tempfile.mkstemp(prefix="remote-state-", dir=str(dest.parent))\n            with os.fdopen(fd, "wb") as f:\n                f.write(data)\n            os.replace(tmp, dest)\n            ok = True\n        except Exception:\n            try:\n                if 'tmp' in locals() and os.path.exists(tmp): os.unlink(tmp)\n            except Exception: pass\n    st.session_state["_remote_state_sync"] = now\n    return ok\n\n\n'''
+          if marker in s and 'def sync_remote_state' not in s:
+              s=s.replace(marker, sync+marker, 1)
+
+          s=s.replace('if st.sidebar.button("🔄 Refresh Search / Dashboard", use_container_width=True): st.rerun()', 'if st.sidebar.button("🔄 Refresh Search / Dashboard", use_container_width=True):\n        sync_remote_state(force=True)\n        st.cache_data.clear()\n        st.rerun()')
+
+          s=s.replace('def main() -> None:\n    mode_switch();', 'def main() -> None:\n    sync_remote_state()\n    mode_switch();', 1)
+
+          old='''    if title in {"Sector Analysis","Theme Analysis","Value Migration","Inflection Points","Value Chain","Profit Pool"}:\n        if candidates.empty: st.warning("No current actionable research data for this view."); return\n        group_col="sector" if title=="Sector Analysis" else "theme"\n        if group_col in candidates.columns:\n            summary=candidates.groupby(group_col,dropna=False).agg(candidates=("symbol","count"),avg_trend=("trend_score","mean")).reset_index()\n            if "conviction_score" in candidates.columns: summary["avg_conviction"]=candidates.groupby(group_col,dropna=False)["conviction_score"].mean().values\n            st.dataframe(summary,use_container_width=True,hide_index=True)\n        else: st.info("The latest cycle does not contain this dimension yet.")\n        return\n'''
+          new='''    if title == "Sector Analysis":\n        if candidates.empty or "sector" not in candidates.columns:\n            st.warning("DATA UNAVAILABLE: no persisted sector analysis for the latest cycle."); return\n        summary=candidates.groupby("sector",dropna=False).agg(candidates=("symbol","count"),avg_trend=("trend_score","mean")).reset_index()\n        if "conviction_score" in candidates.columns: summary["avg_conviction"]=candidates.groupby("sector",dropna=False)["conviction_score"].mean().values\n        st.dataframe(summary,use_container_width=True,hide_index=True); return\n    if title in {"Theme Analysis","Value Migration","Inflection Points","Value Chain","Profit Pool"}:\n        st.warning(f"DATA UNAVAILABLE: {title} requires its dedicated persisted research dataset. The dashboard will not substitute Trend Scanner/Screener data.")\n        return\n'''
+          if old in s: s=s.replace(old,new,1)
+
+          old_chat='''    if question:\n        q=question.lower(); s=status(); hb=heartbeat()\n        if any(x in q for x in ("candidate","stock","buy","sell")):\n            cs=pd.DataFrame(s.get("candidates",[])); answer=("No actionable candidates are recorded in the latest cycle. Rejections: "+str(s.get("rejections",{}))) if cs.empty else "Latest actionable candidates: "+", ".join(f"{r.symbol} ({r.decision})" for r in cs.itertuples())\n        elif "reject" in q or "why no" in q or "no trade" in q: answer=f"Latest rejection funnel: {s.get('rejections',{})}. See Rejected Signals for symbol-level reasons."\n        elif "p&l" in q or "profit" in q or "loss" in q: answer=f"Persisted realized P&L: ₹{float(s.get('realized_pnl',0) or 0):,.2f}; today's realized P&L: ₹{float(s.get('today_realized_pnl',0) or 0):,.2f}."\n        elif "heartbeat" in q or "running" in q or "24/7" in q: answer=f"Latest persisted heartbeat: {hb.get('state','NOT FOUND')} at {hb.get('updated_at','—')}. Source: {hb.get('source','—')}."\n        elif "cycle" in q or "refresh" in q: answer=f"Last cycle: {s.get('ended_at','—')}; duration {s.get('duration_seconds','—')}s; universe {s.get('stocks_observed',0)}; quotes {s.get('quotes',0)}; deep pool {s.get('deep_analysis_pool','—')}; errors {len(s.get('errors',[]))}."\n        else: answer="I can answer from persisted Bot data about the latest cycle, candidates, rejection reasons, paper orders/P&L, and heartbeat."\n        st.chat_message("user").write(question); st.chat_message("assistant").write(answer)\n'''
+          new_chat='''    if question:\n        q=question.lower(); s=status(); hb=heartbeat()\n        rejected=sql("SELECT ts,symbol,payload FROM events WHERE event_type='SIGNAL_REJECTED' ORDER BY id DESC LIMIT 500")\n        positions=sql("SELECT * FROM positions WHERE closed_at IS NULL ORDER BY opened_at DESC")\n        trades=sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') ORDER BY closed_at DESC")\n        if any(x in q for x in ("candidate","stock","buy","sell")):\n            cs=pd.DataFrame(s.get("candidates",[])); answer=("No actionable candidates are recorded in the latest cycle. Rejections: "+str(s.get("rejections",{}))) if cs.empty else "Latest actionable candidates: "+", ".join(f"{r.symbol} ({r.decision})" for r in cs.itertuples())\n        elif "why" in q or "reject" in q or "no trade" in q:\n            if rejected.empty: answer=f"No persisted symbol-level rejection records are available. Latest rejection funnel: {s.get('rejections',{})}."\n            else:\n                rows=[]\n                for _,r in rejected.head(20).iterrows():\n                    try: p=json.loads(r.payload)\n                    except Exception: p={}\n                    rows.append(f"{r.symbol}: {p.get('rejection_reason','NO_TRADE')} — {p.get('reason','')}")\n                answer="Latest persisted rejection reasons: " + "; ".join(rows)\n        elif "position" in q or "holding" in q:\n            answer="Open simulated positions: " + (", ".join(f"{r.symbol} {r.side} x{r.quantity} @ ₹{r.entry_price:.2f}" for r in positions.itertuples()) if not positions.empty else "none")\n        elif "p&l" in q or "profit" in q or "loss" in q:\n            net=float(pd.to_numeric(trades.get('net_pnl',pd.Series(dtype=float)),errors='coerce').fillna(0).sum()) if not trades.empty else 0.0\n            answer=f"Persisted realized P&L: ₹{net:,.2f}; today's realized P&L: ₹{float(s.get('today_realized_pnl',0) or 0):,.2f}."\n        elif "heartbeat" in q or "running" in q or "24/7" in q:\n            answer=f"Latest persisted heartbeat: {hb.get('state','NOT FOUND')} at {hb.get('updated_at','—')}. Source: {hb.get('source','—')}."\n        elif "cycle" in q or "refresh" in q:\n            answer=f"Last cycle: {s.get('ended_at','—')}; duration {s.get('duration_seconds','—')}s; universe {s.get('stocks_observed',0)}; quotes {s.get('quotes',0)}; deep pool {s.get('deep_analysis_pool','—')}; errors {len(s.get('errors',[]))}."\n        else: answer="I can answer from persisted Bot data about candidates, rejection reasons, positions, P&L, last cycle and heartbeat."\n        st.chat_message("user").write(question); st.chat_message("assistant").write(answer)\n'''
+          if old_chat in s: s=s.replace(old_chat,new_chat,1)
+
+          p.write_text(s,encoding='utf-8')
+          print('Dashboard fix applied:', len(s), 'bytes')
+          PY
+
+      - name: Validate Python syntax
+        run: python -m py_compile app.py
+
+      - name: Commit and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py
+          git rm .github/workflows/finish-dashboard-fix.yml
+          git commit -m 'fix: synchronize dashboard with persisted bot state'
+          git push
 
 ====================================================================
 FILE: .github/workflows/heartbeat-watchdog.yml
