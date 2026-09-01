@@ -53,6 +53,7 @@ jobs:
           print('IST:', now.isoformat(), 'market_open:', in_window, 'run_cycle:', run_cycle)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'run_cycle={str(run_cycle).lower()}\n')
+              f.write(f'market_open={str(in_window).lower()}\n')
           PY
 
       - name: Record scheduler heartbeat
@@ -69,7 +70,7 @@ jobs:
           market_open = os.getenv('RUN_CYCLE') == 'true'
           payload = {
             'state': 'RUNNING',
-            'message': 'Scheduled GitHub Actions monitor invocation completed',
+            'message': '24/7 scheduled monitor invocation is active',
             'updated_at': now.isoformat(),
             'source': 'github-actions-scheduler',
             'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
@@ -85,7 +86,7 @@ jobs:
           os.replace(tmp, path)
           PY
         env:
-          RUN_CYCLE: ${{ steps.market.outputs.run_cycle }}
+          RUN_CYCLE: ${{ steps.market.outputs.market_open }}
 
       - name: Setup Python
         if: steps.market.outputs.run_cycle == 'true'
@@ -119,8 +120,8 @@ jobs:
           DHAN_LIVE_TRADING_ENABLED: 'false'
         run: python scripts/run_daily_cycle.py
 
-      - name: Record real trading-worker heartbeat
-        if: steps.market.outputs.run_cycle == 'true' && success()
+      - name: Record 24/7 monitor heartbeat
+        if: always()
         shell: bash
         run: |
           python - <<'PY'
@@ -131,22 +132,41 @@ jobs:
           path = Path('data/worker_heartbeat.json')
           path.parent.mkdir(parents=True, exist_ok=True)
           now = datetime.now(ZoneInfo('Asia/Kolkata'))
+          market_open = os.getenv('MARKET_OPEN') == 'true'
+          cycle_ran = os.getenv('RUN_CYCLE') == 'true'
+          cycle_success = os.getenv('CYCLE_SUCCESS') == 'true'
+          if market_open and cycle_ran and cycle_success:
+              state = 'RUNNING'
+              message = 'Latest complete paper-trading market cycle succeeded'
+          elif market_open and cycle_ran:
+              state = 'DEGRADED'
+              message = 'Market-cycle invocation completed with errors; inspect Diagnostics'
+          else:
+              state = 'RUNNING'
+              message = '24/7 monitor heartbeat; NSE market closed, heartbeat-only interval'
           payload = {
-            'state': 'RUNNING',
-            'message': 'Latest complete paper-trading cycle succeeded',
+            'state': state,
+            'message': message,
             'updated_at': now.isoformat(),
-            'source': 'github-actions-paper-cycle',
+            'source': 'github-actions-24x7-monitor',
             'hostname': socket.gethostname(),
             'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
             'heartbeat_interval_seconds': 300,
             'is_persistent_worker': False,
-            'market_cycle': True,
+            'market_open': market_open,
+            'market_cycle': market_open and cycle_ran,
+            'cycle_success': cycle_success if cycle_ran else None,
+            'scheduler_based_24x7_monitor': True,
           }
           fd, tmp = tempfile.mkstemp(prefix='worker-', suffix='.tmp', dir=str(path.parent))
           with os.fdopen(fd, 'w', encoding='utf-8') as f:
               json.dump(payload, f, indent=2)
           os.replace(tmp, path)
           PY
+        env:
+          MARKET_OPEN: ${{ steps.market.outputs.market_open }}
+          RUN_CYCLE: ${{ steps.market.outputs.run_cycle }}
+          CYCLE_SUCCESS: ${{ steps.run_cycle.outcome == 'success' }}
 
       - name: Persist scheduler and paper state
         if: always()
