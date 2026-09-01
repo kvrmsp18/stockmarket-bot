@@ -1,9 +1,6 @@
 name: Complete Intraday Monitor
 
 on:
-  # The scheduler stays active all day. During NSE hours it runs the full
-  # paper-trading cycle every 5 minutes. Outside market hours it records
-  # scheduler health only and NEVER executes trading analysis/orders.
   schedule:
     - cron: '*/5 * * * 1-5'
     - cron: '0 * * * 0,6'
@@ -41,7 +38,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Apply dashboard runtime fix
-        if: github.event_name == 'push' && hashFiles('runtime-fix-trigger.txt') != ''
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
