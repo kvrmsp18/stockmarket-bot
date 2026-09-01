@@ -62,10 +62,9 @@ def _num(value: Any, default: float = 0.0) -> float:
 
 
 def _quote(q: dict[str,Any]) -> tuple[float,float,float]:
-    # Dhan quote payloads vary by endpoint/version; support flat and nested OHLC forms.
     price=_num(q.get("last_price", q.get("ltp", q.get("lastPrice"))))
     ohlc=q.get("ohlc") or q.get("OHLC") or {}
-    prev=_num(q.get("prev_close", q.get("previous_close", q.get("previousClose", ohlc.get("close"))))
+    prev=_num(q.get("prev_close", q.get("previous_close", q.get("previousClose", ohlc.get("close")))))
     vol=_num(q.get("volume", q.get("volumeTraded", q.get("volumeTradedToday"))))
     return price,prev,vol
 
@@ -165,7 +164,6 @@ class TradingEngine:
             ret=(price/prev-1) if prev>0 else 0
             ranked.append((abs(ret)*100 + min(vol/1_000_000,5),item,price,vol))
         ranked.sort(key=lambda z:z[0],reverse=True)
-        # Full universe is observed in bulk; expensive candle/fundamental/AI analysis is bounded to the best movers.
         shortlist=ranked[:min(80,len(ranked))]
         funds=self.broker.funds() if self.broker.health().connected else settings.reference_capital
         funds=float(funds or settings.reference_capital)
@@ -218,13 +216,11 @@ class TradingEngine:
                 order=self.broker.order(c["symbol"],c["decision"],c["quantity"],c["entry"],live=False)
             oid=str(order.get("order_id",uuid.uuid4().hex)); result["orders"].append(order)
             self.db.event("execution","INFO","ORDER_FILLED",order,c["symbol"],"LIVE" if self.live_requested else "PAPER")
-            pos_id=f"POS-{uuid.uuid4().hex[:16]}"
-            payload={**c,"signal_id":signal_id,"order_id":oid}
+            pos_id=f"POS-{uuid.uuid4().hex[:16]}"; payload={**c,"signal_id":signal_id,"order_id":oid}
             with self.db.connect() as con:
                 con.execute("INSERT INTO positions(position_id,symbol,mode,side,quantity,entry_price,current_price,stop,target,opened_at,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(pos_id,c["symbol"],"LIVE" if self.live_requested else "PAPER",c["decision"],c["quantity"],c["entry"],c["entry"],c["stop"],c["target"],datetime.now(timezone.utc).isoformat(),json.dumps(payload)))
 
     def _manage_positions(self,quotes:dict[str,dict[str,Any]],universe:list[dict[str,Any]])->None:
-        sid_to_symbol={str(x.get("security_id")):x["symbol"] for x in universe}
         with self.db.connect() as con:
             rows=con.execute("SELECT * FROM positions WHERE closed_at IS NULL").fetchall()
             for p in rows:
