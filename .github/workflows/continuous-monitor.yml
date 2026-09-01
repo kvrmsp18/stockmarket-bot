@@ -95,12 +95,6 @@ jobs:
           python-version: '3.12'
           cache: pip
 
-      - name: Install dependencies
-        if: steps.market.outputs.run_cycle == 'true'
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
       - name: Install Python dependencies
         if: steps.market.outputs.run_cycle == 'true'
         run: pip install -r requirements.txt --quiet
@@ -147,7 +141,7 @@ jobs:
               message = 'Latest complete paper-trading market cycle succeeded'
           elif market_open and cycle_ran:
               state = 'DEGRADED'
-              message = 'Market-cycle invocation completed with errors; inspect Diagnostics'
+              message = 'Market-cycle invocation failed; inspect Diagnostics'
           else:
               state = 'RUNNING'
               message = '24/7 monitor heartbeat; NSE market closed, heartbeat-only interval'
