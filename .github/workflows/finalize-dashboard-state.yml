@@ -1,0 +1,67 @@
+name: Finalize Dashboard State
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finalize-dashboard-state.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Rebase checkout onto current main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: Apply dashboard synchronization and chat fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('import os\nfrom datetime import date', 'import os\nimport tempfile\nimport time\nfrom urllib.request import urlopen\nfrom datetime import date', 1)
+          marker='def status() -> dict[str, Any]:\n'
+          sync='''def sync_remote_state(force: bool = False) -> bool:\n    """Keep Streamlit Cloud synchronized with the GitHub Actions state store."""\n    now=time.time()\n    last=float(st.session_state.get("_remote_state_sync",0.0))\n    if not force and now-last < 60: return True\n    base="https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"\n    targets={"trading.db":Path("data/trading.db"),"monitor_status.json":Path("data/monitor_status.json"),"scheduler_heartbeat.json":Path("data/scheduler_heartbeat.json"),"worker_heartbeat.json":Path("data/worker_heartbeat.json"),"watchdog_heartbeat.json":Path("data/watchdog_heartbeat.json")}\n    ok=False\n    for name,dest in targets.items():\n        try:\n            dest.parent.mkdir(parents=True,exist_ok=True)\n            with urlopen(base+name,timeout=8) as r: data=r.read()\n            fd,tmp=tempfile.mkstemp(prefix="remote-state-",dir=str(dest.parent))\n            with os.fdopen(fd,"wb") as f: f.write(data)\n            os.replace(tmp,dest); ok=True\n        except Exception:\n            try:\n                if 'tmp' in locals() and os.path.exists(tmp): os.unlink(tmp)\n            except Exception: pass\n    st.session_state["_remote_state_sync"]=now\n    return ok\n\n\n'''
+          if marker in s and 'def sync_remote_state' not in s: s=s.replace(marker,sync+marker,1)
+          s=s.replace('if st.sidebar.button("🔄 Refresh Search / Dashboard", use_container_width=True): st.rerun()', 'if st.sidebar.button("🔄 Refresh Search / Dashboard", use_container_width=True):\n        sync_remote_state(force=True)\n        st.cache_data.clear()\n        st.rerun()', 1)
+          s=s.replace('def main() -> None:\n    mode_switch();', 'def main() -> None:\n    sync_remote_state()\n    mode_switch();', 1)
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Validate
+        run: python -m py_compile app.py
+
+      - name: Commit fix safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py
+          git rm .github/workflows/finalize-dashboard-state.yml
+          git commit -m 'fix: synchronize Streamlit with persisted bot state'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main && git push origin HEAD:main && exit 0
+            git rebase --abort || true
+            sleep 2
+            git fetch origin main
+            git reset --soft origin/main
+            git add app.py
+            git rm -f .github/workflows/finalize-dashboard-state.yml || true
+            git commit -m 'fix: synchronize Streamlit with persisted bot state' || true
+          done
+          exit 1
