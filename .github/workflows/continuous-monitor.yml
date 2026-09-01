@@ -70,7 +70,7 @@ jobs:
           market_open = os.getenv('MARKET_OPEN') == 'true'
           payload = {
             'state': 'RUNNING',
-            'message': '24/7 scheduled monitor invocation is active',
+            'message': 'Scheduled monitor invocation is active',
             'updated_at': now.isoformat(),
             'source': 'github-actions-scheduler',
             'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
@@ -104,7 +104,6 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -116,6 +115,8 @@ jobs:
           print('Dhan client configured:', bool(settings.dhan_client_id))
           print('Dhan credential configured:', bool(settings.dhan_market_data_token))
           print('Dhan credential length:', len(settings.dhan_market_data_token))
+          if settings.dhan_market_data_credential_source != 'DHAN_API_KEY':
+              raise SystemExit('DHAN_API_KEY is required for this paper-validation phase')
           health = DhanBroker().health()
           print('Dhan authentication:', health.message)
           if not health.authenticated:
@@ -132,7 +133,6 @@ jobs:
         if: steps.market.outputs.run_cycle == 'true'
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
@@ -145,7 +145,7 @@ jobs:
           DHAN_LIVE_TRADING_ENABLED: 'false'
         run: python scripts/run_daily_cycle.py
 
-      - name: Record 24/7 monitor heartbeat
+      - name: Record monitor heartbeat
         if: always()
         shell: bash
         run: |
@@ -168,12 +168,12 @@ jobs:
               message = 'Market-cycle invocation failed; inspect Diagnostics'
           else:
               state = 'RUNNING'
-              message = '24/7 monitor heartbeat; NSE market closed, heartbeat-only interval'
+              message = 'Monitor heartbeat; NSE market closed or cycle not scheduled'
           payload = {
             'state': state,
             'message': message,
             'updated_at': now.isoformat(),
-            'source': 'github-actions-24x7-monitor',
+            'source': 'github-actions-monitor',
             'hostname': socket.gethostname(),
             'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
             'heartbeat_interval_seconds': 300,
@@ -181,7 +181,7 @@ jobs:
             'market_open': market_open,
             'market_cycle': market_open and cycle_ran,
             'cycle_success': cycle_success if cycle_ran else None,
-            'scheduler_based_24x7_monitor': True,
+            'scheduler_based_monitor': True,
           }
           fd, tmp = tempfile.mkstemp(prefix='worker-', suffix='.tmp', dir=str(path.parent))
           with os.fdopen(fd, 'w', encoding='utf-8') as f:
