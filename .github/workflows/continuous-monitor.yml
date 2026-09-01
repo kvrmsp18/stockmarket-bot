@@ -67,7 +67,7 @@ jobs:
           path = Path('data/scheduler_heartbeat.json')
           path.parent.mkdir(parents=True, exist_ok=True)
           now = datetime.now(ZoneInfo('Asia/Kolkata'))
-          market_open = os.getenv('RUN_CYCLE') == 'true'
+          market_open = os.getenv('MARKET_OPEN') == 'true'
           payload = {
             'state': 'RUNNING',
             'message': '24/7 scheduled monitor invocation is active',
@@ -86,7 +86,7 @@ jobs:
           os.replace(tmp, path)
           PY
         env:
-          RUN_CYCLE: ${{ steps.market.outputs.market_open }}
+          MARKET_OPEN: ${{ steps.market.outputs.market_open }}
 
       - name: Setup Python
         if: steps.market.outputs.run_cycle == 'true'
@@ -97,6 +97,12 @@ jobs:
 
       - name: Install dependencies
         if: steps.market.outputs.run_cycle == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        if: steps.market.outputs.run_cycle == 'true'
         run: pip install -r requirements.txt --quiet
 
       - name: Build complete NSE cash-equity universe
@@ -104,6 +110,7 @@ jobs:
         run: python scripts/load_universe.py
 
       - name: Run complete 5-minute paper cycle
+        id: run_cycle
         if: steps.market.outputs.run_cycle == 'true'
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
