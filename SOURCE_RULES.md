@@ -20,7 +20,9 @@ This file records the supplied specification as the source of truth for source-d
 | Final project override #7 | Every 5 minutes or faster; prevent overlapping cycles | Scheduler must not create duplicate work | GitHub Actions schedule + concurrency | `CYCLE_BUDGET_SECONDS=240` | ENGINEERING |
 | Final project override #13 | Raw audit must identify repository, branch, commit, generation time, inventory, sizes and source/exclusions | Current-state snapshot must be reproducible | Automated audit workflow | `.github/workflows/export-source-audit.yml` | ENGINEERING |
 | Final project override #15 | Validate source audit → syntax/import → tests → Actions → paper cycle → persisted state → dashboard → candidate/rejection verification | CI passing alone is insufficient | Release/verification sequence | N/A | ENGINEERING |
-| Final project override #5/#6 | Maximum consecutive losses and emergency stop are deterministic risk controls | Block new trades when configured safety limits are reached | `risk_gate()` | `MAX_CONSECUTIVE_LOSSES=3`, `BOT_EMERGENCY_STOP=false` | ENGINEERING/SAFETY |
+| Final project risk constraint | Start with a maximum of 2 trades per day | Daily trade-count limit is deterministic and cannot be bypassed by AI/dashboard | `risk_gate()` counts filled simulated entries for the current IST date | `MAX_TRADES_PER_DAY=2` | ENGINEERING/SAFETY |
+| Final project risk constraint | Maximum consecutive losses and emergency stop are deterministic risk controls | Block new trades when configured safety limits are reached | `risk_gate()` | `MAX_CONSECUTIVE_LOSSES=3`, `BOT_EMERGENCY_STOP=false` | ENGINEERING/SAFETY |
+| Final project heartbeat fix | Scheduler heartbeat is not proof of a live trading worker | Dashboard must distinguish scheduler liveness from successful market-cycle liveness | `worker_heartbeat.json` is written only after a successful market cycle; scheduler shown separately | 15-minute stale threshold in UI | ENGINEERING/SAFETY |
 
 ## Important separation
 
@@ -32,7 +34,7 @@ The current paper-testing account is virtual. `PAPER` position sizing must use `
 
 ## RISK SAFETY RULE
 
-`BOT_EMERGENCY_STOP=true` blocks new trades. `MAX_CONSECUTIVE_LOSSES` blocks new trades once the configured number of consecutive closed losing trades is reached. These are deterministic controls and cannot be overridden by AI or the dashboard.
+`BOT_EMERGENCY_STOP=true` blocks new trades. `MAX_CONSECUTIVE_LOSSES` blocks new trades once the configured number of consecutive closed losing trades is reached. `MAX_TRADES_PER_DAY=2` blocks additional simulated entries after two filled paper/live-test entries in the current IST date. These are deterministic controls and cannot be overridden by AI or the dashboard.
 
 ## SOURCE-UNCLEAR policy
 
