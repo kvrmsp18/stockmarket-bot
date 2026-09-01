@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 0febc9ba56dbea7450ef435aa1161e9d35907037
-Generated UTC: 2026-09-01T01:46:06.683431+00:00
+Commit SHA: 76f72cbf546b913a5595a7c36d0c7501271f40c6
+Generated UTC: 2026-09-01T01:48:56.151672+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -18,16 +18,14 @@ FILE INVENTORY
 .github/workflows/ci.yml	363 bytes
 .github/workflows/continuous-monitor.yml	6430 bytes
 .github/workflows/eod-close.yml	1709 bytes
-.github/workflows/eod-report.yml	800 bytes
 .github/workflows/export-source-audit.yml	5122 bytes
-.github/workflows/hardening-finish.yml	1312 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
 .streamlit/secrets.toml.example	431 bytes
 Dockerfile	229 bytes
 README.md	7428 bytes
 SOURCE_RULES.md	5304 bytes
-app.py	27001 bytes
+app.py	26912 bytes
 config/risk.yaml	244 bytes
 config/settings.yaml	303 bytes
 config/strategy.yaml	451 bytes
@@ -71,11 +69,10 @@ reports/readiness/.gitkeep	1 bytes
 reports/weekly/.gitkeep	1 bytes
 requirements.txt	114 bytes
 scripts/__init__.py	0 bytes
-scripts/apply_runtime_hardening.py	11301 bytes
 scripts/eod_report.py	3477 bytes
 scripts/load_universe.py	2067 bytes
 scripts/run_daily_cycle.py	3428 bytes
-scripts/run_eod_close.py	9327 bytes
+scripts/run_eod_close.py	3034 bytes
 scripts/worker.py	6600 bytes
 src/__init__.py	1376 bytes
 src/adapters.py	3391 bytes
@@ -470,44 +467,6 @@ jobs:
           fi
 
 ====================================================================
-FILE: .github/workflows/eod-report.yml
-SIZE: 800 bytes
-====================================================================
-name: EOD Report
-
-on:
-  schedule:
-    - cron: '45 10 * * 1-5'
-  workflow_dispatch: {}
-
-concurrency:
-  group: eod-report
-  cancel-in-progress: false
-
-permissions:
-  contents: write
-
-jobs:
-  eod:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - run: pip install -r requirements.txt --quiet
-      - run: PYTHONPATH=. python scripts/eod_report.py
-      - name: Commit EOD report
-        run: |
-          git config user.name 'stockmarket-bot'
-          git config user.email 'actions@users.noreply.github.com'
-          git add reports/ data/
-          if ! git diff --cached --quiet; then
-            git commit -m 'Generate EOD paper report [skip ci]'
-            git push
-          fi
-
-====================================================================
 FILE: .github/workflows/export-source-audit.yml
 SIZE: 5122 bytes
 ====================================================================
@@ -639,59 +598,6 @@ jobs:
             git commit -m 'chore: refresh complete raw source audit'
             git push
           fi
-
-====================================================================
-FILE: .github/workflows/hardening-finish.yml
-SIZE: 1312 bytes
-====================================================================
-name: Finish Runtime Hardening
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/hardening-finish.yml'
-  workflow_dispatch: {}
-
-permissions:
-  contents: write
-
-jobs:
-  harden:
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 2
-
-      - name: Apply migration
-        run: python scripts/apply_runtime_hardening.py
-
-      - name: Validate
-        run: |
-          python -m py_compile intraday_bot/runtime.py scripts/eod_report.py
-          PYTHONPATH=. pytest -q
-
-      - name: Commit migration
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add intraday_bot/runtime.py
-          git rm scripts/apply_runtime_hardening.py .github/workflows/hardening-finish.yml
-          git commit -m 'fix: enforce portfolio safety and cycle telemetry [skip ci]'
-          git fetch origin main
-          git rebase origin/main
-          for i in 1 2 3 4 5; do
-            git push origin HEAD:main && exit 0
-            git fetch origin main
-            git rebase origin/main
-            sleep 2
-          done
-          exit 1
 
 ====================================================================
 FILE: .gitignore
@@ -977,7 +883,7 @@ If a supplied screenshot/video/formula is unreadable, preserve the observed word
 
 ====================================================================
 FILE: app.py
-SIZE: 27001 bytes
+SIZE: 26912 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -1002,7 +908,7 @@ from intraday_bot.runtime import LIVE_TEST_MODE, PAPER_MODE, run_cycle
 
 st.set_page_config(page_title="NSE/BSE Intraday AI Trading Desk", layout="wide", initial_sidebar_state="expanded")
 DB = Database(); STATUS = Path("data/monitor_status.json"); HEARTBEAT = Path("data/worker_heartbeat.json")
-SCHEDULER_HEARTBEAT = Path("data/scheduler_heartbeat.json"); WATCHDOG_HEARTBEAT = Path("data/watchdog_heartbeat.json")
+SCHEDULER_HEARTBEAT = Path("data/scheduler_heartbeat.json")
 PAGES = ["Dashboard","New Chat","AI Prompt Guide","AI Baskets","Basket Detail","Stock Screener","Stocks","Stock Detail","360° Stock Analysis","Deep Research","Watchlist","Trend Scanner","Top Bullish","Top Bearish","Shift to Bullish","Shift to Bearish","Sector Analysis","Theme Analysis","Value Migration","Inflection Points","Value Chain","Profit Pool","SCRAP Analysis","Fundamental Analysis","Technical Analysis","Live Charts","Portfolio","Positions","Orders","Paper Trading","Live Trading","P&L","Trade Journal","Rejected Signals","Backtesting","Bot Performance","News","System Health","Diagnostics","Settings"]
 
 
@@ -1025,7 +931,6 @@ def sync_remote_state(force: bool = False) -> bool:
         "monitor_status.json": Path("data/monitor_status.json"),
         "scheduler_heartbeat.json": Path("data/scheduler_heartbeat.json"),
         "worker_heartbeat.json": Path("data/worker_heartbeat.json"),
-        "watchdog_heartbeat.json": Path("data/watchdog_heartbeat.json"),
     }
     ok = False
     for name, dest in targets.items():
@@ -1036,7 +941,6 @@ def sync_remote_state(force: bool = False) -> bool:
             request = Request(url, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
             with urlopen(request, timeout=15) as response:
                 data = response.read()
-            import tempfile
             fd, tmp = tempfile.mkstemp(prefix="remote-state-", dir=str(dest.parent))
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
@@ -1044,13 +948,10 @@ def sync_remote_state(force: bool = False) -> bool:
             ok = True
         except Exception:
             if tmp and os.path.exists(tmp):
-                try:
-                    os.unlink(tmp)
-                except Exception:
-                    pass
+                try: os.unlink(tmp)
+                except Exception: pass
     st.session_state["_remote_state_sync"] = now
     return ok
-
 
 
 def status() -> dict[str, Any]:
@@ -1059,21 +960,17 @@ def status() -> dict[str, Any]:
 
 
 def heartbeat() -> dict[str, Any]:
-    """Return only the real trading-worker heartbeat, never scheduler/watchdog state."""
-    if not HEARTBEAT.exists():
-        return {}
+    """Return only the real trading-cycle heartbeat, never scheduler state."""
+    if not HEARTBEAT.exists(): return {}
     try:
         payload = json.loads(HEARTBEAT.read_text(encoding="utf-8"))
         return payload if payload else {}
-    except Exception:
-        return {}
-
+    except Exception: return {}
 
 
 def sql(sql: str, params: tuple[Any, ...] = ()) -> pd.DataFrame:
     try:
-        with DB.connect() as con:
-            rows = con.execute(sql, params).fetchall()
+        with DB.connect() as con: rows = con.execute(sql, params).fetchall()
         return pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
     except Exception as exc:
         st.error(f"DATABASE ERROR: {exc}"); return pd.DataFrame()
@@ -1103,27 +1000,20 @@ def mode_switch() -> None:
 def controls() -> None:
     mode = selected_mode()
     st.sidebar.markdown("### Bot Controls")
-    if st.session_state.pop("_refresh_message", False):
-        st.sidebar.success("Dashboard state refreshed from GitHub.")
-    if st.session_state.pop("_refresh_failed", False):
-        st.sidebar.error("Dashboard refresh could not reach the persisted GitHub state.")
+    if st.session_state.pop("_refresh_message", False): st.sidebar.success("Dashboard state refreshed from GitHub.")
+    if st.session_state.pop("_refresh_failed", False): st.sidebar.error("Dashboard refresh could not reach the persisted GitHub state.")
     if st.sidebar.button("🔄 Refresh Search / Dashboard", key="refresh_dashboard_button", use_container_width=True):
-        ok = sync_remote_state(force=True)
-        st.cache_data.clear()
-        st.session_state["_refresh_message"] = bool(ok)
-        st.session_state["_refresh_failed"] = not bool(ok)
-        st.rerun()
+        ok = sync_remote_state(force=True); st.cache_data.clear(); st.session_state["_refresh_message"] = bool(ok); st.session_state["_refresh_failed"] = not bool(ok); st.rerun()
     label = "▶ Run Paper Analysis" if mode == PAPER_MODE else "▶ Run Live Test Analysis"
     if st.sidebar.button(label, type="primary", use_container_width=True):
         description = "paper-analysis" if mode == PAPER_MODE else "live-test analysis"
-        with st.spinner(f"Running complete {description} cycle..."):
-            result = run_cycle(mode)
+        with st.spinner(f"Running complete {description} cycle..."): result = run_cycle(mode)
         if result.get("errors"): st.sidebar.error(f"Cycle completed with {len(result['errors'])} error(s)")
         else: st.sidebar.success(f"Cycle complete · {len(result.get('candidates', []))} candidate(s)")
         st.rerun()
     hb = heartbeat()
-    if hb: st.sidebar.caption(f"Worker: {hb.get('state','UNKNOWN')} · {hb.get('updated_at','—')}")
-    else: st.sidebar.caption("Worker heartbeat: NOT FOUND")
+    if hb: st.sidebar.caption(f"Trading engine: {hb.get('state','UNKNOWN')} · {hb.get('updated_at','—')}")
+    else: st.sidebar.caption("Trading engine heartbeat: NOT FOUND")
 
 
 def header(title: str, desc: str = "") -> None:
@@ -1139,25 +1029,18 @@ def dashboard() -> None:
             from datetime import datetime, timezone
             stamp = str(hb.get("updated_at", ""))
             age_seconds = max(0.0, (datetime.now(timezone.utc) - datetime.fromisoformat(stamp).astimezone(timezone.utc)).total_seconds())
-        except Exception:
-            age_seconds = float("inf")
-        if hb.get("state") == "ERROR":
-            st.error(f"24/7 WORKER ERROR: {hb.get('message','Unknown error')} · last heartbeat {hb.get('updated_at','—')}")
-        elif age_seconds > 900:
-            st.error(f"24/7 WORKER: OFFLINE · last real worker heartbeat {hb.get('updated_at','—')} ({age_seconds/60:.1f} min ago)")
-        else:
-            st.success(f"24/7 WORKER: ONLINE · last real worker heartbeat {hb.get('updated_at','—')}")
-    else:
-        st.error("24/7 WORKER: OFFLINE · no real trading-worker heartbeat is available")
-    scheduler_path = Path("data/scheduler_heartbeat.json")
-    if scheduler_path.exists():
+        except Exception: age_seconds = float("inf")
+        if hb.get("state") == "ERROR": st.error(f"TRADING ENGINE ERROR: {hb.get('message','Unknown error')} · last heartbeat {hb.get('updated_at','—')}")
+        elif age_seconds > 900: st.error(f"TRADING ENGINE: OFFLINE · last real cycle heartbeat {hb.get('updated_at','—')} ({age_seconds/60:.1f} min ago)")
+        else: st.success(f"TRADING ENGINE: ONLINE · last successful market cycle {hb.get('updated_at','—')}")
+    else: st.error("TRADING ENGINE: OFFLINE · no real trading-cycle heartbeat is available")
+    if SCHEDULER_HEARTBEAT.exists():
         try:
-            sh = json.loads(scheduler_path.read_text(encoding="utf-8"))
+            sh = json.loads(SCHEDULER_HEARTBEAT.read_text(encoding="utf-8"))
             st.caption(f"Automation scheduler: {sh.get('state','UNKNOWN')} · last invocation {sh.get('updated_at','—')} · market window {'ACTIVE' if sh.get('market_open') else 'CLOSED'}")
-        except Exception:
-            pass
-    a,b,c,d,e,f = st.columns(6)
-    a.metric("Mode", s.get("mode", selected_mode())); b.metric("Universe", s.get("stocks_observed",0)); c.metric("Quotes", s.get("quotes",0)); d.metric("Candidates",len(s.get("candidates",[]))); e.metric("Open Positions",s.get("positions_open",0)); f.metric("Today's P&L",f"₹{s.get('today_realized_pnl',0):,.2f}")
+        except Exception: pass
+    a,b,c,d,e,f,g,h = st.columns(8)
+    a.metric("Mode", s.get("mode", selected_mode())); b.metric("Universe", s.get("stocks_observed",0)); c.metric("Quotes", s.get("quotes",0)); d.metric("Candidates",len(s.get("candidates",[]))); e.metric("Open Positions",s.get("positions_open",0)); f.metric("Today's P&L",f"₹{s.get('today_realized_pnl',0):,.2f}"); g.metric("Paper Buy Allocation",f"₹{s.get('suggested_buy_investment',0):,.2f}"); h.metric("Paper Capital",f"₹{settings.reference_capital:,.2f}")
     st.subheader("TODAY'S RESEARCH / ACTIONABLE TRADES")
     candidates = pd.DataFrame(s.get("candidates", []))
     if candidates.empty: st.warning("No actionable candidates were recorded in the latest cycle. Check Diagnostics and Rejected Signals for the rejection funnel.")
@@ -1176,8 +1059,7 @@ def dashboard() -> None:
 
 def framework_table(payload: dict[str, Any]) -> None:
     rows=[]
-    for name, x in payload.get("frameworks",{}).items():
-        rows.append({"Framework":name,"Score":x.get("score",0),"Confidence":x.get("confidence",0),"Positive factors":", ".join(x.get("positive_factors",[])) or "—","Negative factors":", ".join(x.get("negative_factors",[])) or "—","Missing data":", ".join(x.get("missing_data",[])) or "—","Method":x.get("method","")})
+    for name, x in payload.get("frameworks",{}).items(): rows.append({"Framework":name,"Score":x.get("score",0),"Confidence":x.get("confidence",0),"Positive factors":", ".join(x.get("positive_factors",[])) or "—","Negative factors":", ".join(x.get("negative_factors",[])) or "—","Missing data":", ".join(x.get("missing_data",[])) or "—","Method":x.get("method","")})
     if rows: st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
 
 
@@ -1190,22 +1072,18 @@ def framework_page() -> None:
     row=latest[latest["symbol"].astype(str).eq(symbol)].iloc[0]
     try: payload=json.loads(row["payload"])
     except Exception: payload={}
-    st.write(f"**Last research timestamp:** {row['ts']}")
-    st.write(f"**Overall framework conviction:** {payload.get('frameworks',{}).get('overall','DATA UNAVAILABLE')} · **Agreement:** {payload.get('frameworks',{}).get('agreement','DATA UNAVAILABLE')}")
-    framework_table(payload.get("frameworks",{}))
+    st.write(f"**Last research timestamp:** {row['ts']}"); st.write(f"**Overall framework conviction:** {payload.get('frameworks',{}).get('overall','DATA UNAVAILABLE')} · **Agreement:** {payload.get('frameworks',{}).get('agreement','DATA UNAVAILABLE')}"); framework_table(payload.get("frameworks",{}))
     st.subheader("Framework methodology")
     for name,spec in FRAMEWORK_RULES.items(): st.write(f"**{name}:** {spec['label']} · factors: {', '.join(spec['factors'])}")
 
 
 def research_page(title: str) -> None:
-    s = status(); candidates = pd.DataFrame(s.get("candidates", []))
-    research = sql("SELECT ts,symbol,event_type,payload FROM events WHERE component='research' ORDER BY id DESC LIMIT 500")
+    s = status(); candidates = pd.DataFrame(s.get("candidates", [])); research = sql("SELECT ts,symbol,event_type,payload FROM events WHERE component='research' ORDER BY id DESC LIMIT 500")
     header(title, f"{title} — persisted Bot results only.")
     if title == "Trend Scanner":
         if candidates.empty: st.warning("No actionable trend candidates in the latest cycle. Check Rejected Signals and Diagnostics.")
         else:
-            cols=[c for c in ["symbol","decision","price","trend_score","technical_score","volume_score","rr","stop","target","reason"] if c in candidates.columns]
-            st.dataframe(candidates.sort_values("trend_score",ascending=False)[cols],use_container_width=True,hide_index=True)
+            cols=[c for c in ["symbol","decision","price","trend_score","technical_score","volume_score","rr","stop","target","reason"] if c in candidates.columns]; st.dataframe(candidates.sort_values("trend_score",ascending=False)[cols],use_container_width=True,hide_index=True)
         return
     if title == "Stock Screener":
         if research.empty: st.warning("DATA UNAVAILABLE: no persisted research records yet."); return
@@ -1257,8 +1135,7 @@ def live_page() -> None:
     header("🟠 Live Trading — Test Mode","This is deliberately a broker-safe test mode. It uses the same analysis/risk/entry/position workflow but creates simulated fills. It does NOT call Dhan /v2/orders and cannot place a real order.")
     st.warning("LIVE TRADING IS NOT ACTUAL LIVE EXECUTION YET. Because no live-order API/funded account is configured, this page is for end-to-end testing only.")
     s=status(); live_orders=sql("SELECT * FROM orders WHERE order_id LIKE 'LIVETEST-%' ORDER BY ts DESC")
-    test_pnl=sql("SELECT COALESCE(SUM(net_pnl),0) AS x FROM trades WHERE mode='LIVE_TEST'"); pnl_value=float(test_pnl.get("x",pd.Series([0])).iloc[0]) if not test_pnl.empty else 0.0
-    open_tests=sql("SELECT * FROM positions WHERE mode='LIVE_TEST' AND closed_at IS NULL")
+    test_pnl=sql("SELECT COALESCE(SUM(net_pnl),0) AS x FROM trades WHERE mode='LIVE_TEST'"); pnl_value=float(test_pnl.get("x",pd.Series([0])).iloc[0]) if not test_pnl.empty else 0.0; open_tests=sql("SELECT * FROM positions WHERE mode='LIVE_TEST' AND closed_at IS NULL")
     a,b,c,d=st.columns(4); a.metric("Test Candidates",len(s.get("candidates",[])) if s.get("mode")==LIVE_TEST_MODE else 0); b.metric("Simulated Live-Test Orders",len(live_orders)); c.metric("Open Test Positions",len(open_tests)); d.metric("Test P&L",f"₹{pnl_value:,.2f}")
     if st.button("▶ Run Live Test Now",type="primary"):
         with st.spinner("Running live-style analysis with simulated execution..."): result=run_cycle(LIVE_TEST_MODE)
@@ -1285,14 +1162,13 @@ def pnl_page() -> None:
 
 
 def health_page() -> None:
-    header("🩺 System Health","Operational state of the always-on scheduler, market-data pipeline and latest cycle.")
-    s=status(); hb=heartbeat(); a,b,c,d,e=st.columns(5); a.metric("Worker",hb.get("state","NOT FOUND")); b.metric("Market","OPEN" if s.get("market_open") else "CLOSED"); c.metric("Quotes",s.get("quotes",0)); d.metric("Actionable",len(s.get("candidates",[]))); e.metric("Errors",len(s.get("errors",[]))); st.json({"worker":hb,"latest_cycle":s})
+    header("🩺 System Health","Operational state of the scheduled trading engine, market-data pipeline and latest cycle.")
+    s=status(); hb=heartbeat(); a,b,c,d,e=st.columns(5); a.metric("Trading Engine",hb.get("state","NOT FOUND")); b.metric("Market","OPEN" if s.get("market_open") else "CLOSED"); c.metric("Quotes",s.get("quotes",0)); d.metric("Actionable",len(s.get("candidates",[]))); e.metric("Errors",len(s.get("errors",[]))); st.json({"trading_engine":hb,"scheduler":json.loads(SCHEDULER_HEARTBEAT.read_text(encoding="utf-8")) if SCHEDULER_HEARTBEAT.exists() else {},"latest_cycle":s})
 
 
 def diagnostics_page() -> None:
     header("🔍 Diagnostics","Full persisted troubleshooting events; no fake success state is generated.")
-    s=status(); st.json(s); df=sql("SELECT * FROM events WHERE severity IN ('ERROR','WARN') OR event_type NOT IN ('CYCLE_START','CYCLE_END') ORDER BY id DESC LIMIT 500")
-    st.dataframe(df,use_container_width=True,hide_index=True) if not df.empty else st.info("No diagnostic events persisted.")
+    s=status(); st.json(s); df=sql("SELECT * FROM events WHERE severity IN ('ERROR','WARN') OR event_type NOT IN ('CYCLE_START','CYCLE_END') ORDER BY id DESC LIMIT 500"); st.dataframe(df,use_container_width=True,hide_index=True) if not df.empty else st.info("No diagnostic events persisted.")
 
 
 def rejected_page() -> None:
@@ -1308,7 +1184,7 @@ def rejected_page() -> None:
 
 
 def chat_page() -> None:
-    header("💬 Bot Chat","Ask about the latest cycle, candidates, rejected signals, paper positions, P&L, or heartbeat. Answers are based on persisted Bot data; no data is invented.")
+    header("💬 Bot Chat","Ask about the latest cycle, candidates, rejected signals, paper positions, P&L, or trading-engine heartbeat. Answers are based on persisted Bot data; no data is invented.")
     question=st.chat_input("Ask the Bot… e.g. Why no BUY? What was the last cycle? How many candidates?")
     if question:
         q=question.lower(); s=status(); hb=heartbeat()
@@ -1316,9 +1192,9 @@ def chat_page() -> None:
             cs=pd.DataFrame(s.get("candidates",[])); answer=("No actionable candidates are recorded in the latest cycle. Rejections: "+str(s.get("rejections",{}))) if cs.empty else "Latest actionable candidates: "+", ".join(f"{r.symbol} ({r.decision})" for r in cs.itertuples())
         elif "reject" in q or "why no" in q or "no trade" in q: answer=f"Latest rejection funnel: {s.get('rejections',{})}. See Rejected Signals for symbol-level reasons."
         elif "p&l" in q or "profit" in q or "loss" in q: answer=f"Persisted realized P&L: ₹{float(s.get('realized_pnl',0) or 0):,.2f}; today's realized P&L: ₹{float(s.get('today_realized_pnl',0) or 0):,.2f}."
-        elif "heartbeat" in q or "running" in q or "24/7" in q: answer=f"Latest persisted heartbeat: {hb.get('state','NOT FOUND')} at {hb.get('updated_at','—')}. Source: {hb.get('source','—')}."
+        elif "heartbeat" in q or "running" in q or "24/7" in q: answer=f"Latest persisted trading-engine heartbeat: {hb.get('state','NOT FOUND')} at {hb.get('updated_at','—')}. Source: {hb.get('source','—')}."
         elif "cycle" in q or "refresh" in q: answer=f"Last cycle: {s.get('ended_at','—')}; duration {s.get('duration_seconds','—')}s; universe {s.get('stocks_observed',0)}; quotes {s.get('quotes',0)}; deep pool {s.get('deep_analysis_pool','—')}; errors {len(s.get('errors',[]))}."
-        else: answer="I can answer from persisted Bot data about the latest cycle, candidates, rejection reasons, paper orders/P&L, and heartbeat."
+        else: answer="I can answer from persisted Bot data about the latest cycle, candidates, rejection reasons, paper orders/P&L, and trading-engine heartbeat."
         st.chat_message("user").write(question); st.chat_message("assistant").write(answer)
 
 
@@ -1348,13 +1224,12 @@ def generic_page(page: str) -> None:
     elif page=="Live Charts": live_charts()
     else:
         header(page,"This page is wired to persisted records; it will not fabricate data when the corresponding backend source is unavailable.")
-        df=sql("SELECT * FROM events ORDER BY id DESC LIMIT 200")
-        st.dataframe(df,use_container_width=True,hide_index=True) if not df.empty else st.info("DATA UNAVAILABLE: no persisted records.")
+        df=sql("SELECT * FROM events ORDER BY id DESC LIMIT 200"); st.dataframe(df,use_container_width=True,hide_index=True) if not df.empty else st.info("DATA UNAVAILABLE: no persisted records.")
 
 
 def main() -> None:
     sync_remote_state()
-    mode_switch(); controls(); page=st.sidebar.selectbox("Desk",PAGES,key="desk_page"); st.sidebar.markdown("---"); st.sidebar.caption("Always-on scheduler · 5-minute market-cycle interval · paper mode by default")
+    mode_switch(); controls(); page=st.sidebar.selectbox("Desk",PAGES,key="desk_page"); st.sidebar.markdown("---"); st.sidebar.caption("Scheduled trading engine · 5-minute market-cycle interval · paper mode by default")
     if page=="Dashboard": dashboard()
     elif page=="New Chat": chat_page()
     elif page=="AI Prompt Guide": header(page,"AI remains advisory only. Missing data must be reported, never invented.")
@@ -24295,9 +24170,9 @@ SIZE: 358 bytes
 {
   "state": "RUNNING",
   "message": "Scheduled GitHub Actions monitor invocation completed",
-  "updated_at": "2026-09-01T07:14:58.872743+05:30",
+  "updated_at": "2026-09-01T07:18:40.362088+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33459923612",
+  "workflow_run_id": "33460157157",
   "event": "push",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -42723,122 +42598,6 @@ SIZE: 0 bytes
 
 
 ====================================================================
-FILE: scripts/apply_runtime_hardening.py
-SIZE: 11301 bytes
-====================================================================
-from __future__ import annotations
-
-from pathlib import Path
-from textwrap import dedent
-
-
-RUNTIME = Path("intraday_bot/runtime.py")
-
-
-def main() -> None:
-    s = RUNTIME.read_text(encoding="utf-8")
-    s = s.replace("import json\nimport time", "import json\nimport os\nimport time", 1)
-    s = s.replace(
-        "from .database import Database\nfrom .paper import fill\n",
-        "from .database import Database\nfrom .paper import fill\nfrom .ai_advisor import advisory\nfrom .alerts import telegram\n",
-        1,
-    )
-
-    helpers = dedent('''
-
-    def _portfolio_snapshot(db: Database, capital: float, mode: str) -> dict[str, Any]:
-        """Return current portfolio risk state for the configured mode."""
-        with db.connect() as con:
-            rows = con.execute(
-                "SELECT symbol, quantity, entry_price FROM positions WHERE closed_at IS NULL AND mode=?",
-                (mode,),
-            ).fetchall()
-            today = datetime.now(IST).date().isoformat()
-            pnl_row = con.execute(
-                "SELECT COALESCE(SUM(net_pnl),0) FROM trades WHERE mode=? AND closed_at IS NOT NULL AND substr(closed_at,1,10)=?",
-                (mode, today),
-            ).fetchone()
-        exposure = sum(float(r["entry_price"] or 0) * int(r["quantity"] or 0) for r in rows)
-        daily_pnl = float(pnl_row[0] or 0) if pnl_row else 0.0
-        return {
-            "open_positions": len(rows),
-            "open_exposure": exposure,
-            "daily_loss": max(0.0, -daily_pnl),
-            "daily_pnl": daily_pnl,
-            "deployment_limit": capital * settings.max_capital_deployment,
-        }
-
-
-    def _sector_exposure(db: Database, capital: float, mode: str, target_sector: str, extra_notional: float = 0.0) -> float:
-        """Return target-sector exposure including a pending candidate as capital fraction."""
-        if capital <= 0:
-            return 1.0
-        by_symbol = {x["symbol"]: sector(x["symbol"]) for x in universe()}
-        with db.connect() as con:
-            rows = con.execute(
-                "SELECT symbol, quantity, entry_price FROM positions WHERE closed_at IS NULL AND mode=?",
-                (mode,),
-            ).fetchall()
-        total = sum(
-            float(r["entry_price"] or 0) * int(r["quantity"] or 0)
-            for r in rows
-            if by_symbol.get(r["symbol"], "OTHER") == target_sector
-        )
-        return (total + extra_notional) / capital
-
-
-    def _run_ai_advisory(candidates: list[dict[str, Any]]) -> None:
-        """Attach optional AI evidence to a tiny shortlist; AI cannot change deterministic gates."""
-        if not (os.getenv("OPENAI_API_KEY", "").strip() or os.getenv("ANTHROPIC_API_KEY", "").strip()):
-            return
-        try:
-            limit = max(0, min(3, int(os.getenv("AI_ADVISORY_MAX_CANDIDATES", "3"))))
-        except ValueError:
-            limit = 3
-        for candidate in candidates[:limit]:
-            context = {k: candidate.get(k) for k in (
-                "symbol", "decision", "price", "entry", "stop", "target", "rr",
-                "trend_score", "technical_score", "fundamental_score", "valuation_score",
-                "framework_agreement"
-            )}
-            result = advisory(
-                "Advisory only. Never override deterministic risk, funds, data, execution or reconciliation gates. "
-                "Return concise JSON with score 0-10, decision BUY/SELL/HOLD/NO TRADE, confidence 0-1, positives, negatives, risks.\n"
-                + __import__("json").dumps(context, default=str)
-            )
-            candidate["ai_advisory"] = result
-            candidate["ai_consensus"] = "ADVISORY_AVAILABLE" if result.get("status") == "AVAILABLE" else (
-                "ADVISORY_ERROR" if result.get("status") == "ERROR" else "NOT_CONFIGURED"
-            )
-            if result.get("text"):
-                candidate["ai_advisory_text"] = str(result["text"])[:4000]
-    ''')
-
-    marker = "\ndef run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:\n"
-    if "def _portfolio_snapshot" not in s:
-        if marker not in s:
-            raise SystemExit("run_cycle marker missing")
-        s = s.replace(marker, helpers + marker, 1)
-
-    old = '''    result["candidates"].sort(key=lambda x: x.get("overall_score", 0), reverse=True)\n    _manage_positions(db, qmap, uni)\n    buys = [x for x in result["candidates"] if x.get("decision") == "BUY"]\n    sells = [x for x in result["candidates"] if x.get("decision") == "SELL"]\n    result["suggested_buy_investment"] = round(sum(float(x.get("capital_required", 0) or 0) for x in buys), 2)\n    result["suggested_sell_value"] = round(sum(float(x.get("entry", 0) or 0) * int(x.get("quantity", 0) or 0) for x in sells), 2)\n    if result["market_open"]:\n        open_symbols = {r["symbol"] for r in db.recent("positions", 100) if not r.get("closed_at")}\n        for c in result["candidates"][:settings.max_positions]:\n            if c["symbol"] in open_symbols:\n                db.event("execution", "INFO", "DUPLICATE_ORDER", {"reason": "position already open"}, c["symbol"], mode)\n                continue\n            if c["decision"] == "BUY" and c["price"] > c["max_chase"]:\n                c["decision"] = "NO TRADE"\n                c["rejection_reason"] = "ENTRY_EXPIRED"\n                c["reason"] = "BUY entry exceeded max-chase price"\n                result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1\n                _record_rejection(db, cycle_id, c, mode)\n                continue\n            sid = "SIG-" + uuid.uuid4().hex[:16]\n            c["signal_id"] = sid\n            db.signal(sid, c["symbol"], c["decision"], c)\n            oid = fill(db, c, mode=mode)\n            result["orders"].append({"order_id": oid, "signal_id": sid, "status": "FILLED", "mode": mode, "symbol": c["symbol"], "side": c["decision"], "quantity": c["quantity"], "price": c["entry"]})\n    result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"\n'''
-    new = '''    result["candidates"].sort(key=lambda x: x.get("overall_score", 0), reverse=True)\n    _run_ai_advisory(result["candidates"])\n    _manage_positions(db, qmap, uni)\n    result["suggested_buy_investment"] = 0.0\n    result["suggested_sell_value"] = 0.0\n    if result["market_open"]:\n        capital = float(settings.reference_capital)\n        open_symbols = {r["symbol"] for r in db.recent("positions", 100) if not r.get("closed_at")}\n        for c in result["candidates"]:\n            if c["symbol"] in open_symbols:\n                c["rejection_reason"] = "DUPLICATE_ORDER"\n                c["reason"] = "Position already open"\n                result["rejections"]["DUPLICATE_ORDER"] = result["rejections"].get("DUPLICATE_ORDER", 0) + 1\n                _record_rejection(db, cycle_id, c, mode)\n                continue\n            if c["decision"] == "BUY" and c["price"] > c["max_chase"]:\n                c["decision"] = "NO TRADE"\n                c["rejection_reason"] = "ENTRY_EXPIRED"\n                c["reason"] = "BUY entry exceeded max-chase price"\n                result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1\n                _record_rejection(db, cycle_id, c, mode)\n                continue\n            state = _portfolio_snapshot(db, capital, mode)\n            notional = float(c.get("capital_required", 0) or 0)\n            if state["open_positions"] >= settings.max_positions:\n                why = "POSITION_LIMIT"\n            elif state["daily_loss"] >= settings.daily_loss_limit:\n                why = "DAILY_LOSS_LIMIT"\n            elif state["open_exposure"] + notional > state["deployment_limit"]:\n                why = "CAPITAL_DEPLOYMENT_LIMIT"\n            else:\n                sector_fraction = _sector_exposure(db, capital, mode, c.get("sector", "OTHER"), notional)\n                ok, risk_why = risk_gate(float(c.get("rr", 0) or 0), state["daily_loss"], state["open_positions"], sector_fraction)\n                why = None if ok else risk_why\n            if why:\n                c["rejection_reason"] = why\n                c["reason"] = f"Execution risk gate: {why}"\n                result["rejections"][why] = result["rejections"].get(why, 0) + 1\n                _record_rejection(db, cycle_id, c, mode)\n                continue\n            sid = "SIG-" + uuid.uuid4().hex[:16]\n            c["signal_id"] = sid\n            db.signal(sid, c["symbol"], c["decision"], c)\n            oid = fill(db, c, mode=mode)\n            open_symbols.add(c["symbol"])\n            result["orders"].append({"order_id": oid, "signal_id": sid, "status": "FILLED", "mode": mode, "symbol": c["symbol"], "side": c["decision"], "quantity": c["quantity"], "price": c["entry"]})\n            if c["decision"] == "BUY":\n                result["suggested_buy_investment"] += notional\n            else:\n                result["suggested_sell_value"] += float(c.get("entry", 0) or 0) * int(c.get("quantity", 0) or 0)\n    result["suggested_buy_investment"] = round(result["suggested_buy_investment"], 2)\n    result["suggested_sell_value"] = round(result["suggested_sell_value"], 2)\n    result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"\n'''
-    if old not in s:
-        raise SystemExit("runtime order block not found")
-    s = s.replace(old, new, 1)
-
-    anchor = '''    result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"\n    return finish(result, start, db)\n'''
-    replacement = '''    result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"\n    try:\n        broker_funds = float(funds)\n    except Exception:\n        broker_funds = float(settings.reference_capital)\n    if settings.telegram_token and settings.telegram_chat_id:\n        lines = [\n            "📊 STOCKMARKET BOT — PAPER CYCLE",\n            f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M:%S')} IST",\n            f"Universe: {result['stocks_observed']} | Quotes: {result['quotes']} | Deep analysis: {result['deep_analysis_pool']}",\n            f"Candidates: {len(result['candidates'])} | Orders: {len(result['orders'])}",\n            f"Dhan available funds: ₹{broker_funds:,.2f}",\n            f"Paper reference capital: ₹{settings.reference_capital:,.2f}",\n            f"Paper buy investment: ₹{result['suggested_buy_investment']:,.2f}",\n            f"Open positions: {result.get('positions_open', 0)}",\n        ]\n        if result["candidates"]:\n            lines.append("Top candidates: " + ", ".join(f"{c['symbol']} {c['decision']}" for c in result["candidates"][:5]))\n        if result["rejections"]:\n            top = sorted(result["rejections"].items(), key=lambda x: x[1], reverse=True)[:5]\n            lines.append("Rejections: " + ", ".join(f"{k}={v}" for k, v in top))\n        telegram("\\n".join(lines)[:3900])\n    return finish(result, start, db)\n'''
-    if anchor not in s:
-        raise SystemExit("runtime notification anchor missing")
-    s = s.replace(anchor, replacement, 1)
-    RUNTIME.write_text(s, encoding="utf-8")
-    print("Runtime hardening applied")
-
-
-if __name__ == "__main__":
-    main()
-
-====================================================================
 FILE: scripts/eod_report.py
 SIZE: 3477 bytes
 ====================================================================
@@ -43078,253 +42837,89 @@ if __name__ == "__main__":
 
 ====================================================================
 FILE: scripts/run_eod_close.py
-SIZE: 9327 bytes
+SIZE: 3034 bytes
 ====================================================================
-"""Close open paper signals and publish a complete daily EOD report.
+"""Close all open simulated positions at the configured EOD square-off time.
 
-Paper-trading only: no broker order is ever placed. The EOD report combines
-paper-trade outcomes with the latest completed monitor health snapshot so the
-Telegram report still explains what the bot scanned, what qualified, and what
-happened to today's paper signals.
+This script uses the same intraday_bot ledger as the monitor. It never submits a
+real broker order. Dhan is used only for the latest observable market prices so
+paper positions can be reconciled before the daily report is produced.
 """
 
 from __future__ import annotations
 
-import json
 import os
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
-from src.paper_trading_validation import (
-    PaperOutcome,
-    PaperSignal,
-    close_at_eod,
-    render_validation_report,
-    summarize_outcomes,
-    week_bounds,
-)
-from src.production_market_data import ProductionMarketDataProvider
-from src.telegram_notify import TelegramNotifier
-from src.validation_store import ValidationStore
-
-DEFAULT_JOURNAL_PATH = "data/paper_trading_journal.jsonl"
-DEFAULT_STATUS_PATH = "data/monitor_status.json"
-DEFAULT_CRITERIA_PATH = "config/validation_criteria.json"
-IST = ZoneInfo("Asia/Kolkata")
-UTC = ZoneInfo("UTC")
-
-
-def _parse_datetime(value: object) -> datetime:
-    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
-
-
-def _load_signals(store: ValidationStore) -> tuple[list[PaperSignal], set[str]]:
-    signals: list[PaperSignal] = []
-    for record in store.signals():
-        payload = dict(record["payload"])
-        payload["generated_at"] = _parse_datetime(payload["generated_at"])
-        signals.append(PaperSignal(**payload))
-    resolved_ids = {record["payload"]["signal_id"] for record in store.outcomes()}
-    return signals, resolved_ids
-
-
-def _payload_date(payload: dict) -> date:
-    return _parse_datetime(payload["generated_at"]).astimezone(IST).date()
-
-
-def _outcome_from_payload(payload: dict) -> PaperOutcome:
-    value = dict(payload)
-    value["generated_at"] = _parse_datetime(value["generated_at"])
-    if value.get("exit_at"):
-        value["exit_at"] = _parse_datetime(value["exit_at"])
-    return PaperOutcome(**value)
-
-
-def _validation_start() -> date | None:
-    path = Path(os.getenv("VALIDATION_CRITERIA_PATH", DEFAULT_CRITERIA_PATH))
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        return date.fromisoformat(str(payload["validation_period_start"]))
-    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
-        return None
-
-
-def _append_summary_once(store: ValidationStore, summary, report_type: str) -> bool:
-    for record in store.summaries(report_type):
-        payload = record["payload"]
-        if (
-            payload.get("period_start") == summary.period_start.isoformat()
-            and payload.get("period_end") == summary.period_end.isoformat()
-        ):
-            return False
-    store.append_summary(summary, report_type=report_type)
-    return True
-
-
-def _write_report(summary, report_type: str) -> Path:
-    if report_type == "daily":
-        path = Path("reports/daily") / f"{summary.period_start.isoformat()}.md"
-        title = "Paper-Trading Daily Report"
-    else:
-        iso = summary.period_start.isocalendar()
-        path = Path("reports/weekly") / f"{iso.year}-W{iso.week:02d}.md"
-        title = "Paper-Trading Weekly Report"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_validation_report(summary, title=title), encoding="utf-8")
-    return path
-
-
-def _load_latest_monitor_status(today: date) -> dict:
-    """Read the latest completed monitor snapshot if it belongs to today."""
-    path = Path(os.getenv("MONITOR_STATUS_PATH", DEFAULT_STATUS_PATH))
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    try:
-        updated = _parse_datetime(payload.get("updated_at", "" )).astimezone(IST).date()
-    except (TypeError, ValueError):
-        return {}
-    return payload if updated == today and payload.get("status") == "OK" else {}
+from intraday_bot.alerts import telegram
+from intraday_bot.brokers import DhanBroker
+from intraday_bot.config import IST, settings
+from intraday_bot.database import Database
+from intraday_bot.runtime import _manage_positions, universe
 
 
 def main() -> int:
-    today = datetime.now(IST).date()
-    store = ValidationStore(os.getenv("VALIDATION_JOURNAL_PATH", DEFAULT_JOURNAL_PATH))
-    notifier = TelegramNotifier()
-    provider = ProductionMarketDataProvider(timeout=12.0)
+    db = Database()
+    uni = universe()
+    if not uni:
+        raise RuntimeError("DATA_UNAVAILABLE: NSE universe is empty")
 
-    signals, resolved_ids = _load_signals(store)
-    open_signals = [signal for signal in signals if signal.signal_id not in resolved_ids]
-    closed = 0
-    no_data = 0
-    errors: list[str] = []
+    with db.connect() as con:
+        open_positions = int(
+            con.execute(
+                "SELECT COUNT(*) FROM positions WHERE closed_at IS NULL AND mode IN ('PAPER','LIVE_TEST')"
+            ).fetchone()[0]
+        )
 
-    for signal in open_signals:
+    if open_positions:
+        broker = DhanBroker()
         try:
-            bars = provider.history(signal.symbol, period="5d", interval="15m")
-            outcome = close_at_eod(signal, bars)
-            if outcome.outcome in {"TARGET", "STOP", "EOD_CLOSE"}:
-                store.append_outcome(outcome)
-                closed += 1
-            else:
-                no_data += 1
-                print(
-                    f"{signal.symbol}: outcome remains {outcome.outcome}; "
-                    "not recorded as terminal."
-                )
+            qmap = broker.bulk_quotes(uni)
         except Exception as exc:
-            errors.append(f"{signal.symbol}: {exc}")
+            db.event("eod", "ERROR", "EOD_MARKET_DATA_ERROR", {"error": str(exc)}, mode="PAPER")
+            raise RuntimeError(f"EOD market data unavailable; open positions were NOT fabricated closed: {exc}") from exc
+        _manage_positions(db, qmap, uni)
 
-    outcomes = [
-        _outcome_from_payload(record["payload"])
-        for record in store.outcomes()
-    ]
-    today_outcomes = [
-        item for item in outcomes if _payload_date(item.__dict__) == today
-    ]
-    daily = summarize_outcomes(today_outcomes, period_start=today, period_end=today)
-    daily_added = _append_summary_once(store, daily, "daily")
-    daily_report_path = _write_report(daily, "daily")
-
-    monitor = _load_latest_monitor_status(today)
-    scan = monitor.get("scan", {}) if isinstance(monitor.get("scan"), dict) else {}
-    rejection_breakdown = monitor.get("rejection_breakdown", {})
-    data_sources = monitor.get("data_sources", {})
-
-    weekly_added = False
-    if today.weekday() == 4:
-        week_start, week_end = week_bounds(today)
-        validation_start = _validation_start()
-        summary_start = max(week_start, validation_start) if validation_start else week_start
-        weekly_outcomes = [
-            item
-            for item in outcomes
-            if summary_start <= _payload_date(item.__dict__) <= week_end
-        ]
-        weekly = summarize_outcomes(
-            weekly_outcomes,
-            period_start=summary_start,
-            period_end=week_end,
+    now = datetime.now(IST)
+    with db.connect() as con:
+        remaining = int(
+            con.execute(
+                "SELECT COUNT(*) FROM positions WHERE closed_at IS NULL AND mode IN ('PAPER','LIVE_TEST')"
+            ).fetchone()[0]
         )
-        weekly_added = _append_summary_once(store, weekly, "weekly")
-        _write_report(weekly, "weekly")
+        rows = con.execute(
+            "SELECT symbol,side,quantity,entry_price,current_price,stop,target,closed_at,pnl "
+            "FROM positions WHERE substr(opened_at,1,10)=? ORDER BY opened_at DESC",
+            (now.date().isoformat(),),
+        ).fetchall()
 
-    scanned = scan.get("scanned", 0)
-    requested = scan.get("requested", 0)
-    actionable = scan.get("actionable", 0)
-    buy = scan.get("buy", 0)
-    sell = scan.get("sell", 0)
-    candidates = scan.get("candidate_count", 0)
-
-    message_lines = [
-        "📊 Stockmarket Bot — EOD paper-trading analysis",
-        f"Date: {today.strftime('%d-%b-%Y')} IST",
-        "Mode: PAPER-TRADING (no real orders)",
-        "",
-        "🔎 Today's market scan",
-        f"Universe requested: {requested}",
-        f"Stocks scanned: {scanned}",
-        f"Technical candidates: {candidates}",
-        f"Actionable: {actionable} | BUY: {buy} | SELL: {sell}",
-        "",
-        "📈 Today's paper-trading outcome",
-        f"Signals closed this EOD run: {closed}",
-        f"Daily signals: {daily.signals} | Target: {daily.target_count} | "
-        f"Stop: {daily.stop_count} | EOD close: {daily.eod_close_count}",
-        f"Daily net P&L after estimated charges: ₹{daily.net_pnl:,.2f}",
-        f"Daily profit factor: {'N/A' if daily.profit_factor is None else f'{daily.profit_factor:.2f}'}",
-        f"Daily max drawdown: ₹{daily.max_drawdown:,.2f}",
-        f"Daily report: {'updated' if daily_added else 'already recorded'}",
-    ]
-
-    if rejection_breakdown:
-        top = sorted(
-            ((str(name), int(count)) for name, count in rejection_breakdown.items()),
-            key=lambda item: item[1],
-            reverse=True,
-        )[:5]
-        message_lines.append("")
-        message_lines.append("Filters: " + ", ".join(f"{name}={count}" for name, count in top))
-
-    if data_sources:
-        message_lines.append(
-            "Data sources: "
-            + ", ".join(f"{name}={count}" for name, count in data_sources.items())
+    if remaining:
+        db.event(
+            "eod",
+            "WARN",
+            "EOD_POSITIONS_REMAIN_OPEN",
+            {"remaining_open_positions": remaining, "reason": "No valid current Dhan price was available for one or more paper positions"},
+            mode="PAPER",
         )
 
-    if not monitor:
-        message_lines.append("")
-        message_lines.append(
-            "⚠️ No completed monitor snapshot was available for today. "
-            "The EOD report was still generated from the paper-trading journal."
-        )
+    report_lines = [
+        "📌 STOCKMARKET BOT — EOD CLOSE",
+        f"Date: {now.strftime('%d-%b-%Y %H:%M:%S')} IST",
+        f"Configured square-off: {settings.square_off_hour:02d}:{settings.square_off_minute:02d} IST",
+        f"Positions before close: {open_positions}",
+        f"Positions still open: {remaining}",
+        "Mode: PAPER / simulated only",
+    ]
+    message = "\n".join(report_lines)
+    print(message)
+    if settings.telegram_token and settings.telegram_chat_id:
+        telegram(message[:3900])
 
-    if no_data:
-        message_lines.append(f"⚠️ Signals without terminal data: {no_data}")
-    if errors:
-        message_lines.append(f"⚠️ Data errors: {len(errors)}")
-        message_lines.extend(errors[:3])
-
-    message_lines.append(f"Daily report file: {daily_report_path}")
-    if today.weekday() == 4:
-        message_lines.append(f"Weekly report: {'updated' if weekly_added else 'already recorded'}")
-
-    report_message = "\n".join(message_lines)
-    print(report_message)
-    try:
-        if notifier.send(report_message[:3900]):
-            print("Telegram EOD report delivered.")
-        else:
-            print("Telegram is not configured; EOD report remains in GitHub reports.")
-    except Exception as exc:
-        print(f"Telegram EOD report failed: {exc}")
-
-    return 0
+    # The dedicated daily report reads the same authoritative ledger and sends
+    # the complete daily P&L separately.
+    from scripts.eod_report import main as report_main
+    return report_main()
 
 
 if __name__ == "__main__":
