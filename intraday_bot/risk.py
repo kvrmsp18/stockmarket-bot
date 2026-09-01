@@ -48,6 +48,8 @@ def position_size(
     risk_qty = floor(max_risk / risk_per_share)
 
     if settings.mode == "PAPER":
+        # Paper capital is virtual and must not be reduced by the real Dhan
+        # account balance. Broker cash is deliberately ignored here.
         funds_base = capital
     elif available_funds is None:
         funds_base = capital
@@ -83,14 +85,18 @@ def risk_reward(entry: float, stop: float, target: float) -> float:
 
 
 def _consecutive_losses_from_db() -> int:
-    """Return consecutive losing closed trades for the active paper/live-test mode."""
+    """Return consecutive losing closed trades for the configured mode."""
     try:
         from .database import Database
-        mode = settings.mode
-        rows = Database().connect().execute(
-            "SELECT net_pnl FROM trades WHERE mode=? ORDER BY closed_at DESC LIMIT ?",
-            (mode, max(1, settings.max_consecutive_losses)),
-        ).fetchall()
+
+        db = Database()
+        with db.connect() as con:
+            rows = con.execute(
+                "SELECT net_pnl FROM trades WHERE mode=? AND closed_at IS NOT NULL "
+                "ORDER BY closed_at DESC LIMIT ?",
+                (settings.mode, max(1, settings.max_consecutive_losses)),
+            ).fetchall()
+
         count = 0
         for row in rows:
             try:
@@ -115,12 +121,7 @@ def risk_gate(
     emergency_stop: bool | None = None,
     consecutive_losses: int | None = None,
 ) -> tuple[bool, str | None]:
-    """Deterministic risk gate shared by paper and live-test execution.
-
-    The emergency stop is fail-closed: an explicit caller value or the
-    configured BOT_EMERGENCY_STOP flag blocks new trades. Consecutive losses
-    are read from the journal when the caller does not supply a count.
-    """
+    """Deterministic risk gate shared by paper and live-test execution."""
     stop = settings.emergency_stop if emergency_stop is None else emergency_stop
     if stop:
         return False, "EMERGENCY_STOP"
