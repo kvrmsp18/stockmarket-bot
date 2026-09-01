@@ -15,10 +15,24 @@ This file records the supplied specification as the source of truth for source-d
 | Supplied specification §78 | EVERY 5 MINUTES OR FASTER; continuous service/WebSocket/event-driven preferred | Intraday monitoring minimum | GitHub Actions 5-minute fallback + independent service architecture | Interval configurable | ENGINEERING REQUIREMENT |
 | Supplied specification §91 | PAPER TRADING ON; LIVE TRADING OFF; MINIMUM R:R 1:3 | Safety defaults | Runtime and UI | Configurable except live must remain explicitly activated | SOURCE/SAFETY |
 | Supplied specification §127 | Never prioritize AI opinion/profit opportunity/trade count over risk, funds, data, broker, execution and reconciliation integrity | Absolute safety principle | Risk and execution gates | Not bypassable | ENGINEERING/SAFETY |
+| Final project override #5 | PAPER mode uses `BOT_RESEARCH_REFERENCE_CAPITAL`; current testing baseline ₹1,000 and must not depend on real Dhan cash | Isolate virtual paper funds from broker balance | `position_size()` uses supplied paper capital as its funds ceiling | `BOT_RESEARCH_REFERENCE_CAPITAL=1000` | ENGINEERING/SAFETY |
+| Final project override #6 | LIVE remains disabled during paper validation | No real order submission during paper validation | `DHAN_LIVE_TRADING_ENABLED=false` plus mode gate | Explicit live activation required | ENGINEERING/SAFETY |
+| Final project override #7 | Every 5 minutes or faster; prevent overlapping cycles | Scheduler must not create duplicate work | GitHub Actions schedule + concurrency | `CYCLE_BUDGET_SECONDS=240` | ENGINEERING |
+| Final project override #13 | Raw audit must identify repository, branch, commit, generation time, inventory, sizes and source/exclusions | Current-state snapshot must be reproducible | Automated audit workflow | `.github/workflows/export-source-audit.yml` | ENGINEERING |
+| Final project override #15 | Validate source audit → syntax/import → tests → Actions → paper cycle → persisted state → dashboard → candidate/rejection verification | CI passing alone is insufficient | Release/verification sequence | N/A | ENGINEERING |
+| Final project override #5/#6 | Maximum consecutive losses and emergency stop are deterministic risk controls | Block new trades when configured safety limits are reached | `risk_gate()` | `MAX_CONSECUTIVE_LOSSES=3`, `BOT_EMERGENCY_STOP=false` | ENGINEERING/SAFETY |
 
 ## Important separation
 
 Long-term concepts such as Compounders, 100 Baggers, Buffett, Peter Lynch, ROCE, EPS × P/E, Predictability and Value Migration are **research/quality/conviction/context inputs**, not automatic intraday BUY triggers. Intraday execution remains dependent on current intraday conditions.
+
+## PAPER CAPITAL RULE
+
+The current paper-testing account is virtual. `PAPER` position sizing must use `BOT_RESEARCH_REFERENCE_CAPITAL` and must not be reduced by the real Dhan account balance. This rule does not authorize real trading.
+
+## RISK SAFETY RULE
+
+`BOT_EMERGENCY_STOP=true` blocks new trades. `MAX_CONSECUTIVE_LOSSES` blocks new trades once the configured number of consecutive closed losing trades is reached. These are deterministic controls and cannot be overridden by AI or the dashboard.
 
 ## SOURCE-UNCLEAR policy
 
