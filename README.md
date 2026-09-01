@@ -1,6 +1,6 @@
 # NSE/BSE Intraday AI Trading Desk — New Build
 
-This repository has been replaced with a new production-oriented architecture based on the supplied 128-section specification. The supplied specification is treated as the source of requirements; source-derived rules are traced in `SOURCE_RULES.md`.
+This repository implements the production-oriented paper-trading architecture based on the supplied 128-section specification. Source-derived rules are traced in `SOURCE_RULES.md`.
 
 ## Non-negotiable safety defaults
 
@@ -12,6 +12,7 @@ This repository has been replaced with a new production-oriented architecture ba
 - SCRAP preserves **SECTORS >15%, COMPANIES >25%, RED FLAGS → REJECTION**.
 - Missing data is `DATA_UNAVAILABLE`, not silently negative.
 - AI is advisory only and cannot override deterministic risk, funds, execution or reconciliation gates.
+- Paper sizing uses the configured virtual reference capital (currently **₹1,000**) and never depends on the real Dhan cash balance.
 
 ## Architecture
 
@@ -20,13 +21,13 @@ Complete NSE cash-equity universe
         ↓
 Bulk market observation (fast)
         ↓
-Bounded high-information shortlist
+Bounded high-information rotating shortlist
         ↓
-5-minute candles / technicals / MTF
+5-minute candles / technicals
         ↓
 SCRAP + fundamentals + valuation + conviction
         ↓
-AI advisory consensus (optional)
+Optional AI advisory on top shortlist
         ↓
 Transparent ranking
         ↓
@@ -34,16 +35,16 @@ Entry / Stop / Target / R:R
         ↓
 Quantity: risk ∧ funds ∧ position ∧ liquidity ∧ broker
         ↓
-Risk gate
+Portfolio deployment / daily-loss / sector / duplicate gates
         ↓
 Paper execution / guarded Live adapter
         ↓
-Position monitoring / exits
+Position monitoring / STOP / TARGET / EOD square-off
         ↓
-P&L / journal / reconciliation / reports
+P&L / journal / reconciliation / reports / Telegram
 ```
 
-The complete universe is observed using a bulk quote stage. Expensive per-symbol candle/research work is bounded to the highest-information shortlist so a 5-minute scheduled cycle does not turn into the 8-minute timeout failure seen in the previous design.
+The complete universe is observed using a bulk quote stage. Expensive per-symbol candle/research work is bounded to the highest-information rotating shortlist so a scheduled cycle remains within the workflow budget.
 
 ## Repository layout
 
@@ -51,15 +52,21 @@ The complete universe is observed using a bulk quote stage. Expensive per-symbol
 - `intraday_bot/database.py` — SQLite persistence and audit events
 - `intraday_bot/brokers.py` — BrokerInterface, DhanBroker, PaperTradingBroker
 - `intraday_bot/technical.py` — indicators, Trend Score, intraday setup
-- `intraday_bot/research.py` — SCRAP, fundamentals, valuation, conviction frameworks
-- `intraday_bot/runtime_v2.py` — bounded end-to-end monitor cycle
+- `intraday_bot/research.py` — SCRAP, fundamentals, valuation, Buffett/Jhunjhunwala/Lynch/100 Baggers/CANSLIM conviction evidence
+- `intraday_bot/ai_advisor.py` — optional OpenAI/Anthropic advisory layer
+- `intraday_bot/alerts.py` — Telegram delivery
+- `intraday_bot/runtime.py` — bounded end-to-end monitor cycle and execution gates
 - `scripts/load_universe.py` — complete NSE cash-equity universe loader
 - `scripts/run_daily_cycle.py` — scheduled cycle entry point
+- `scripts/run_eod_close.py` — EOD paper-position close and validation report
+- `scripts/eod_report.py` — authoritative daily paper P&L report from the intraday ledger
+- `scripts/worker.py` — independent always-on worker for a Linux/VPS deployment
 - `app.py` — Streamlit trading desk UI and live chart interface
-- `src/` — legacy/compatibility layer retained intentionally; `scripts/run_daily_cycle.py` and the validation tests still import validation/paper-trading utilities from it. It is not to be physically reorganized without first migrating and updating all live imports/tests/documentation together.
-- `tests/test_platform.py` — automated core tests
+- `src/` — legacy/compatibility validation layer retained because the current validation tests still import it
+- `tests/` — automated platform, validation, framework, worker and runtime-safety tests
 - `SOURCE_RULES.md` — source/engineering rule traceability
-- `.github/workflows/continuous-monitor.yml` — 5-minute fallback monitor
+- `.github/workflows/continuous-monitor.yml` — five-minute fallback monitor
+- `.github/workflows/eod-close.yml` — scheduled EOD paper close
 
 ## Complete NSE universe
 
@@ -82,7 +89,7 @@ For a paper run using real Dhan market data, configure `DHAN_CLIENT_ID`, `DHAN_A
 
 ## GitHub Actions
 
-The monitor is scheduled every 5 minutes during NSE hours, with concurrency protection so overlapping cycles cannot place duplicate work. Each job has a five-minute timeout and the scanner is explicitly bounded.
+The fallback monitor is scheduled every 5 minutes on NSE weekdays, with concurrency protection so overlapping cycles cannot create duplicate work. The job has an eight-minute workflow timeout while the internal cycle budget is four minutes.
 
 GitHub Actions secrets required when using Dhan data:
 
@@ -96,9 +103,17 @@ GitHub Actions secrets required when using Dhan data:
 
 `DHAN_LIVE_TRADING_ENABLED` is hard-set to `false` in the monitor workflow.
 
+## Telegram
+
+During a market cycle, the bot can report the Dhan available balance, virtual paper capital, universe/quote counts, candidates, simulated orders and rejection funnel. The EOD job reports daily trades, wins/losses, gross P&L, estimated charges, net P&L, starting/ending paper reference capital and open positions.
+
 ## UI
 
-The Streamlit desk contains dashboard, screener, stock/360° view, live charts, P&L/journal/performance, diagnostics, health and settings navigation. It is an interface, not the trading engine. The backend workflow continues without the browser being open.
+The Streamlit desk contains dashboard, screener, stock/360° view, live charts, P&L/journal/performance, diagnostics, health and settings navigation. It is an interface, not the trading engine. The dashboard synchronizes persisted GitHub state with cache-busting and distinguishes the real trading-cycle heartbeat from the scheduler heartbeat.
+
+## Always-on worker
+
+For a true persistent process, deploy `scripts/worker.py` on an always-on Linux/VPS host using `deploy/stockmarket-worker.service`. Streamlit Community Cloud is the UI layer and is not relied upon to host the background worker. GitHub Actions remains the fallback five-minute scheduler for paper monitoring.
 
 ## Dhan / Live trading
 
@@ -112,12 +127,25 @@ Live execution is **not enabled by this deployment**. The eventual live path mus
 PYTHONPATH=. pytest -q
 ```
 
-Tests cover source formulas, SCRAP rejection, Trend Score thresholds, quantity safety and risk/reward gates. External broker/AI integrations must also be tested with controlled mocks before live activation.
+Tests cover source formulas, SCRAP rejection, Trend Score thresholds, quantity safety, risk/reward gates, framework evidence, validation locking, worker heartbeat persistence and runtime portfolio safety. External broker/AI integrations remain advisory/simulation-only until separately validated.
+
+## Verification standard
+
+The release verification sequence is:
+
+1. source audit
+2. syntax/import validation
+3. automated tests
+4. GitHub Actions workflow validation
+5. paper market-data cycle
+6. persisted state verification
+7. dashboard synchronization verification
+8. candidate/rejection funnel verification
+9. EOD P&L/report verification
+10. Telegram delivery verification when credentials are configured
+
+CI passing alone is not treated as proof of end-to-end correctness.
 
 ## No fake features
 
-The UI reports `DATA UNAVAILABLE` when live data is not configured. No synthetic price is labeled live. Paper mode and live mode are separate. AI failure never becomes a BUY. A broker request is never treated as a fill until the broker confirms it.
-
-## Development phases
-
-The implementation follows the supplied phase order: foundation → database → market data → regime/breadth → sector/theme/value migration → SCRAP/fundamentals/valuation → technical/MTF → screening/ranking → AI → strategy → entry/stop/target → risk/quantity/funds/liquidity → paper trading → monitoring/exits → journal/P&L → UI/charts → Dhan → live safety → reconciliation/EOD → backtesting → performance → automation → hardening.
+The UI reports `DATA UNAVAILABLE` when live data is not configured. No synthetic price is labeled live. Paper mode and live mode are separate. AI failure never becomes a BUY. A broker request is never treated as a fill until the broker confirms it. No live order endpoint is enabled by the current deployment.
