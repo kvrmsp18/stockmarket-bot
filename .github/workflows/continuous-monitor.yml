@@ -3,7 +3,6 @@ name: Complete Intraday Monitor
 on:
   schedule:
     - cron: '*/5 * * * 1-5'
-    - cron: '0 * * * 0,6'
   push:
     branches: [main]
     paths:
@@ -31,7 +30,7 @@ env:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -70,7 +69,7 @@ jobs:
           market_open = os.getenv('RUN_CYCLE') == 'true'
           payload = {
             'state': 'RUNNING',
-            'message': 'GitHub Actions scheduler invocation completed',
+            'message': 'Scheduled GitHub Actions monitor invocation completed',
             'updated_at': now.isoformat(),
             'source': 'github-actions-scheduler',
             'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
@@ -170,10 +169,10 @@ jobs:
               exit 0
             fi
             git rebase --abort || true
-            sleep 2
             git reset --soft origin/main
             git add data/ reports/
             git commit -m 'Update Bot scheduler, worker heartbeat and paper state [skip ci]' || true
+            sleep 2
           done
           echo 'Could not persist state after 5 attempts.'
           exit 1
