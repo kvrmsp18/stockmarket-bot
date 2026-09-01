@@ -31,51 +31,29 @@ def position_size(
     liquidity_qty: int | None = None,
     broker_max_qty: int | None = None,
 ) -> SizeResult:
-    """Calculate quantity using independent risk/funds/position/liquidity gates.
-
-    PAPER mode uses the supplied virtual capital as its funds ceiling and
-    never depends on the real broker cash balance. LIVE mode may use the
-    broker-reported available funds.
-    """
+    """Calculate quantity using independent risk/funds/position/liquidity gates."""
     if entry <= 0 or stop <= 0 or target <= 0 or capital <= 0:
         return SizeResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "INVALID_INPUT")
-
     risk_per_share = abs(entry - stop)
     reward_per_share = abs(target - entry)
     if risk_per_share <= 0:
         return SizeResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "INVALID_STOP")
-
     max_risk = capital * settings.risk_per_trade_pct / 100.0
     risk_qty = floor(max_risk / risk_per_share)
-
     if settings.mode == "PAPER":
         funds_base = capital
     elif available_funds is None:
         funds_base = capital
     else:
         funds_base = max(0.0, available_funds)
-
     funds = funds_base * (1 - settings.cash_reserve_pct)
     funds_qty = floor(funds / entry)
     position_qty = floor(settings.max_position_exposure / entry)
     liquidity = liquidity_qty if liquidity_qty is not None else risk_qty
     broker = broker_max_qty if broker_max_qty is not None else risk_qty
     qty = max(0, min(risk_qty, funds_qty, position_qty, liquidity, broker))
-
     reason = None if qty else "INSUFFICIENT_FUNDS_OR_RISK"
-    return SizeResult(
-        risk_qty,
-        funds_qty,
-        position_qty,
-        liquidity,
-        broker,
-        qty,
-        qty * entry,
-        qty * risk_per_share,
-        qty * reward_per_share,
-        reward_per_share / risk_per_share,
-        reason,
-    )
+    return SizeResult(risk_qty, funds_qty, position_qty, liquidity, broker, qty, qty * entry, qty * risk_per_share, qty * reward_per_share, reward_per_share / risk_per_share, reason)
 
 
 def risk_reward(entry: float, stop: float, target: float) -> float:
@@ -87,42 +65,33 @@ def _consecutive_losses_from_db() -> int:
     """Return consecutive losing closed trades for the configured mode."""
     try:
         from .database import Database
-
         db = Database()
         with db.connect() as con:
             rows = con.execute(
-                "SELECT net_pnl FROM trades WHERE mode=? AND closed_at IS NOT NULL "
-                "ORDER BY closed_at DESC LIMIT ?",
+                "SELECT net_pnl FROM trades WHERE mode=? AND closed_at IS NOT NULL ORDER BY closed_at DESC LIMIT ?",
                 (settings.mode, max(1, settings.max_consecutive_losses)),
             ).fetchall()
-
         count = 0
         for row in rows:
-            try:
-                pnl = float(row[0])
-            except (TypeError, ValueError):
-                break
-            if pnl < 0:
-                count += 1
-            else:
-                break
+            try: pnl = float(row[0])
+            except (TypeError, ValueError): break
+            if pnl < 0: count += 1
+            else: break
         return count
     except Exception:
         return settings.max_consecutive_losses
 
 
 def _trades_today_from_db() -> int:
-    """Count terminal trades opened/closed in today's IST session."""
+    """Count filled simulated entries today; open entries count immediately."""
     try:
         from .database import Database
-
         db = Database()
         today = datetime.now(IST).date().isoformat()
         with db.connect() as con:
             row = con.execute(
-                "SELECT COUNT(*) FROM trades "
-                "WHERE mode IN ('PAPER','LIVE_TEST') AND closed_at IS NOT NULL "
-                "AND substr(closed_at,1,10)=?",
+                "SELECT COUNT(*) FROM orders WHERE mode IS NOT NULL "
+                "AND state='FILLED' AND substr(ts,1,10)=?",
                 (today,),
             ).fetchone()
         return int(row[0] or 0) if row else 0
@@ -140,20 +109,12 @@ def risk_gate(
 ) -> tuple[bool, str | None]:
     """Deterministic risk gate shared by paper and live-test execution."""
     stop = settings.emergency_stop if emergency_stop is None else emergency_stop
-    if stop:
-        return False, "EMERGENCY_STOP"
-    if daily_loss >= settings.daily_loss_limit:
-        return False, "DAILY_LOSS_LIMIT"
-    if open_positions >= settings.max_positions:
-        return False, "POSITION_LIMIT"
-    if sector_exposure >= settings.max_sector_exposure:
-        return False, "SECTOR_EXPOSURE_LIMIT"
-    if consecutive_losses is None:
-        consecutive_losses = _consecutive_losses_from_db()
-    if consecutive_losses >= settings.max_consecutive_losses:
-        return False, "MAX_CONSECUTIVE_LOSSES"
-    if _trades_today_from_db() >= settings.max_trades_per_day:
-        return False, "MAX_TRADES_PER_DAY"
-    if rr < settings.min_rr:
-        return False, "RISK_REJECTION"
+    if stop: return False, "EMERGENCY_STOP"
+    if daily_loss >= settings.daily_loss_limit: return False, "DAILY_LOSS_LIMIT"
+    if open_positions >= settings.max_positions: return False, "POSITION_LIMIT"
+    if sector_exposure >= settings.max_sector_exposure: return False, "SECTOR_EXPOSURE_LIMIT"
+    if consecutive_losses is None: consecutive_losses = _consecutive_losses_from_db()
+    if consecutive_losses >= settings.max_consecutive_losses: return False, "MAX_CONSECUTIVE_LOSSES"
+    if _trades_today_from_db() >= settings.max_trades_per_day: return False, "MAX_TRADES_PER_DAY"
+    if rr < settings.min_rr: return False, "RISK_REJECTION"
     return True, None
