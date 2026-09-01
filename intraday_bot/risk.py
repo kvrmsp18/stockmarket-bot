@@ -90,8 +90,8 @@ def _trades_today_from_db() -> int:
         today = datetime.now(IST).date().isoformat()
         with db.connect() as con:
             row = con.execute(
-                "SELECT COUNT(*) FROM orders WHERE mode IS NOT NULL "
-                "AND state='FILLED' AND substr(ts,1,10)=?",
+                "SELECT COUNT(*) FROM orders WHERE state='FILLED' AND substr(ts,1,10)=? "
+                "AND (order_id LIKE 'PAPER-%' OR order_id LIKE 'LIVETEST-%')",
                 (today,),
             ).fetchone()
         return int(row[0] or 0) if row else 0
