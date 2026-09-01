@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 2ecbff5cf108c57d4022e571b70187499eb3e06e
-Generated UTC: 2026-09-01T05:16:29.621788+00:00
+Commit SHA: 318ff02566237d3c9b29f2e231a4d893291c621d
+Generated UTC: 2026-09-01T05:32:09.077155+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -35,7 +35,7 @@ dashboard/app.py	742 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	692 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	347 bytes
+data/scheduler_heartbeat.json	351 bytes
 data/trading.db	10915840 bytes
 data/universe.json	307969 bytes
 data/watchdog_heartbeat.json	422 bytes
@@ -49,8 +49,8 @@ intraday_bot/ai_advisor.py	2731 bytes
 intraday_bot/alerts.py	860 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
-intraday_bot/brokers.py	11964 bytes
-intraday_bot/config.py	4945 bytes
+intraday_bot/brokers.py	12197 bytes
+intraday_bot/config.py	5865 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/engine.py	16163 bytes
 intraday_bot/news.py	830 bytes
@@ -1392,8 +1392,8 @@ FILE: data/monitor_status.json
 SIZE: 692 bytes
 ====================================================================
 {
-  "cycle_id": "11568fb79bbb43eb8e7cf4940435bf2b",
-  "started_at": "2026-09-01T05:09:29.971633+00:00",
+  "cycle_id": "f80b83ebe7344e11966e60598b14da6e",
+  "started_at": "2026-09-01T05:19:39.736127+00:00",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 2673,
@@ -1409,8 +1409,8 @@ SIZE: 692 bytes
   ],
   "suggested_buy_investment": 0.0,
   "suggested_sell_value": 0.0,
-  "duration_seconds": 0.344,
-  "ended_at": "2026-09-01T10:39:30.312510+05:30",
+  "duration_seconds": 0.426,
+  "ended_at": "2026-09-01T10:49:40.160081+05:30",
   "positions_open": 0,
   "realized_pnl": 0.0,
   "today_realized_pnl": 0.0
@@ -1425,15 +1425,15 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 347 bytes
+SIZE: 351 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor invocation is active",
-  "updated_at": "2026-09-01T10:39:01.889923+05:30",
+  "updated_at": "2026-09-01T10:49:12.899160+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33472476922",
-  "event": "push",
+  "workflow_run_id": "33473135110",
+  "event": "schedule",
   "market_open": true,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -17514,10 +17514,10 @@ SIZE: 438 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect Diagnostics",
-  "updated_at": "2026-09-01T10:39:30.505762+05:30",
+  "updated_at": "2026-09-01T10:49:40.368480+05:30",
   "source": "github-actions-24x7-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33472476922",
+  "workflow_run_id": "33473135110",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -17907,12 +17907,11 @@ def run(df:pd.DataFrame, capital:float=100000)->dict:
 
 ====================================================================
 FILE: intraday_bot/brokers.py
-SIZE: 11964 bytes
+SIZE: 12197 bytes
 ====================================================================
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 import uuid
@@ -17988,7 +17987,7 @@ class PaperTradingBroker(BrokerInterface):
 
 
 class DhanBroker(BrokerInterface):
-    """Dhan adapter with numeric market-data payloads and resilient throttling."""
+    """Dhan adapter using the configured one-month API key for authentication."""
 
     _rate_lock = threading.Lock()
     _last_quote_call = 0.0
@@ -18000,7 +17999,10 @@ class DhanBroker(BrokerInterface):
 
     def __init__(self) -> None:
         self.client_id = settings.dhan_client_id
-        self.token = settings.dhan_access_token
+        # The one-month credential is stored as DHAN_API_KEY. Prefer it over
+        # the legacy DHAN_ACCESS_TOKEN so the deployed Bot uses the credential
+        # selected by the user. The legacy token remains a compatibility fallback.
+        self.token = settings.dhan_market_data_token
         self.base = settings.dhan_base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({
@@ -18090,7 +18092,7 @@ class DhanBroker(BrokerInterface):
 
     def health(self) -> BrokerHealth:
         if not self.client_id or not self.token:
-            return BrokerHealth(False, False, "DHAN credentials unavailable")
+            return BrokerHealth(False, False, "Dhan credentials unavailable")
         try:
             self.funds()
             return BrokerHealth(True, True, "DHAN CONNECTED")
@@ -18209,7 +18211,7 @@ def load_security_map() -> dict[str, dict[str, Any]]:
 
 ====================================================================
 FILE: intraday_bot/config.py
-SIZE: 4945 bytes
+SIZE: 5865 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18235,6 +18237,21 @@ def _secret_or_env(name: str, default: str = "") -> str:
         return str(secret_value).strip()
     except Exception:
         return default
+
+
+def _credential(name: str, default: str = "") -> str:
+    """Normalize a secret pasted from a dashboard or secret store.
+
+    Dhan expects the raw credential in the ``access-token`` header. Do not
+    store or send a ``Bearer`` prefix. A single matching pair of quotes is
+    removed because users sometimes paste secrets including display quotes.
+    """
+    value = _secret_or_env(name, default).strip()
+    if value.lower().startswith("bearer "):
+        value = value[7:].strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"', "`"}:
+        value = value[1:-1].strip()
+    return value
 
 
 def _float(name: str, default: float) -> float:
@@ -18280,12 +18297,12 @@ class Settings:
     reference_capital: float = _float("BOT_RESEARCH_REFERENCE_CAPITAL", 1000.0)
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
-    dhan_client_id: str = _secret_or_env("DHAN_CLIENT_ID", "")
-    # Dhan's one-month credential is stored in DHAN_API_KEY.  Keep the
+    dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
+    # Dhan's one-month credential is stored in DHAN_API_KEY. Keep the
     # legacy access-token field for compatibility, but prefer API key for
     # market-data authentication and use the access token only as fallback.
-    dhan_api_key: str = _secret_or_env("DHAN_API_KEY", "")
-    dhan_access_token: str = _secret_or_env("DHAN_ACCESS_TOKEN", "")
+    dhan_api_key: str = _credential("DHAN_API_KEY", "")
+    dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
     telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
@@ -18301,6 +18318,15 @@ class Settings:
     def dhan_market_data_token(self) -> str:
         """Credential used for Dhan market-data API calls."""
         return self.dhan_api_key or self.dhan_access_token
+
+    @property
+    def dhan_market_data_credential_source(self) -> str:
+        """Identify which configured secret supplies the Dhan credential."""
+        if self.dhan_api_key:
+            return "DHAN_API_KEY"
+        if self.dhan_access_token:
+            return "DHAN_ACCESS_TOKEN"
+        return "NONE"
 
     @property
     def live_mode_requested(self) -> bool:
