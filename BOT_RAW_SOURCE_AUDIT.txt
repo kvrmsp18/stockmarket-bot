@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 46327c443409ad6f614aee937eb10725ef79ed68
-Generated UTC: 2026-08-31T18:30:30.902724+00:00
+Commit SHA: f885ab7979bdb220bb6b18ab58110f378bb8f058
+Generated UTC: 2026-09-01T00:14:13.784539+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	824 bytes
 .github/workflows/ci.yml	363 bytes
-.github/workflows/continuous-monitor.yml	4952 bytes
+.github/workflows/continuous-monitor.yml	4916 bytes
 .github/workflows/eod-close.yml	1709 bytes
 .github/workflows/eod-report.yml	800 bytes
 .github/workflows/export-source-audit.yml	5122 bytes
@@ -57,7 +57,7 @@ intraday_bot/engine.py	16458 bytes
 intraday_bot/news.py	830 bytes
 intraday_bot/paper.py	1447 bytes
 intraday_bot/research.py	8014 bytes
-intraday_bot/risk.py	2382 bytes
+intraday_bot/risk.py	3199 bytes
 intraday_bot/runtime.py	15633 bytes
 intraday_bot/runtime_v2.py	6784 bytes
 intraday_bot/safety.py	715 bytes
@@ -225,7 +225,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 4952 bytes
+SIZE: 4916 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -347,7 +347,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          BOT_RESEARCH_REFERENCE_CAPITAL: ${{ vars.BOT_RESEARCH_REFERENCE_CAPITAL }}
+          BOT_RESEARCH_REFERENCE_CAPITAL: '1000'
           BOT_MODE: PAPER
           DHAN_LIVE_TRADING_ENABLED: 'false'
         run: python scripts/run_daily_cycle.py
@@ -24152,9 +24152,9 @@ SIZE: 354 bytes
 {
   "state": "RUNNING",
   "message": "GitHub Actions scheduler invocation completed",
-  "updated_at": "2026-08-31T23:55:05.909118+05:30",
+  "updated_at": "2026-09-01T05:39:47.331071+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33424872364",
+  "workflow_run_id": "33453625930",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -40214,10 +40214,10 @@ SIZE: 422 bytes
 {
   "state": "RUNNING",
   "message": "GitHub fallback watchdog heartbeat",
-  "updated_at": "2026-08-31T23:57:59.528857+05:30",
+  "updated_at": "2026-09-01T05:28:36.910363+05:30",
   "source": "github-actions-heartbeat-watchdog",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33425150781",
+  "workflow_run_id": "33452882031",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "note": "Fallback/watchdog only. This file must never be presented as the primary 24/7 worker heartbeat."
@@ -41612,7 +41612,7 @@ def research_dict(result: ResearchResult) -> dict[str, Any]:
 
 ====================================================================
 FILE: intraday_bot/risk.py
-SIZE: 2382 bytes
+SIZE: 3199 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -41637,35 +41637,86 @@ class SizeResult:
     reason: str | None = None
 
 
-def position_size(entry: float, stop: float, target: float, capital: float, available_funds: float | None = None, liquidity_qty: int | None = None, broker_max_qty: int | None = None) -> SizeResult:
+def position_size(
+    entry: float,
+    stop: float,
+    target: float,
+    capital: float,
+    available_funds: float | None = None,
+    liquidity_qty: int | None = None,
+    broker_max_qty: int | None = None,
+) -> SizeResult:
+    """Calculate quantity using independent risk/funds/position/liquidity gates.
+
+    PAPER mode uses the supplied virtual capital as its funds ceiling and
+    never depends on the real broker cash balance. LIVE mode may use the
+    broker-reported available funds.
+    """
     if entry <= 0 or stop <= 0 or target <= 0 or capital <= 0:
-        return SizeResult(0,0,0,0,0,0,0,0,0,0,"INVALID_INPUT")
-    risk_per_share = abs(entry-stop)
-    reward_per_share = abs(target-entry)
+        return SizeResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "INVALID_INPUT")
+
+    risk_per_share = abs(entry - stop)
+    reward_per_share = abs(target - entry)
     if risk_per_share <= 0:
-        return SizeResult(0,0,0,0,0,0,0,0,0,0,"INVALID_STOP")
+        return SizeResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "INVALID_STOP")
+
     max_risk = capital * settings.risk_per_trade_pct / 100.0
     risk_qty = floor(max_risk / risk_per_share)
-    funds = capital * (1-settings.cash_reserve_pct) if available_funds is None else max(0.0, available_funds * (1-settings.cash_reserve_pct))
+
+    if settings.mode == "PAPER":
+        # Paper capital is virtual and must not be reduced by the real Dhan
+        # account balance. The caller may still pass broker funds, but they
+        # are intentionally ignored for the PAPER funds gate.
+        funds_base = capital
+    elif available_funds is None:
+        funds_base = capital
+    else:
+        funds_base = max(0.0, available_funds)
+
+    funds = funds_base * (1 - settings.cash_reserve_pct)
     funds_qty = floor(funds / entry)
     position_qty = floor(settings.max_position_exposure / entry)
     liquidity = liquidity_qty if liquidity_qty is not None else risk_qty
     broker = broker_max_qty if broker_max_qty is not None else risk_qty
     qty = max(0, min(risk_qty, funds_qty, position_qty, liquidity, broker))
-    return SizeResult(risk_qty, funds_qty, position_qty, liquidity, broker, qty, qty*entry, qty*risk_per_share, qty*reward_per_share, reward_per_share/risk_per_share, None if qty else "INSUFFICIENT_FUNDS_OR_RISK")
+
+    return SizeResult(
+        risk_qty,
+        funds_qty,
+        position_qty,
+        liquidity,
+        broker,
+        qty,
+        qty * entry,
+        qty * risk_per_share,
+        qty * reward_per_share,
+        reward_per_share / risk_per_share,
+        None if qty else "INSUFFICIENT_FUNDS_OR_RISK",
+    )
 
 
 def risk_reward(entry: float, stop: float, target: float) -> float:
-    risk = abs(entry-stop)
-    return abs(target-entry)/risk if risk else 0.0
+    risk = abs(entry - stop)
+    return abs(target - entry) / risk if risk else 0.0
 
 
-def risk_gate(rr: float, daily_loss: float, open_positions: int, sector_exposure: float, emergency_stop: bool = False) -> tuple[bool, str | None]:
-    if emergency_stop: return False, "EMERGENCY_STOP"
-    if daily_loss >= settings.daily_loss_limit: return False, "DAILY_LOSS_LIMIT"
-    if open_positions >= settings.max_positions: return False, "POSITION_LIMIT"
-    if sector_exposure >= settings.max_sector_exposure: return False, "SECTOR_EXPOSURE_LIMIT"
-    if rr < settings.min_rr: return False, "RISK_REJECTION"
+def risk_gate(
+    rr: float,
+    daily_loss: float,
+    open_positions: int,
+    sector_exposure: float,
+    emergency_stop: bool = False,
+) -> tuple[bool, str | None]:
+    if emergency_stop:
+        return False, "EMERGENCY_STOP"
+    if daily_loss >= settings.daily_loss_limit:
+        return False, "DAILY_LOSS_LIMIT"
+    if open_positions >= settings.max_positions:
+        return False, "POSITION_LIMIT"
+    if sector_exposure >= settings.max_sector_exposure:
+        return False, "SECTOR_EXPOSURE_LIMIT"
+    if rr < settings.min_rr:
+        return False, "RISK_REJECTION"
     return True, None
 
 ====================================================================
