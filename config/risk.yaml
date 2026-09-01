@@ -6,4 +6,5 @@ max_sector_exposure: 0.30
 max_capital_deployment: 0.80
 cash_reserve_pct: 0.20
 min_risk_reward: 3.0
-kill_switch: true
+max_consecutive_losses: 3
+kill_switch: false
