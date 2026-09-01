@@ -46,6 +46,8 @@ def _bool(name: str, default: bool = False) -> bool:
 class Settings:
     mode: str = _secret_or_env("BOT_MODE", "PAPER").upper()
     live_enabled: bool = _bool("DHAN_LIVE_TRADING_ENABLED", False)
+    emergency_stop: bool = _bool("BOT_EMERGENCY_STOP", False)
+    max_consecutive_losses: int = _int("MAX_CONSECUTIVE_LOSSES", 3)
     risk_per_trade_pct: float = _float("RISK_PER_TRADE_PCT", 0.5)
     daily_loss_limit: float = _float("MAX_DAILY_LOSS", 15000.0)
     max_positions: int = _int("MAX_OPEN_POSITIONS", 5)
@@ -80,7 +82,7 @@ class Settings:
 
     @property
     def live_mode_requested(self) -> bool:
-        return self.mode == "LIVE" and self.live_enabled
+        return self.mode == "LIVE" and self.live_enabled and not self.emergency_stop
 
     def validate(self) -> None:
         if self.mode not in {"PAPER", "LIVE"}:
@@ -89,8 +91,10 @@ class Settings:
             raise ValueError("RISK_PER_TRADE_PCT must be >0 and <=10")
         if self.min_rr < 1:
             raise ValueError("MIN_RR must be >=1")
-        if self.bullish_threshold != 7.0 or self.bearish_threshold != 4.0:
-            pass
+        if self.max_consecutive_losses < 1:
+            raise ValueError("MAX_CONSECUTIVE_LOSSES must be >=1")
+        if self.reference_capital <= 0:
+            raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.live_mode_requested:
             if not self.dhan_client_id or not self.dhan_access_token:
                 raise ValueError("LIVE requested but Dhan credentials are missing")
