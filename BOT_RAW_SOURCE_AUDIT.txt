@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 56b8bfbdec518d40cf72a8a699e6a638826a75b3
-Generated UTC: 2026-09-01T01:43:19.119377+00:00
+Commit SHA: 68678427177de3a6484fc0f925f4482bda58b109
+Generated UTC: 2026-09-01T01:43:36.147919+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	874 bytes
 .github/workflows/ci.yml	363 bytes
-.github/workflows/continuous-monitor.yml	6448 bytes
+.github/workflows/continuous-monitor.yml	6430 bytes
 .github/workflows/eod-close.yml	1709 bytes
 .github/workflows/eod-report.yml	800 bytes
 .github/workflows/export-source-audit.yml	5122 bytes
@@ -227,14 +227,13 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 6448 bytes
+SIZE: 6430 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
 on:
   schedule:
     - cron: '*/5 * * * 1-5'
-    - cron: '0 * * * 0,6'
   push:
     branches: [main]
     paths:
@@ -262,7 +261,7 @@ env:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -301,7 +300,7 @@ jobs:
           market_open = os.getenv('RUN_CYCLE') == 'true'
           payload = {
             'state': 'RUNNING',
-            'message': 'GitHub Actions scheduler invocation completed',
+            'message': 'Scheduled GitHub Actions monitor invocation completed',
             'updated_at': now.isoformat(),
             'source': 'github-actions-scheduler',
             'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
@@ -401,10 +400,10 @@ jobs:
               exit 0
             fi
             git rebase --abort || true
-            sleep 2
             git reset --soft origin/main
             git add data/ reports/
             git commit -m 'Update Bot scheduler, worker heartbeat and paper state [skip ci]' || true
+            sleep 2
           done
           echo 'Could not persist state after 5 attempts.'
           exit 1
