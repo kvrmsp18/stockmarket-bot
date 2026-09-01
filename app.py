@@ -1,6 +1,5 @@
 from __future__ import annotations
-import json, os, sqlite3, tempfile, time
-from datetime import datetime
+import json, os, tempfile, time
 from pathlib import Path
 from urllib.request import Request, urlopen
 import pandas as pd
@@ -81,7 +80,7 @@ def frameworks():
     header("🧠 Five Research Frameworks","Each framework is shown separately with score, confidence, evidence and missing data. These are not standalone intraday triggers.")
     df=events("FRAMEWORK_ANALYSIS")
     if df.empty:st.warning("No FRAMEWORK_ANALYSIS records persisted yet.");return
-    syms=sorted(df.symbol.dropna().astype(str).unique());sym=st.selectbox("Stock",syms);row=df[df.symbol.astype(str)==sym].iloc[0]
+    syms=sorted(df.symbol.dropna().astype(str).unique());sym=st.selectbox("Stock",syms,key="framework_stock");row=df[df.symbol.astype(str)==sym].iloc[0]
     try:p=json.loads(row.payload)
     except:p={}
     f=p.get("frameworks",{});st.write(f"Last research: {row.ts} · Overall: {f.get('overall','DATA UNAVAILABLE')} · Agreement: {f.get('agreement','DATA UNAVAILABLE')}")
@@ -101,11 +100,11 @@ def research_page(page):
         if page in {"Top Bearish","Shift to Bearish"}:x=x[x._trend<settings.bearish_threshold]
         st.dataframe(x.sort_values("_trend",ascending=False).drop(columns=["_trend"]),use_container_width=True,hide_index=True);return
     if page=="Stock Screener":
-        q=st.text_input("Filter");x=r if not q else r[r.astype(str).apply(lambda z:z.str.contains(q,case=False,na=False)).any(axis=1)];st.dataframe(x,use_container_width=True,hide_index=True);return
+        q=st.text_input("Filter",key="screener_filter");x=r if not q else r[r.astype(str).apply(lambda z:z.str.contains(q,case=False,na=False)).any(axis=1)];st.dataframe(x,use_container_width=True,hide_index=True);return
     if page in {"Stocks","Stock Detail","360° Stock Analysis"}:
         syms=sorted(set(c.get("symbol",pd.Series(dtype=str)).dropna().astype(str))|set(r.get("symbol",pd.Series(dtype=str)).dropna().astype(str)))
         if not syms:st.info("No stock records yet.");return
-        sym=st.selectbox("Stock",syms)
+        sym=st.selectbox("Stock",syms,key=f"{page}_stock")
         if not c.empty and sym in set(c.symbol.astype(str)):st.json(c[c.symbol.astype(str)==sym].iloc[0].to_dict())
         if not r.empty:st.dataframe(r[r.symbol.astype(str)==sym],use_container_width=True,hide_index=True)
         if page=="360° Stock Analysis":frameworks()
@@ -123,15 +122,15 @@ def ledger(page):
 def pnl():
     df=sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') AND closed_at IS NOT NULL ORDER BY closed_at");header("💰 P&L","Realized simulated-trade P&L including persisted charges.")
     if df.empty:st.info("No completed trades yet.");return
-    df.net_pnl=pd.to_numeric(df.net_pnl,errors="coerce").fillna(0);st.metric("Net P&L",f"₹{df.net_pnl.sum():,.2f}");st.dataframe(df,use_container_width=True,hide_index=True)
+    df["net_pnl"]=pd.to_numeric(df["net_pnl"],errors="coerce").fillna(0);st.metric("Net P&L",f"₹{df.net_pnl.sum():,.2f}");st.dataframe(df,use_container_width=True,hide_index=True)
 
 def charts():
     header("📉 Live Charts","Real Dhan chart data only. Authentication uses DHAN_API_KEY.")
     try:m=json.loads(settings.dhan_security_ids_json or "{}")
     except:m={}
     if not m:st.warning("DHAN_SECURITY_IDS_JSON is not configured.");return
-    sym=st.selectbox("Symbol",sorted(m));tf=st.selectbox("Minutes",[1,3,5,15,30,60],index=2)
-    if st.button("Refresh live chart"):
+    sym=st.selectbox("Symbol",sorted(m),key="chart_symbol");tf=st.selectbox("Minutes",[1,3,5,15,30,60],index=2,key="chart_tf")
+    if st.button("Refresh live chart",key="chart_refresh"):
         try:
             i=m[sym];sid=i.get("security_id",i) if isinstance(i,dict) else i;ex=i.get("exchange_segment","NSE_EQ") if isinstance(i,dict) else "NSE_EQ";df=DhanBroker().history(str(sid),ex,tf)
             if df.empty:st.warning("DATA UNAVAILABLE");return
@@ -139,16 +138,23 @@ def charts():
         except Exception as e:st.error(f"LIVE DATA ERROR: {e}")
 
 def main():
-    sync();mode=st.sidebar.radio("Mode",["PAPER TRADING","LIVE TRADING"],index=0);st.session_state.mode=PAPER_MODE if mode.startswith("PAPER") else LIVE_TEST_MODE
+    sync();mode=st.sidebar.radio("Mode",["PAPER TRADING","LIVE TRADING"],index=0,key="mode_radio");st.session_state.mode=PAPER_MODE if mode.startswith("PAPER") else LIVE_TEST_MODE
     st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS" if st.session_state.mode==PAPER_MODE else "🟠 LIVE TEST — NO LIVE ORDERS")
-    if st.sidebar.button("🔄 Refresh Search / Dashboard"):sync();st.rerun()
-    if st.sidebar.button("▶ Run Analysis",type="primary"):
+    if st.sidebar.button("🔄 Refresh Search / Dashboard",key="refresh_button"):sync();st.rerun()
+    if st.sidebar.button("▶ Run Analysis",type="primary",key="run_analysis"):
         x=run_cycle(st.session_state.mode);st.sidebar.write(f"Cycle complete · {len(x.get('candidates',[]))} candidates · {len(x.get('errors',[]))} errors");st.rerun()
-    page=st.sidebar.selectbox("Desk",PAGES)
+    page=st.sidebar.selectbox("Desk",PAGES,key="desk_page")
     if page=="Dashboard":dashboard()
     elif page=="New Chat":
         header("💬 Bot Chat","Persisted Bot-data answers only.");q=st.chat_input("Ask about candidates, P&L, rejections or heartbeat")
-        if q:st.chat_message("user").write(q);st.chat_message("assistant").write("Use Dashboard, Diagnostics, Rejected Signals, P&L and System Health for persisted answers. I will not invent unavailable data.")
+        if q:
+            s=j(STATUS);h=j(HB);c=pd.DataFrame(s.get("candidates",[]));x=q.lower()
+            if "heartbeat" in x or "running" in x:answer=f"Trading heartbeat: {h.get('state','NOT FOUND')} at {h.get('updated_at','—')}."
+            elif "reject" in x or "no trade" in x:answer=f"Rejection funnel: {s.get('rejections',{})}. See Rejected Signals for symbol-level evidence."
+            elif "p&l" in x or "profit" in x or "loss" in x:answer=f"Today's persisted realized P&L: ₹{float(s.get('today_realized_pnl',0) or 0):,.2f}."
+            elif "candidate" in x or "buy" in x or "sell" in x:answer="No actionable candidates are persisted in the latest cycle." if c.empty else "Latest candidates: "+", ".join(f"{r.symbol} ({r.decision})" for r in c.itertuples())
+            else:answer=f"Last cycle: {s.get('ended_at','—')}; universe {s.get('stocks_observed',0)}; quotes {s.get('quotes',0)}; errors {len(s.get('errors',[]))}."
+            st.chat_message("user").write(q);st.chat_message("assistant").write(answer)
     elif page=="AI Prompt Guide":prompt()
     elif page in {"Orders","Positions","Trade Journal"}:ledger(page)
     elif page=="P&L":pnl()
