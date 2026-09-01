@@ -48,6 +48,7 @@ class Settings:
     live_enabled: bool = _bool("DHAN_LIVE_TRADING_ENABLED", False)
     emergency_stop: bool = _bool("BOT_EMERGENCY_STOP", False)
     max_consecutive_losses: int = _int("MAX_CONSECUTIVE_LOSSES", 3)
+    max_trades_per_day: int = _int("MAX_TRADES_PER_DAY", 2)
     risk_per_trade_pct: float = _float("RISK_PER_TRADE_PCT", 0.5)
     daily_loss_limit: float = _float("MAX_DAILY_LOSS", 15000.0)
     max_positions: int = _int("MAX_OPEN_POSITIONS", 5)
@@ -93,6 +94,8 @@ class Settings:
             raise ValueError("MIN_RR must be >=1")
         if self.max_consecutive_losses < 1:
             raise ValueError("MAX_CONSECUTIVE_LOSSES must be >=1")
+        if self.max_trades_per_day < 1:
+            raise ValueError("MAX_TRADES_PER_DAY must be >=1")
         if self.reference_capital <= 0:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.live_mode_requested:
