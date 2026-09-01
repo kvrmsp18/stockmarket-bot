@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 3a03eebab79950e8292e30a8af6bd7410b9ffdc4
-Generated UTC: 2026-09-01T00:26:55.677847+00:00
+Commit SHA: d42a561f5de8941c5e3c30185d9d5f0c74079252
+Generated UTC: 2026-09-01T00:27:16.292772+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -14,7 +14,7 @@ but their raw bytes are not embedded.
 FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
-.env.example	824 bytes
+.env.example	874 bytes
 .github/workflows/ci.yml	363 bytes
 .github/workflows/continuous-monitor.yml	4916 bytes
 .github/workflows/eod-close.yml	1709 bytes
@@ -159,11 +159,13 @@ SIZE: 1034 bytes
 
 ====================================================================
 FILE: .env.example
-SIZE: 824 bytes
+SIZE: 874 bytes
 ====================================================================
 # NEVER put real credentials in GitHub. Use local .env or GitHub/Streamlit secrets.
 BOT_MODE=PAPER
 DHAN_LIVE_TRADING_ENABLED=false
+BOT_EMERGENCY_STOP=false
+MAX_CONSECUTIVE_LOSSES=3
 USE_DHAN_DATA=true
 
 DHAN_CLIENT_ID=
