@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: c18c231014b4704247cd9d2be248a8a9b9801844
-Generated UTC: 2026-09-01T01:54:21.504114+00:00
+Commit SHA: c6889c5ac5307c25886a7161f3f5e24ec9dbed1f
+Generated UTC: 2026-09-01T01:54:48.074073+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -14,7 +14,7 @@ but their raw bytes are not embedded.
 FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
-.env.example	874 bytes
+.env.example	924 bytes
 .github/workflows/ci.yml	363 bytes
 .github/workflows/continuous-monitor.yml	6430 bytes
 .github/workflows/eod-close.yml	1709 bytes
@@ -158,13 +158,14 @@ SIZE: 1034 bytes
 
 ====================================================================
 FILE: .env.example
-SIZE: 874 bytes
+SIZE: 924 bytes
 ====================================================================
 # NEVER put real credentials in GitHub. Use local .env or GitHub/Streamlit secrets.
 BOT_MODE=PAPER
 DHAN_LIVE_TRADING_ENABLED=false
 BOT_EMERGENCY_STOP=false
 MAX_CONSECUTIVE_LOSSES=3
+MAX_TRADES_PER_DAY=2
 USE_DHAN_DATA=true
 
 DHAN_CLIENT_ID=
@@ -178,6 +179,7 @@ OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
 ANTHROPIC_API_KEY=
 ANTHROPIC_MODEL=claude-3-5-haiku-latest
+AI_ADVISORY_MAX_CANDIDATES=3
 TWELVEDATA_API_KEY=
 
 TELEGRAM_BOT_TOKEN=
@@ -24172,9 +24174,9 @@ SIZE: 358 bytes
 {
   "state": "RUNNING",
   "message": "Scheduled GitHub Actions monitor invocation completed",
-  "updated_at": "2026-09-01T07:22:08.907925+05:30",
+  "updated_at": "2026-09-01T07:24:22.456766+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33460374928",
+  "workflow_run_id": "33460512523",
   "event": "push",
   "market_open": false,
   "scheduled_interval_seconds": 300,
