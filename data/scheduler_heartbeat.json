@@ -1,11 +1,11 @@
 {
   "state": "RUNNING",
   "message": "Scheduled monitor invocation is active",
-  "updated_at": "2026-09-01T15:23:22.208031+05:30",
+  "updated_at": "2026-09-01T15:32:49.070664+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33494557039",
+  "workflow_run_id": "33495367083",
   "event": "schedule",
-  "market_open": true,
+  "market_open": false,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
   "live_order_submission": false
