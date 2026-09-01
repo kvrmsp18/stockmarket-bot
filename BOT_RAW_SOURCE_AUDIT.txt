@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: e568501f4b341b356436dfde4083a7d190b469d1
-Generated UTC: 2026-09-01T00:49:49.191282+00:00
+Commit SHA: 523b3b54a0974e0219961455eee6cd10c3a7ddc2
+Generated UTC: 2026-09-01T00:51:52.218003+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	874 bytes
 .github/workflows/ci.yml	9016 bytes
-.github/workflows/continuous-monitor.yml	12198 bytes
+.github/workflows/continuous-monitor.yml	6181 bytes
 .github/workflows/eod-close.yml	1709 bytes
 .github/workflows/eod-report.yml	800 bytes
 .github/workflows/export-source-audit.yml	5122 bytes
@@ -39,7 +39,7 @@ dashboard/app.py	742 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	719072 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	354 bytes
+data/scheduler_heartbeat.json	350 bytes
 data/trading.db	10891264 bytes
 data/universe.json	307850 bytes
 data/watchdog_heartbeat.json	422 bytes
@@ -72,9 +72,9 @@ reports/daily/2026-08-31.md	428 bytes
 reports/readiness/.gitkeep	1 bytes
 reports/weekly/.gitkeep	1 bytes
 requirements.txt	114 bytes
-runtime-fix-trigger.txt	45 bytes
 scripts/__init__.py	0 bytes
 scripts/eod_report.py	1419 bytes
+scripts/fix_dashboard_runtime.py	5384 bytes
 scripts/load_universe.py	2067 bytes
 scripts/run_daily_cycle.py	3428 bytes
 scripts/run_eod_close.py	9327 bytes
@@ -383,7 +383,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 12198 bytes
+SIZE: 6181 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -399,7 +399,6 @@ on:
       - 'config/**'
       - '.github/workflows/continuous-monitor.yml'
       - 'requirements.txt'
-      - 'runtime-fix-trigger.txt'
   workflow_dispatch: {}
 
 concurrency:
@@ -424,126 +423,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Apply dashboard runtime fix
+      - name: Apply dashboard runtime repair
         if: github.event_name == 'push'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          app = Path('app.py')
-          s = app.read_text(encoding='utf-8')
-          s = s.replace('from urllib.request import urlopen', 'from urllib.request import Request, urlopen', 1)
-
-          new_sync = '''def sync_remote_state(force: bool = False) -> bool:
-              """Synchronize the Streamlit copy with the latest committed Bot state."""
-              now = time.time()
-              last = float(st.session_state.get("_remote_state_sync", 0.0))
-              if not force and now - last < 60:
-                  return True
-              base = "https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
-              targets = {
-                  "trading.db": Path("data/trading.db"),
-                  "monitor_status.json": Path("data/monitor_status.json"),
-                  "scheduler_heartbeat.json": Path("data/scheduler_heartbeat.json"),
-                  "worker_heartbeat.json": Path("data/worker_heartbeat.json"),
-                  "watchdog_heartbeat.json": Path("data/watchdog_heartbeat.json"),
-              }
-              ok = False
-              for name, dest in targets.items():
-                  tmp = None
-                  try:
-                      dest.parent.mkdir(parents=True, exist_ok=True)
-                      url = f"{base}{name}?dashboard_sync={int(now * 1000)}"
-                      request = Request(url, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
-                      with urlopen(request, timeout=15) as response:
-                          data = response.read()
-                      import tempfile
-                      fd, tmp = tempfile.mkstemp(prefix="remote-state-", dir=str(dest.parent))
-                      with os.fdopen(fd, "wb") as f:
-                          f.write(data)
-                      os.replace(tmp, dest)
-                      ok = True
-                  except Exception:
-                      if tmp and os.path.exists(tmp):
-                          try:
-                              os.unlink(tmp)
-                          except Exception:
-                              pass
-              st.session_state["_remote_state_sync"] = now
-              return ok
-
-
-'''
-          s, n = re.subn(r'def sync_remote_state\(force: bool = False\) -> bool:\n.*?(?=\ndef status\(\) -> dict\[str, Any\]:)', new_sync, s, count=1, flags=re.S)
-          if n != 1: raise SystemExit('sync replacement failed')
-
-          new_hb = '''def heartbeat() -> dict[str, Any]:
-              """Return only the real trading-worker heartbeat, never scheduler/watchdog state."""
-              if not HEARTBEAT.exists():
-                  return {}
-              try:
-                  payload = json.loads(HEARTBEAT.read_text(encoding="utf-8"))
-                  return payload if payload else {}
-              except Exception:
-                  return {}
-
-
-'''
-          s, n = re.subn(r'def heartbeat\(\) -> dict\[str, Any\]:\n.*?(?=\ndef sql\()', new_hb, s, count=1, flags=re.S)
-          if n != 1: raise SystemExit('heartbeat replacement failed')
-
-          old_refresh = '''    if st.sidebar.button("🔄 Refresh Search / Dashboard", use_container_width=True):
-        sync_remote_state(force=True)
-        st.cache_data.clear()
-        st.rerun()
-'''
-          new_refresh = '''    if st.session_state.pop("_refresh_message", False):
-        st.sidebar.success("Dashboard state refreshed from GitHub.")
-    if st.session_state.pop("_refresh_failed", False):
-        st.sidebar.error("Dashboard refresh could not reach the persisted GitHub state.")
-    if st.sidebar.button("🔄 Refresh Search / Dashboard", key="refresh_dashboard_button", use_container_width=True):
-        ok = sync_remote_state(force=True)
-        st.cache_data.clear()
-        st.session_state["_refresh_message"] = bool(ok)
-        st.session_state["_refresh_failed"] = not bool(ok)
-        st.rerun()
-'''
-          if old_refresh not in s: raise SystemExit('refresh replacement failed')
-          s = s.replace(old_refresh, new_refresh, 1)
-
-          old_hb = '''    if hb.get("state") == "ERROR": st.error(f"24/7 WORKER ERROR: {hb.get('message','Unknown error')}")
-    elif hb: st.success(f"24/7 WORKER: {hb.get('state','RUNNING')} · last heartbeat {hb.get('updated_at','—')}")
-    else: st.warning("24/7 WORKER: heartbeat unavailable. Start scripts/worker.py on the always-on server.")
-'''
-          new_hb_display = '''    if hb:
-        try:
-            from datetime import datetime, timezone
-            stamp = str(hb.get("updated_at", ""))
-            age_seconds = max(0.0, (datetime.now(timezone.utc) - datetime.fromisoformat(stamp).astimezone(timezone.utc)).total_seconds())
-        except Exception:
-            age_seconds = float("inf")
-        if hb.get("state") == "ERROR":
-            st.error(f"24/7 WORKER ERROR: {hb.get('message','Unknown error')} · last heartbeat {hb.get('updated_at','—')}")
-        elif age_seconds > 900:
-            st.error(f"24/7 WORKER: OFFLINE · last real worker heartbeat {hb.get('updated_at','—')} ({age_seconds/60:.1f} min ago)")
-        else:
-            st.success(f"24/7 WORKER: ONLINE · last real worker heartbeat {hb.get('updated_at','—')}")
-    else:
-        st.error("24/7 WORKER: OFFLINE · no real trading-worker heartbeat is available")
-    scheduler_path = Path("data/scheduler_heartbeat.json")
-    if scheduler_path.exists():
-        try:
-            sh = json.loads(scheduler_path.read_text(encoding="utf-8"))
-            st.caption(f"Automation scheduler: {sh.get('state','UNKNOWN')} · last invocation {sh.get('updated_at','—')} · market window {'ACTIVE' if sh.get('market_open') else 'CLOSED'}")
-        except Exception:
-            pass
-'''
-          if old_hb not in s: raise SystemExit('dashboard heartbeat replacement failed')
-          s = s.replace(old_hb, new_hb_display, 1)
-          app.write_text(s, encoding='utf-8')
-          PY
+        run: python scripts/fix_dashboard_runtime.py
 
       - name: Check NSE market window
         id: market
@@ -24901,15 +24783,15 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 354 bytes
+SIZE: 350 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "GitHub Actions scheduler invocation completed",
-  "updated_at": "2026-09-01T06:06:19.041849+05:30",
+  "updated_at": "2026-09-01T06:21:31.583968+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33455419123",
-  "event": "schedule",
+  "workflow_run_id": "33456442684",
+  "event": "push",
   "market_open": false,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -43208,12 +43090,6 @@ pytest>=8.0
 tzdata>=2024.1
 
 ====================================================================
-FILE: runtime-fix-trigger.txt
-SIZE: 45 bytes
-====================================================================
-Trigger continuous-monitor runtime repair v3.
-
-====================================================================
 FILE: scripts/__init__.py
 SIZE: 0 bytes
 ====================================================================
@@ -43240,6 +43116,131 @@ def main():
     Path("reports/daily").mkdir(parents=True,exist_ok=True); Path(f"reports/daily/{report['date']}.json").write_text(json.dumps(report,indent=2),encoding="utf-8"); print(json.dumps(report,indent=2))
 
 if __name__=="__main__":main()
+
+====================================================================
+FILE: scripts/fix_dashboard_runtime.py
+SIZE: 5384 bytes
+====================================================================
+from pathlib import Path
+import re
+
+app = Path('app.py')
+s = app.read_text(encoding='utf-8')
+s = s.replace('from urllib.request import urlopen', 'from urllib.request import Request, urlopen', 1)
+
+new_sync = '''def sync_remote_state(force: bool = False) -> bool:
+    """Synchronize the Streamlit copy with the latest committed Bot state."""
+    now = time.time()
+    last = float(st.session_state.get("_remote_state_sync", 0.0))
+    if not force and now - last < 60:
+        return True
+    base = "https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
+    targets = {
+        "trading.db": Path("data/trading.db"),
+        "monitor_status.json": Path("data/monitor_status.json"),
+        "scheduler_heartbeat.json": Path("data/scheduler_heartbeat.json"),
+        "worker_heartbeat.json": Path("data/worker_heartbeat.json"),
+        "watchdog_heartbeat.json": Path("data/watchdog_heartbeat.json"),
+    }
+    ok = False
+    for name, dest in targets.items():
+        tmp = None
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            url = f"{base}{name}?dashboard_sync={int(now * 1000)}"
+            request = Request(url, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
+            with urlopen(request, timeout=15) as response:
+                data = response.read()
+            import tempfile
+            fd, tmp = tempfile.mkstemp(prefix="remote-state-", dir=str(dest.parent))
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            os.replace(tmp, dest)
+            ok = True
+        except Exception:
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.unlink(tmp)
+                except Exception:
+                    pass
+    st.session_state["_remote_state_sync"] = now
+    return ok
+
+
+'''
+s, n = re.subn(r'def sync_remote_state\(force: bool = False\) -> bool:\n.*?(?=\ndef status\(\) -> dict\[str, Any\]:)', new_sync, s, count=1, flags=re.S)
+if n != 1:
+    raise SystemExit('sync_remote_state replacement failed')
+
+new_hb = '''def heartbeat() -> dict[str, Any]:
+    """Return only the real trading-worker heartbeat, never scheduler/watchdog state."""
+    if not HEARTBEAT.exists():
+        return {}
+    try:
+        payload = json.loads(HEARTBEAT.read_text(encoding="utf-8"))
+        return payload if payload else {}
+    except Exception:
+        return {}
+
+
+'''
+s, n = re.subn(r'def heartbeat\(\) -> dict\[str, Any\]:\n.*?(?=\ndef sql\()', new_hb, s, count=1, flags=re.S)
+if n != 1:
+    raise SystemExit('heartbeat replacement failed')
+
+old_refresh = '''    if st.sidebar.button("🔄 Refresh Search / Dashboard", use_container_width=True):
+        sync_remote_state(force=True)
+        st.cache_data.clear()
+        st.rerun()
+'''
+new_refresh = '''    if st.session_state.pop("_refresh_message", False):
+        st.sidebar.success("Dashboard state refreshed from GitHub.")
+    if st.session_state.pop("_refresh_failed", False):
+        st.sidebar.error("Dashboard refresh could not reach the persisted GitHub state.")
+    if st.sidebar.button("🔄 Refresh Search / Dashboard", key="refresh_dashboard_button", use_container_width=True):
+        ok = sync_remote_state(force=True)
+        st.cache_data.clear()
+        st.session_state["_refresh_message"] = bool(ok)
+        st.session_state["_refresh_failed"] = not bool(ok)
+        st.rerun()
+'''
+if old_refresh not in s:
+    raise SystemExit('refresh replacement failed')
+s = s.replace(old_refresh, new_refresh, 1)
+
+old_hb = '''    if hb.get("state") == "ERROR": st.error(f"24/7 WORKER ERROR: {hb.get('message','Unknown error')}")
+    elif hb: st.success(f"24/7 WORKER: {hb.get('state','RUNNING')} · last heartbeat {hb.get('updated_at','—')}")
+    else: st.warning("24/7 WORKER: heartbeat unavailable. Start scripts/worker.py on the always-on server.")
+'''
+new_hb_display = '''    if hb:
+        try:
+            from datetime import datetime, timezone
+            stamp = str(hb.get("updated_at", ""))
+            age_seconds = max(0.0, (datetime.now(timezone.utc) - datetime.fromisoformat(stamp).astimezone(timezone.utc)).total_seconds())
+        except Exception:
+            age_seconds = float("inf")
+        if hb.get("state") == "ERROR":
+            st.error(f"24/7 WORKER ERROR: {hb.get('message','Unknown error')} · last heartbeat {hb.get('updated_at','—')}")
+        elif age_seconds > 900:
+            st.error(f"24/7 WORKER: OFFLINE · last real worker heartbeat {hb.get('updated_at','—')} ({age_seconds/60:.1f} min ago)")
+        else:
+            st.success(f"24/7 WORKER: ONLINE · last real worker heartbeat {hb.get('updated_at','—')}")
+    else:
+        st.error("24/7 WORKER: OFFLINE · no real trading-worker heartbeat is available")
+    scheduler_path = Path("data/scheduler_heartbeat.json")
+    if scheduler_path.exists():
+        try:
+            sh = json.loads(scheduler_path.read_text(encoding="utf-8"))
+            st.caption(f"Automation scheduler: {sh.get('state','UNKNOWN')} · last invocation {sh.get('updated_at','—')} · market window {'ACTIVE' if sh.get('market_open') else 'CLOSED'}")
+        except Exception:
+            pass
+'''
+if old_hb not in s:
+    raise SystemExit('dashboard heartbeat replacement failed')
+s = s.replace(old_hb, new_hb_display, 1)
+
+app.write_text(s, encoding='utf-8')
+print('Dashboard runtime repair applied successfully.')
 
 ====================================================================
 FILE: scripts/load_universe.py
