@@ -92,6 +92,7 @@ class DhanBroker(BrokerInterface):
         # the legacy DHAN_ACCESS_TOKEN so the deployed Bot uses the credential
         # selected by the user. The legacy token remains a compatibility fallback.
         self.token = settings.dhan_market_data_token
+        self.credential_source = settings.dhan_market_data_credential_source
         self.base = settings.dhan_base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({
@@ -130,9 +131,16 @@ class DhanBroker(BrokerInterface):
             return str(response.status_code), str(payload)[:500]
         return str(response.status_code), str(payload)[:500]
 
+    def _auth_context(self) -> str:
+        return (
+            f"credential_source={self.credential_source}; "
+            f"client_id_configured={'yes' if bool(self.client_id) else 'no'}; "
+            f"credential_length={len(self.token)}"
+        )
+
     def _request(self, method: str, path: str, category: str = "data", **kwargs: Any) -> Any:
         if not self.client_id or not self.token:
-            raise RuntimeError("DHAN_AUTH_UNAVAILABLE")
+            raise RuntimeError(f"DHAN_AUTH_UNAVAILABLE: {self._auth_context()}")
 
         last_error = ""
         for attempt in range(self._MAX_RETRIES + 1):
@@ -154,6 +162,9 @@ class DhanBroker(BrokerInterface):
                     raise RuntimeError(last_error)
                 time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
                 continue
+
+            if response.status_code == 401:
+                raise RuntimeError(f"DHAN_HTTP_401: {response.text[:500]} [{self._auth_context()}]")
 
             if response.status_code >= 400:
                 raise RuntimeError(f"DHAN_HTTP_{response.status_code}: {response.text[:500]}")
@@ -181,10 +192,10 @@ class DhanBroker(BrokerInterface):
 
     def health(self) -> BrokerHealth:
         if not self.client_id or not self.token:
-            return BrokerHealth(False, False, "Dhan credentials unavailable")
+            return BrokerHealth(False, False, f"Dhan credentials unavailable [{self._auth_context()}]")
         try:
             self.funds()
-            return BrokerHealth(True, True, "DHAN CONNECTED")
+            return BrokerHealth(True, True, f"DHAN CONNECTED [{self._auth_context()}]")
         except Exception as exc:
             return BrokerHealth(False, False, str(exc))
 
