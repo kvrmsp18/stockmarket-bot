@@ -2298,12 +2298,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "BLUECHIP",
-    "security_id": "4681",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "BLUECLOUDS",
     "security_id": "765040",
     "exchange_segment": "NSE_EQ",
@@ -13404,6 +13398,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "SKYWAYS",
+    "security_id": "765480",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "SMALL250",
     "security_id": "759814",
     "exchange_segment": "NSE_EQ",
@@ -14138,6 +14138,12 @@
   {
     "symbol": "SWSOLAR",
     "security_id": "12489",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "SYMBIOTEC",
+    "security_id": "765485",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },

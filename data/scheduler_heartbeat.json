@@ -1,11 +1,11 @@
 {
   "state": "RUNNING",
   "message": "Scheduled GitHub Actions monitor invocation completed",
-  "updated_at": "2026-09-01T09:03:45.156999+05:30",
+  "updated_at": "2026-09-01T09:16:12.641517+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33466657990",
+  "workflow_run_id": "33467399690",
   "event": "schedule",
-  "market_open": false,
+  "market_open": true,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
   "live_order_submission": false
