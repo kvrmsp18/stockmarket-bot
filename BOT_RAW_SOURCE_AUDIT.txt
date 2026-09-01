@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 76f72cbf546b913a5595a7c36d0c7501271f40c6
-Generated UTC: 2026-09-01T01:48:56.151672+00:00
+Commit SHA: ce0fb3806b8af255c7758f6d401cedd3f5251c62
+Generated UTC: 2026-09-01T01:51:37.897022+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -49,13 +49,13 @@ intraday_bot/alerts.py	555 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	11964 bytes
-intraday_bot/config.py	4375 bytes
+intraday_bot/config.py	4538 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/engine.py	16458 bytes
 intraday_bot/news.py	830 bytes
 intraday_bot/paper.py	1447 bytes
 intraday_bot/research.py	8014 bytes
-intraday_bot/risk.py	4461 bytes
+intraday_bot/risk.py	5018 bytes
 intraday_bot/runtime.py	21507 bytes
 intraday_bot/runtime_v2.py	6784 bytes
 intraday_bot/safety.py	715 bytes
@@ -24170,9 +24170,9 @@ SIZE: 358 bytes
 {
   "state": "RUNNING",
   "message": "Scheduled GitHub Actions monitor invocation completed",
-  "updated_at": "2026-09-01T07:18:40.362088+05:30",
+  "updated_at": "2026-09-01T07:21:19.168315+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33460157157",
+  "workflow_run_id": "33460322698",
   "event": "push",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -40911,7 +40911,7 @@ def load_security_map() -> dict[str, dict[str, Any]]:
 
 ====================================================================
 FILE: intraday_bot/config.py
-SIZE: 4375 bytes
+SIZE: 4538 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -40963,6 +40963,7 @@ class Settings:
     live_enabled: bool = _bool("DHAN_LIVE_TRADING_ENABLED", False)
     emergency_stop: bool = _bool("BOT_EMERGENCY_STOP", False)
     max_consecutive_losses: int = _int("MAX_CONSECUTIVE_LOSSES", 3)
+    max_trades_per_day: int = _int("MAX_TRADES_PER_DAY", 2)
     risk_per_trade_pct: float = _float("RISK_PER_TRADE_PCT", 0.5)
     daily_loss_limit: float = _float("MAX_DAILY_LOSS", 15000.0)
     max_positions: int = _int("MAX_OPEN_POSITIONS", 5)
@@ -41008,6 +41009,8 @@ class Settings:
             raise ValueError("MIN_RR must be >=1")
         if self.max_consecutive_losses < 1:
             raise ValueError("MAX_CONSECUTIVE_LOSSES must be >=1")
+        if self.max_trades_per_day < 1:
+            raise ValueError("MAX_TRADES_PER_DAY must be >=1")
         if self.reference_capital <= 0:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.live_mode_requested:
@@ -41634,14 +41637,15 @@ def research_dict(result: ResearchResult) -> dict[str, Any]:
 
 ====================================================================
 FILE: intraday_bot/risk.py
-SIZE: 4461 bytes
+SIZE: 5018 bytes
 ====================================================================
 from __future__ import annotations
 
 from dataclasses import dataclass
 from math import floor
+from datetime import datetime
 
-from .config import settings
+from .config import IST, settings
 
 
 @dataclass(frozen=True)
@@ -41686,8 +41690,6 @@ def position_size(
     risk_qty = floor(max_risk / risk_per_share)
 
     if settings.mode == "PAPER":
-        # Paper capital is virtual and must not be reduced by the real Dhan
-        # account balance. Broker cash is deliberately ignored here.
         funds_base = capital
     elif available_funds is None:
         funds_base = capital
@@ -41747,8 +41749,26 @@ def _consecutive_losses_from_db() -> int:
                 break
         return count
     except Exception:
-        # A risk gate must fail closed if loss history cannot be inspected.
         return settings.max_consecutive_losses
+
+
+def _trades_today_from_db() -> int:
+    """Count terminal trades opened/closed in today's IST session."""
+    try:
+        from .database import Database
+
+        db = Database()
+        today = datetime.now(IST).date().isoformat()
+        with db.connect() as con:
+            row = con.execute(
+                "SELECT COUNT(*) FROM trades "
+                "WHERE mode IN ('PAPER','LIVE_TEST') AND closed_at IS NOT NULL "
+                "AND substr(closed_at,1,10)=?",
+                (today,),
+            ).fetchone()
+        return int(row[0] or 0) if row else 0
+    except Exception:
+        return settings.max_trades_per_day
 
 
 def risk_gate(
@@ -41773,6 +41793,8 @@ def risk_gate(
         consecutive_losses = _consecutive_losses_from_db()
     if consecutive_losses >= settings.max_consecutive_losses:
         return False, "MAX_CONSECUTIVE_LOSSES"
+    if _trades_today_from_db() >= settings.max_trades_per_day:
+        return False, "MAX_TRADES_PER_DAY"
     if rr < settings.min_rr:
         return False, "RISK_REJECTION"
     return True, None
