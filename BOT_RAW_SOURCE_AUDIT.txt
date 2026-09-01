@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: e17bb78b1ce7fbd95edf526a3316275105e82d2d
-Generated UTC: 2026-09-01T01:52:08.825691+00:00
+Commit SHA: 02dd7f144750be020316e744ba40409f5086228a
+Generated UTC: 2026-09-01T01:52:20.541048+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -111,7 +111,7 @@ src/validation_gate.py	9636 bytes
 src/validation_store.py	2407 bytes
 start.sh	504 bytes
 tests/__init__.py	0 bytes
-tests/test_platform.py	2144 bytes
+tests/test_platform.py	2109 bytes
 tests/test_research_frameworks.py	1267 bytes
 tests/test_run_daily_cycle.py	4389 bytes
 tests/test_runtime_safety.py	1812 bytes
@@ -24170,9 +24170,9 @@ SIZE: 358 bytes
 {
   "state": "RUNNING",
   "message": "Scheduled GitHub Actions monitor invocation completed",
-  "updated_at": "2026-09-01T07:21:53.440529+05:30",
+  "updated_at": "2026-09-01T07:22:08.907925+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33460358200",
+  "workflow_run_id": "33460374928",
   "event": "push",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -50240,7 +50240,7 @@ SIZE: 0 bytes
 
 ====================================================================
 FILE: tests/test_platform.py
-SIZE: 2144 bytes
+SIZE: 2109 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -50282,13 +50282,13 @@ def test_quantity_is_minimum_of_safety_limits():
 
 
 def test_paper_quantity_ignores_real_broker_cash():
-    # PAPER must use the virtual capital ceiling, not a zero/low Dhan balance.
     r=position_size(100,98,106,1000,available_funds=0,liquidity_qty=100,broker_max_qty=100)
     assert r.quantity == 2
     assert r.capital_required == 200
 
 
 def test_rr_and_risk_gate():
+    assert settings.max_trades_per_day == 2
     assert risk_reward(100,98,106)==3
     assert risk_gate(3,0,0,0,consecutive_losses=0)[0]
     assert risk_gate(2.9,0,0,0,consecutive_losses=0)[0] is False
