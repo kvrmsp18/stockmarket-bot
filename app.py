@@ -21,7 +21,7 @@ from intraday_bot.runtime import LIVE_TEST_MODE, PAPER_MODE, run_cycle
 
 st.set_page_config(page_title="NSE/BSE Intraday AI Trading Desk", layout="wide", initial_sidebar_state="expanded")
 DB = Database(); STATUS = Path("data/monitor_status.json"); HEARTBEAT = Path("data/worker_heartbeat.json")
-SCHEDULER_HEARTBEAT = Path("data/scheduler_heartbeat.json"); WATCHDOG_HEARTBEAT = Path("data/watchdog_heartbeat.json")
+SCHEDULER_HEARTBEAT = Path("data/scheduler_heartbeat.json")
 PAGES = ["Dashboard","New Chat","AI Prompt Guide","AI Baskets","Basket Detail","Stock Screener","Stocks","Stock Detail","360° Stock Analysis","Deep Research","Watchlist","Trend Scanner","Top Bullish","Top Bearish","Shift to Bullish","Shift to Bearish","Sector Analysis","Theme Analysis","Value Migration","Inflection Points","Value Chain","Profit Pool","SCRAP Analysis","Fundamental Analysis","Technical Analysis","Live Charts","Portfolio","Positions","Orders","Paper Trading","Live Trading","P&L","Trade Journal","Rejected Signals","Backtesting","Bot Performance","News","System Health","Diagnostics","Settings"]
 
 
@@ -44,7 +44,6 @@ def sync_remote_state(force: bool = False) -> bool:
         "monitor_status.json": Path("data/monitor_status.json"),
         "scheduler_heartbeat.json": Path("data/scheduler_heartbeat.json"),
         "worker_heartbeat.json": Path("data/worker_heartbeat.json"),
-        "watchdog_heartbeat.json": Path("data/watchdog_heartbeat.json"),
     }
     ok = False
     for name, dest in targets.items():
@@ -55,7 +54,6 @@ def sync_remote_state(force: bool = False) -> bool:
             request = Request(url, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
             with urlopen(request, timeout=15) as response:
                 data = response.read()
-            import tempfile
             fd, tmp = tempfile.mkstemp(prefix="remote-state-", dir=str(dest.parent))
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
@@ -63,13 +61,10 @@ def sync_remote_state(force: bool = False) -> bool:
             ok = True
         except Exception:
             if tmp and os.path.exists(tmp):
-                try:
-                    os.unlink(tmp)
-                except Exception:
-                    pass
+                try: os.unlink(tmp)
+                except Exception: pass
     st.session_state["_remote_state_sync"] = now
     return ok
-
 
 
 def status() -> dict[str, Any]:
@@ -78,21 +73,17 @@ def status() -> dict[str, Any]:
 
 
 def heartbeat() -> dict[str, Any]:
-    """Return only the real trading-worker heartbeat, never scheduler/watchdog state."""
-    if not HEARTBEAT.exists():
-        return {}
+    """Return only the real trading-cycle heartbeat, never scheduler state."""
+    if not HEARTBEAT.exists(): return {}
     try:
         payload = json.loads(HEARTBEAT.read_text(encoding="utf-8"))
         return payload if payload else {}
-    except Exception:
-        return {}
-
+    except Exception: return {}
 
 
 def sql(sql: str, params: tuple[Any, ...] = ()) -> pd.DataFrame:
     try:
-        with DB.connect() as con:
-            rows = con.execute(sql, params).fetchall()
+        with DB.connect() as con: rows = con.execute(sql, params).fetchall()
         return pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
     except Exception as exc:
         st.error(f"DATABASE ERROR: {exc}"); return pd.DataFrame()
@@ -122,27 +113,20 @@ def mode_switch() -> None:
 def controls() -> None:
     mode = selected_mode()
     st.sidebar.markdown("### Bot Controls")
-    if st.session_state.pop("_refresh_message", False):
-        st.sidebar.success("Dashboard state refreshed from GitHub.")
-    if st.session_state.pop("_refresh_failed", False):
-        st.sidebar.error("Dashboard refresh could not reach the persisted GitHub state.")
+    if st.session_state.pop("_refresh_message", False): st.sidebar.success("Dashboard state refreshed from GitHub.")
+    if st.session_state.pop("_refresh_failed", False): st.sidebar.error("Dashboard refresh could not reach the persisted GitHub state.")
     if st.sidebar.button("🔄 Refresh Search / Dashboard", key="refresh_dashboard_button", use_container_width=True):
-        ok = sync_remote_state(force=True)
-        st.cache_data.clear()
-        st.session_state["_refresh_message"] = bool(ok)
-        st.session_state["_refresh_failed"] = not bool(ok)
-        st.rerun()
+        ok = sync_remote_state(force=True); st.cache_data.clear(); st.session_state["_refresh_message"] = bool(ok); st.session_state["_refresh_failed"] = not bool(ok); st.rerun()
     label = "▶ Run Paper Analysis" if mode == PAPER_MODE else "▶ Run Live Test Analysis"
     if st.sidebar.button(label, type="primary", use_container_width=True):
         description = "paper-analysis" if mode == PAPER_MODE else "live-test analysis"
-        with st.spinner(f"Running complete {description} cycle..."):
-            result = run_cycle(mode)
+        with st.spinner(f"Running complete {description} cycle..."): result = run_cycle(mode)
         if result.get("errors"): st.sidebar.error(f"Cycle completed with {len(result['errors'])} error(s)")
         else: st.sidebar.success(f"Cycle complete · {len(result.get('candidates', []))} candidate(s)")
         st.rerun()
     hb = heartbeat()
-    if hb: st.sidebar.caption(f"Worker: {hb.get('state','UNKNOWN')} · {hb.get('updated_at','—')}")
-    else: st.sidebar.caption("Worker heartbeat: NOT FOUND")
+    if hb: st.sidebar.caption(f"Trading engine: {hb.get('state','UNKNOWN')} · {hb.get('updated_at','—')}")
+    else: st.sidebar.caption("Trading engine heartbeat: NOT FOUND")
 
 
 def header(title: str, desc: str = "") -> None:
@@ -158,25 +142,18 @@ def dashboard() -> None:
             from datetime import datetime, timezone
             stamp = str(hb.get("updated_at", ""))
             age_seconds = max(0.0, (datetime.now(timezone.utc) - datetime.fromisoformat(stamp).astimezone(timezone.utc)).total_seconds())
-        except Exception:
-            age_seconds = float("inf")
-        if hb.get("state") == "ERROR":
-            st.error(f"24/7 WORKER ERROR: {hb.get('message','Unknown error')} · last heartbeat {hb.get('updated_at','—')}")
-        elif age_seconds > 900:
-            st.error(f"24/7 WORKER: OFFLINE · last real worker heartbeat {hb.get('updated_at','—')} ({age_seconds/60:.1f} min ago)")
-        else:
-            st.success(f"24/7 WORKER: ONLINE · last real worker heartbeat {hb.get('updated_at','—')}")
-    else:
-        st.error("24/7 WORKER: OFFLINE · no real trading-worker heartbeat is available")
-    scheduler_path = Path("data/scheduler_heartbeat.json")
-    if scheduler_path.exists():
+        except Exception: age_seconds = float("inf")
+        if hb.get("state") == "ERROR": st.error(f"TRADING ENGINE ERROR: {hb.get('message','Unknown error')} · last heartbeat {hb.get('updated_at','—')}")
+        elif age_seconds > 900: st.error(f"TRADING ENGINE: OFFLINE · last real cycle heartbeat {hb.get('updated_at','—')} ({age_seconds/60:.1f} min ago)")
+        else: st.success(f"TRADING ENGINE: ONLINE · last successful market cycle {hb.get('updated_at','—')}")
+    else: st.error("TRADING ENGINE: OFFLINE · no real trading-cycle heartbeat is available")
+    if SCHEDULER_HEARTBEAT.exists():
         try:
-            sh = json.loads(scheduler_path.read_text(encoding="utf-8"))
+            sh = json.loads(SCHEDULER_HEARTBEAT.read_text(encoding="utf-8"))
             st.caption(f"Automation scheduler: {sh.get('state','UNKNOWN')} · last invocation {sh.get('updated_at','—')} · market window {'ACTIVE' if sh.get('market_open') else 'CLOSED'}")
-        except Exception:
-            pass
-    a,b,c,d,e,f = st.columns(6)
-    a.metric("Mode", s.get("mode", selected_mode())); b.metric("Universe", s.get("stocks_observed",0)); c.metric("Quotes", s.get("quotes",0)); d.metric("Candidates",len(s.get("candidates",[]))); e.metric("Open Positions",s.get("positions_open",0)); f.metric("Today's P&L",f"₹{s.get('today_realized_pnl',0):,.2f}")
+        except Exception: pass
+    a,b,c,d,e,f,g,h = st.columns(8)
+    a.metric("Mode", s.get("mode", selected_mode())); b.metric("Universe", s.get("stocks_observed",0)); c.metric("Quotes", s.get("quotes",0)); d.metric("Candidates",len(s.get("candidates",[]))); e.metric("Open Positions",s.get("positions_open",0)); f.metric("Today's P&L",f"₹{s.get('today_realized_pnl',0):,.2f}"); g.metric("Paper Buy Allocation",f"₹{s.get('suggested_buy_investment',0):,.2f}"); h.metric("Paper Capital",f"₹{settings.reference_capital:,.2f}")
     st.subheader("TODAY'S RESEARCH / ACTIONABLE TRADES")
     candidates = pd.DataFrame(s.get("candidates", []))
     if candidates.empty: st.warning("No actionable candidates were recorded in the latest cycle. Check Diagnostics and Rejected Signals for the rejection funnel.")
@@ -195,8 +172,7 @@ def dashboard() -> None:
 
 def framework_table(payload: dict[str, Any]) -> None:
     rows=[]
-    for name, x in payload.get("frameworks",{}).items():
-        rows.append({"Framework":name,"Score":x.get("score",0),"Confidence":x.get("confidence",0),"Positive factors":", ".join(x.get("positive_factors",[])) or "—","Negative factors":", ".join(x.get("negative_factors",[])) or "—","Missing data":", ".join(x.get("missing_data",[])) or "—","Method":x.get("method","")})
+    for name, x in payload.get("frameworks",{}).items(): rows.append({"Framework":name,"Score":x.get("score",0),"Confidence":x.get("confidence",0),"Positive factors":", ".join(x.get("positive_factors",[])) or "—","Negative factors":", ".join(x.get("negative_factors",[])) or "—","Missing data":", ".join(x.get("missing_data",[])) or "—","Method":x.get("method","")})
     if rows: st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
 
 
@@ -209,22 +185,18 @@ def framework_page() -> None:
     row=latest[latest["symbol"].astype(str).eq(symbol)].iloc[0]
     try: payload=json.loads(row["payload"])
     except Exception: payload={}
-    st.write(f"**Last research timestamp:** {row['ts']}")
-    st.write(f"**Overall framework conviction:** {payload.get('frameworks',{}).get('overall','DATA UNAVAILABLE')} · **Agreement:** {payload.get('frameworks',{}).get('agreement','DATA UNAVAILABLE')}")
-    framework_table(payload.get("frameworks",{}))
+    st.write(f"**Last research timestamp:** {row['ts']}"); st.write(f"**Overall framework conviction:** {payload.get('frameworks',{}).get('overall','DATA UNAVAILABLE')} · **Agreement:** {payload.get('frameworks',{}).get('agreement','DATA UNAVAILABLE')}"); framework_table(payload.get("frameworks",{}))
     st.subheader("Framework methodology")
     for name,spec in FRAMEWORK_RULES.items(): st.write(f"**{name}:** {spec['label']} · factors: {', '.join(spec['factors'])}")
 
 
 def research_page(title: str) -> None:
-    s = status(); candidates = pd.DataFrame(s.get("candidates", []))
-    research = sql("SELECT ts,symbol,event_type,payload FROM events WHERE component='research' ORDER BY id DESC LIMIT 500")
+    s = status(); candidates = pd.DataFrame(s.get("candidates", [])); research = sql("SELECT ts,symbol,event_type,payload FROM events WHERE component='research' ORDER BY id DESC LIMIT 500")
     header(title, f"{title} — persisted Bot results only.")
     if title == "Trend Scanner":
         if candidates.empty: st.warning("No actionable trend candidates in the latest cycle. Check Rejected Signals and Diagnostics.")
         else:
-            cols=[c for c in ["symbol","decision","price","trend_score","technical_score","volume_score","rr","stop","target","reason"] if c in candidates.columns]
-            st.dataframe(candidates.sort_values("trend_score",ascending=False)[cols],use_container_width=True,hide_index=True)
+            cols=[c for c in ["symbol","decision","price","trend_score","technical_score","volume_score","rr","stop","target","reason"] if c in candidates.columns]; st.dataframe(candidates.sort_values("trend_score",ascending=False)[cols],use_container_width=True,hide_index=True)
         return
     if title == "Stock Screener":
         if research.empty: st.warning("DATA UNAVAILABLE: no persisted research records yet."); return
@@ -276,8 +248,7 @@ def live_page() -> None:
     header("🟠 Live Trading — Test Mode","This is deliberately a broker-safe test mode. It uses the same analysis/risk/entry/position workflow but creates simulated fills. It does NOT call Dhan /v2/orders and cannot place a real order.")
     st.warning("LIVE TRADING IS NOT ACTUAL LIVE EXECUTION YET. Because no live-order API/funded account is configured, this page is for end-to-end testing only.")
     s=status(); live_orders=sql("SELECT * FROM orders WHERE order_id LIKE 'LIVETEST-%' ORDER BY ts DESC")
-    test_pnl=sql("SELECT COALESCE(SUM(net_pnl),0) AS x FROM trades WHERE mode='LIVE_TEST'"); pnl_value=float(test_pnl.get("x",pd.Series([0])).iloc[0]) if not test_pnl.empty else 0.0
-    open_tests=sql("SELECT * FROM positions WHERE mode='LIVE_TEST' AND closed_at IS NULL")
+    test_pnl=sql("SELECT COALESCE(SUM(net_pnl),0) AS x FROM trades WHERE mode='LIVE_TEST'"); pnl_value=float(test_pnl.get("x",pd.Series([0])).iloc[0]) if not test_pnl.empty else 0.0; open_tests=sql("SELECT * FROM positions WHERE mode='LIVE_TEST' AND closed_at IS NULL")
     a,b,c,d=st.columns(4); a.metric("Test Candidates",len(s.get("candidates",[])) if s.get("mode")==LIVE_TEST_MODE else 0); b.metric("Simulated Live-Test Orders",len(live_orders)); c.metric("Open Test Positions",len(open_tests)); d.metric("Test P&L",f"₹{pnl_value:,.2f}")
     if st.button("▶ Run Live Test Now",type="primary"):
         with st.spinner("Running live-style analysis with simulated execution..."): result=run_cycle(LIVE_TEST_MODE)
@@ -304,14 +275,13 @@ def pnl_page() -> None:
 
 
 def health_page() -> None:
-    header("🩺 System Health","Operational state of the always-on scheduler, market-data pipeline and latest cycle.")
-    s=status(); hb=heartbeat(); a,b,c,d,e=st.columns(5); a.metric("Worker",hb.get("state","NOT FOUND")); b.metric("Market","OPEN" if s.get("market_open") else "CLOSED"); c.metric("Quotes",s.get("quotes",0)); d.metric("Actionable",len(s.get("candidates",[]))); e.metric("Errors",len(s.get("errors",[]))); st.json({"worker":hb,"latest_cycle":s})
+    header("🩺 System Health","Operational state of the scheduled trading engine, market-data pipeline and latest cycle.")
+    s=status(); hb=heartbeat(); a,b,c,d,e=st.columns(5); a.metric("Trading Engine",hb.get("state","NOT FOUND")); b.metric("Market","OPEN" if s.get("market_open") else "CLOSED"); c.metric("Quotes",s.get("quotes",0)); d.metric("Actionable",len(s.get("candidates",[]))); e.metric("Errors",len(s.get("errors",[]))); st.json({"trading_engine":hb,"scheduler":json.loads(SCHEDULER_HEARTBEAT.read_text(encoding="utf-8")) if SCHEDULER_HEARTBEAT.exists() else {},"latest_cycle":s})
 
 
 def diagnostics_page() -> None:
     header("🔍 Diagnostics","Full persisted troubleshooting events; no fake success state is generated.")
-    s=status(); st.json(s); df=sql("SELECT * FROM events WHERE severity IN ('ERROR','WARN') OR event_type NOT IN ('CYCLE_START','CYCLE_END') ORDER BY id DESC LIMIT 500")
-    st.dataframe(df,use_container_width=True,hide_index=True) if not df.empty else st.info("No diagnostic events persisted.")
+    s=status(); st.json(s); df=sql("SELECT * FROM events WHERE severity IN ('ERROR','WARN') OR event_type NOT IN ('CYCLE_START','CYCLE_END') ORDER BY id DESC LIMIT 500"); st.dataframe(df,use_container_width=True,hide_index=True) if not df.empty else st.info("No diagnostic events persisted.")
 
 
 def rejected_page() -> None:
@@ -327,7 +297,7 @@ def rejected_page() -> None:
 
 
 def chat_page() -> None:
-    header("💬 Bot Chat","Ask about the latest cycle, candidates, rejected signals, paper positions, P&L, or heartbeat. Answers are based on persisted Bot data; no data is invented.")
+    header("💬 Bot Chat","Ask about the latest cycle, candidates, rejected signals, paper positions, P&L, or trading-engine heartbeat. Answers are based on persisted Bot data; no data is invented.")
     question=st.chat_input("Ask the Bot… e.g. Why no BUY? What was the last cycle? How many candidates?")
     if question:
         q=question.lower(); s=status(); hb=heartbeat()
@@ -335,9 +305,9 @@ def chat_page() -> None:
             cs=pd.DataFrame(s.get("candidates",[])); answer=("No actionable candidates are recorded in the latest cycle. Rejections: "+str(s.get("rejections",{}))) if cs.empty else "Latest actionable candidates: "+", ".join(f"{r.symbol} ({r.decision})" for r in cs.itertuples())
         elif "reject" in q or "why no" in q or "no trade" in q: answer=f"Latest rejection funnel: {s.get('rejections',{})}. See Rejected Signals for symbol-level reasons."
         elif "p&l" in q or "profit" in q or "loss" in q: answer=f"Persisted realized P&L: ₹{float(s.get('realized_pnl',0) or 0):,.2f}; today's realized P&L: ₹{float(s.get('today_realized_pnl',0) or 0):,.2f}."
-        elif "heartbeat" in q or "running" in q or "24/7" in q: answer=f"Latest persisted heartbeat: {hb.get('state','NOT FOUND')} at {hb.get('updated_at','—')}. Source: {hb.get('source','—')}."
+        elif "heartbeat" in q or "running" in q or "24/7" in q: answer=f"Latest persisted trading-engine heartbeat: {hb.get('state','NOT FOUND')} at {hb.get('updated_at','—')}. Source: {hb.get('source','—')}."
         elif "cycle" in q or "refresh" in q: answer=f"Last cycle: {s.get('ended_at','—')}; duration {s.get('duration_seconds','—')}s; universe {s.get('stocks_observed',0)}; quotes {s.get('quotes',0)}; deep pool {s.get('deep_analysis_pool','—')}; errors {len(s.get('errors',[]))}."
-        else: answer="I can answer from persisted Bot data about the latest cycle, candidates, rejection reasons, paper orders/P&L, and heartbeat."
+        else: answer="I can answer from persisted Bot data about the latest cycle, candidates, rejection reasons, paper orders/P&L, and trading-engine heartbeat."
         st.chat_message("user").write(question); st.chat_message("assistant").write(answer)
 
 
@@ -367,13 +337,12 @@ def generic_page(page: str) -> None:
     elif page=="Live Charts": live_charts()
     else:
         header(page,"This page is wired to persisted records; it will not fabricate data when the corresponding backend source is unavailable.")
-        df=sql("SELECT * FROM events ORDER BY id DESC LIMIT 200")
-        st.dataframe(df,use_container_width=True,hide_index=True) if not df.empty else st.info("DATA UNAVAILABLE: no persisted records.")
+        df=sql("SELECT * FROM events ORDER BY id DESC LIMIT 200"); st.dataframe(df,use_container_width=True,hide_index=True) if not df.empty else st.info("DATA UNAVAILABLE: no persisted records.")
 
 
 def main() -> None:
     sync_remote_state()
-    mode_switch(); controls(); page=st.sidebar.selectbox("Desk",PAGES,key="desk_page"); st.sidebar.markdown("---"); st.sidebar.caption("Always-on scheduler · 5-minute market-cycle interval · paper mode by default")
+    mode_switch(); controls(); page=st.sidebar.selectbox("Desk",PAGES,key="desk_page"); st.sidebar.markdown("---"); st.sidebar.caption("Scheduled trading engine · 5-minute market-cycle interval · paper mode by default")
     if page=="Dashboard": dashboard()
     elif page=="New Chat": chat_page()
     elif page=="AI Prompt Guide": header(page,"AI remains advisory only. Missing data must be reported, never invented.")
