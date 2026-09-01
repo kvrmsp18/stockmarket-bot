@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: c6889c5ac5307c25886a7161f3f5e24ec9dbed1f
-Generated UTC: 2026-09-01T01:54:48.074073+00:00
+Commit SHA: 4196218a03c868b9e94998559024a324b9ece894
+Generated UTC: 2026-09-01T01:57:16.380263+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -18,7 +18,7 @@ FILE INVENTORY
 .github/workflows/ci.yml	363 bytes
 .github/workflows/continuous-monitor.yml	6430 bytes
 .github/workflows/eod-close.yml	1709 bytes
-.github/workflows/export-source-audit.yml	5122 bytes
+.github/workflows/export-source-audit.yml	5380 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
 .streamlit/secrets.toml.example	431 bytes
@@ -51,7 +51,7 @@ intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	11964 bytes
 intraday_bot/config.py	4538 bytes
 intraday_bot/database.py	5203 bytes
-intraday_bot/engine.py	16458 bytes
+intraday_bot/engine.py	16163 bytes
 intraday_bot/news.py	830 bytes
 intraday_bot/paper.py	1447 bytes
 intraday_bot/research.py	8014 bytes
@@ -470,7 +470,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/export-source-audit.yml
-SIZE: 5122 bytes
+SIZE: 5380 bytes
 ====================================================================
 name: Export Source Audit
 
@@ -487,12 +487,28 @@ permissions:
 jobs:
   export:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt --quiet
+
+      - name: Validate source runtime and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile app.py intraday_bot/*.py scripts/*.py
+          PYTHONPATH=. pytest -q
 
       - name: Generate complete source audit
         shell: bash
@@ -506,28 +522,19 @@ jobs:
           root = Path('.')
           sha = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
           now = datetime.now(timezone.utc).isoformat()
-
           excluded_dirs = {'.git', '.venv', 'venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', 'node_modules'}
           excluded_names = {'BOT_RAW_SOURCE_AUDIT.txt'}
           binary_ext = {'.png','.jpg','.jpeg','.gif','.webp','.ico','.pdf','.zip','.gz','.tar','.db','.sqlite','.sqlite3','.parquet','.feather','.xlsx','.xls'}
           max_bytes = 2_000_000
-
           files = []
           for p in sorted(root.rglob('*')):
-              if not p.is_file():
-                  continue
+              if not p.is_file(): continue
               rel = p.relative_to(root)
-              if any(part in excluded_dirs for part in rel.parts) or p.name in excluded_names:
-                  continue
-              try:
-                  size = p.stat().st_size
-              except OSError:
-                  continue
+              if any(part in excluded_dirs for part in rel.parts) or p.name in excluded_names: continue
+              try: size = p.stat().st_size
+              except OSError: continue
               files.append((rel, size))
-
-          if not files:
-              raise SystemExit('AUDIT_GENERATION_FAILED: repository file inventory is empty')
-
+          if not files: raise SystemExit('AUDIT_GENERATION_FAILED: repository file inventory is empty')
           out = [
               '====================================================================',
               'BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT',
@@ -545,34 +552,23 @@ jobs:
               'FILE INVENTORY',
               '====================================================================',
           ]
-          for rel, size in files:
-              out.append(f'{rel.as_posix()}\t{size} bytes')
-
+          for rel, size in files: out.append(f'{rel.as_posix()}\t{size} bytes')
           for rel, size in files:
               path = root / rel
               out += ['', '====================================================================', f'FILE: {rel.as_posix()}', f'SIZE: {size} bytes', '====================================================================']
               if rel.suffix.lower() in binary_ext:
-                  out.append('[BINARY/GENERATED FILE — CONTENT NOT EMBEDDED]')
-                  continue
+                  out.append('[BINARY/GENERATED FILE — CONTENT NOT EMBEDDED]'); continue
               if size > max_bytes:
-                  out.append('[LARGE FILE > 2 MB — CONTENT NOT EMBEDDED]')
-                  continue
-              try:
-                  text = path.read_text(encoding='utf-8')
+                  out.append('[LARGE FILE > 2 MB — CONTENT NOT EMBEDDED]'); continue
+              try: text = path.read_text(encoding='utf-8')
               except UnicodeDecodeError:
-                  out.append('[NON-UTF8 FILE — CONTENT NOT EMBEDDED]')
-                  continue
+                  out.append('[NON-UTF8 FILE — CONTENT NOT EMBEDDED]'); continue
               except OSError as exc:
-                  out.append(f'[READ ERROR — CONTENT NOT EMBEDDED: {exc}]')
-                  continue
+                  out.append(f'[READ ERROR — CONTENT NOT EMBEDDED: {exc}]'); continue
               out.append(text.rstrip('\n'))
-
           audit = '\n'.join(out) + '\n'
-          if len(audit.strip()) < 500:
-              raise SystemExit(f'AUDIT_GENERATION_FAILED: generated audit is unexpectedly small ({len(audit)} bytes)')
-          if 'FILE INVENTORY' not in audit or 'FILE: ' not in audit:
-              raise SystemExit('AUDIT_GENERATION_FAILED: required audit sections are missing')
-
+          if len(audit.strip()) < 500: raise SystemExit(f'AUDIT_GENERATION_FAILED: generated audit is unexpectedly small ({len(audit)} bytes)')
+          if 'FILE INVENTORY' not in audit or 'FILE: ' not in audit: raise SystemExit('AUDIT_GENERATION_FAILED: required audit sections are missing')
           Path('BOT_RAW_SOURCE_AUDIT.txt').write_text(audit, encoding='utf-8')
           print(f'Generated audit: {len(audit)} bytes across {len(files)} files')
           PY
@@ -598,6 +594,7 @@ jobs:
             echo 'Audit unchanged.'
           else
             git commit -m 'chore: refresh complete raw source audit'
+            git pull --rebase --autostash
             git push
           fi
 
@@ -41171,7 +41168,7 @@ class Database:
 
 ====================================================================
 FILE: intraday_bot/engine.py
-SIZE: 16458 bytes
+SIZE: 16163 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -41237,10 +41234,9 @@ def _num(value: Any, default: float = 0.0) -> float:
 
 
 def _quote(q: dict[str,Any]) -> tuple[float,float,float]:
-    # Dhan quote payloads vary by endpoint/version; support flat and nested OHLC forms.
     price=_num(q.get("last_price", q.get("ltp", q.get("lastPrice"))))
     ohlc=q.get("ohlc") or q.get("OHLC") or {}
-    prev=_num(q.get("prev_close", q.get("previous_close", q.get("previousClose", ohlc.get("close"))))
+    prev=_num(q.get("prev_close", q.get("previous_close", q.get("previousClose", ohlc.get("close")))))
     vol=_num(q.get("volume", q.get("volumeTraded", q.get("volumeTradedToday"))))
     return price,prev,vol
 
@@ -41340,7 +41336,6 @@ class TradingEngine:
             ret=(price/prev-1) if prev>0 else 0
             ranked.append((abs(ret)*100 + min(vol/1_000_000,5),item,price,vol))
         ranked.sort(key=lambda z:z[0],reverse=True)
-        # Full universe is observed in bulk; expensive candle/fundamental/AI analysis is bounded to the best movers.
         shortlist=ranked[:min(80,len(ranked))]
         funds=self.broker.funds() if self.broker.health().connected else settings.reference_capital
         funds=float(funds or settings.reference_capital)
@@ -41393,13 +41388,11 @@ class TradingEngine:
                 order=self.broker.order(c["symbol"],c["decision"],c["quantity"],c["entry"],live=False)
             oid=str(order.get("order_id",uuid.uuid4().hex)); result["orders"].append(order)
             self.db.event("execution","INFO","ORDER_FILLED",order,c["symbol"],"LIVE" if self.live_requested else "PAPER")
-            pos_id=f"POS-{uuid.uuid4().hex[:16]}"
-            payload={**c,"signal_id":signal_id,"order_id":oid}
+            pos_id=f"POS-{uuid.uuid4().hex[:16]}"; payload={**c,"signal_id":signal_id,"order_id":oid}
             with self.db.connect() as con:
                 con.execute("INSERT INTO positions(position_id,symbol,mode,side,quantity,entry_price,current_price,stop,target,opened_at,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(pos_id,c["symbol"],"LIVE" if self.live_requested else "PAPER",c["decision"],c["quantity"],c["entry"],c["entry"],c["stop"],c["target"],datetime.now(timezone.utc).isoformat(),json.dumps(payload)))
 
     def _manage_positions(self,quotes:dict[str,dict[str,Any]],universe:list[dict[str,Any]])->None:
-        sid_to_symbol={str(x.get("security_id")):x["symbol"] for x in universe}
         with self.db.connect() as con:
             rows=con.execute("SELECT * FROM positions WHERE closed_at IS NULL").fetchall()
             for p in rows:
