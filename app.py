@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+import time
+from urllib.request import urlopen
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -27,6 +30,29 @@ def secret(name: str, default: str = "") -> str:
     if value: return value
     try: return str(st.secrets.get(name, default) or default)
     except Exception: return default
+
+
+def sync_remote_state(force: bool = False) -> bool:
+    """Keep Streamlit Cloud synchronized with the GitHub Actions state store."""
+    now=time.time()
+    last=float(st.session_state.get("_remote_state_sync",0.0))
+    if not force and now-last < 60: return True
+    base="https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
+    targets={"trading.db":Path("data/trading.db"),"monitor_status.json":Path("data/monitor_status.json"),"scheduler_heartbeat.json":Path("data/scheduler_heartbeat.json"),"worker_heartbeat.json":Path("data/worker_heartbeat.json"),"watchdog_heartbeat.json":Path("data/watchdog_heartbeat.json")}
+    ok=False
+    for name,dest in targets.items():
+        try:
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            with urlopen(base+name,timeout=8) as r: data=r.read()
+            fd,tmp=tempfile.mkstemp(prefix="remote-state-",dir=str(dest.parent))
+            with os.fdopen(fd,"wb") as f: f.write(data)
+            os.replace(tmp,dest); ok=True
+        except Exception:
+            try:
+                if 'tmp' in locals() and os.path.exists(tmp): os.unlink(tmp)
+            except Exception: pass
+    st.session_state["_remote_state_sync"]=now
+    return ok
 
 
 def status() -> dict[str, Any]:
@@ -80,7 +106,10 @@ def mode_switch() -> None:
 def controls() -> None:
     mode = selected_mode()
     st.sidebar.markdown("### Bot Controls")
-    if st.sidebar.button("🔄 Refresh Search / Dashboard", use_container_width=True): st.rerun()
+    if st.sidebar.button("🔄 Refresh Search / Dashboard", use_container_width=True):
+        sync_remote_state(force=True)
+        st.cache_data.clear()
+        st.rerun()
     label = "▶ Run Paper Analysis" if mode == PAPER_MODE else "▶ Run Live Test Analysis"
     if st.sidebar.button(label, type="primary", use_container_width=True):
         description = "paper-analysis" if mode == PAPER_MODE else "live-test analysis"
@@ -302,6 +331,7 @@ def generic_page(page: str) -> None:
 
 
 def main() -> None:
+    sync_remote_state()
     mode_switch(); controls(); page=st.sidebar.selectbox("Desk",PAGES,key="desk_page"); st.sidebar.markdown("---"); st.sidebar.caption("Always-on scheduler · 5-minute market-cycle interval · paper mode by default")
     if page=="Dashboard": dashboard()
     elif page=="New Chat": chat_page()
