@@ -25,12 +25,7 @@ def _secret_or_env(name: str, default: str = "") -> str:
 
 
 def _credential(name: str, default: str = "") -> str:
-    """Normalize a secret pasted from a dashboard or secret store.
-
-    Dhan expects the raw credential in the ``access-token`` header. Do not
-    store or send a ``Bearer`` prefix. A single matching pair of quotes is
-    removed because users sometimes paste secrets including display quotes.
-    """
+    """Normalize a credential pasted from a dashboard or secret store."""
     value = _secret_or_env(name, default).strip()
     if value.lower().startswith("bearer "):
         value = value[7:].strip()
@@ -83,9 +78,9 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # Dhan's one-month credential is stored in DHAN_API_KEY. Keep the
-    # legacy access-token field for compatibility, but prefer API key for
-    # market-data authentication and use the access token only as fallback.
+    # PAPER/market-data validation uses the user's one-month Dhan credential
+    # stored in DHAN_API_KEY. The short-lived/legacy DHAN_ACCESS_TOKEN is
+    # intentionally ignored for market-data authentication in this phase.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
     dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
@@ -101,17 +96,12 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Credential used for Dhan market-data API calls."""
-        return self.dhan_api_key or self.dhan_access_token
+        """Return only the configured one-month DHAN_API_KEY."""
+        return self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        """Identify which configured secret supplies the Dhan credential."""
-        if self.dhan_api_key:
-            return "DHAN_API_KEY"
-        if self.dhan_access_token:
-            return "DHAN_ACCESS_TOKEN"
-        return "NONE"
+        return "DHAN_API_KEY" if self.dhan_api_key else "NONE"
 
     @property
     def live_mode_requested(self) -> bool:
