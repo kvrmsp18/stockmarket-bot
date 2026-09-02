@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _secret_or_env(name: str, default: str = "") -> str:
-    """Read configuration from environment first, then Streamlit Secrets."""
     value = os.getenv(name)
     if value is not None and value.strip() != "":
         return value.strip()
@@ -25,7 +24,6 @@ def _secret_or_env(name: str, default: str = "") -> str:
 
 
 def _credential(name: str, default: str = "") -> str:
-    """Normalize a credential pasted from a dashboard or secret store."""
     value = _secret_or_env(name, default).strip()
     if value.lower().startswith("bearer "):
         value = value[7:].strip()
@@ -78,13 +76,12 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # Dhan's REST API authenticates with client-id + access-token. Keep
-    # DHAN_API_KEY as a compatibility alias because the project historically
-    # used that name for the user's longer-valid credential. The value stored
-    # there must itself be a valid Dhan access token; a generic API key/secret
-    # pair cannot be sent as an access-token.
-    dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
+    # Dhan's REST API authenticates with client-id + access-token. The project
+    # historically stored the user's long-valid credential under DHAN_API_KEY,
+    # so that name is kept as an alias. The alias must contain a valid Dhan
+    # access token; a generic API key/secret pair is not an access token.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
+    dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
     telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
@@ -98,15 +95,15 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Prefer the official access-token secret; accept the legacy alias."""
-        return self.dhan_access_token or self.dhan_api_key
+        """Prefer the configured long-valid credential; token is fallback only."""
+        return self.dhan_api_key or self.dhan_access_token
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        if self.dhan_access_token:
-            return "DHAN_ACCESS_TOKEN"
         if self.dhan_api_key:
             return "DHAN_API_KEY_ALIAS"
+        if self.dhan_access_token:
+            return "DHAN_ACCESS_TOKEN_FALLBACK"
         return "NONE"
 
     @property
@@ -128,9 +125,8 @@ class Settings:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.daily_loss_limit <= 0 or self.max_position_exposure <= 0:
             raise ValueError("Paper risk limits must be positive")
-        if self.live_mode_requested:
-            if not self.dhan_client_id or not self.dhan_market_data_token:
-                raise ValueError("LIVE requested but Dhan credentials are missing")
+        if self.live_mode_requested and (not self.dhan_client_id or not self.dhan_market_data_token):
+            raise ValueError("LIVE requested but Dhan credentials are missing")
 
 
 settings = Settings()
