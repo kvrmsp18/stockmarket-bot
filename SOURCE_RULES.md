@@ -8,7 +8,7 @@ This file records the supplied specification as the source of truth for source-d
 | Supplied specification §25 | SECTORS > 15%; COMPANIES > 25%; RED FLAGS → REJECTION | Preserve thresholds exactly | SCRAP rejection gate | Configurable but source defaults remain 15/25 | SOURCE-DERIVED |
 | Supplied specification §27 | STOCK PRICE = EPS × P/E | Research/valuation relationship | `source_valuation()` | No direct intraday trigger | SOURCE-DERIVED |
 | Supplied specification §31 | ROCE = PROFIT / CAPITAL × 100 | Preserve formula | `source_roce()` | Capital definition must be verified if source is more specific | SOURCE-DERIVED |
-| Supplied specification §32 | R.R = (F.A + W.C) / CASH | Handwritten/unclear abbreviation meaning | Preserve as reference only | Not an automatic trading trigger | SOURCE-UNCLEAR |
+| Supplied specification §32 | R.R = (F.A + W.C) / CASH | Handwritten/unclear abbreviation meaning | Preserve as reference only | Not an automatic intraday trigger | SOURCE-UNCLEAR |
 | Supplied specification §35 | TREND SCORE 0–10; >7 BULLISH; <4 BEARISH | Transparent trend classification | `technical.py` | Thresholds configurable, source defaults 7/4 | SOURCE-DERIVED |
 | Supplied specification §41 | Buffett, Rakesh Jhunjhunwala, Peter Lynch, 100 Baggers, CANSLIM | Research/conviction frameworks | `conviction()` | Framework weights may be configured | SOURCE-DERIVED RESEARCH |
 | Supplied specification §67 | EOD report with starting/ending capital, funds, deployed capital, signals, trades, wins/losses, P&L, drawdown, etc. | Required reporting | Database/reporting layer | Report schedule configurable | ENGINEERING REQUIREMENT |
@@ -22,7 +22,10 @@ This file records the supplied specification as the source of truth for source-d
 | Final project override #15 | Validate source audit → syntax/import → tests → Actions → paper cycle → persisted state → dashboard → candidate/rejection verification | CI passing alone is insufficient | Release/verification sequence | N/A | ENGINEERING |
 | Final project risk constraint | Start with a maximum of 2 trades per day | Daily trade-count limit is deterministic and cannot be bypassed by AI/dashboard | `risk_gate()` counts filled simulated entries for the current IST date | `MAX_TRADES_PER_DAY=2` | ENGINEERING/SAFETY |
 | Final project risk constraint | Maximum consecutive losses and emergency stop are deterministic risk controls | Block new trades when configured safety limits are reached | `risk_gate()` | `MAX_CONSECUTIVE_LOSSES=3`, `BOT_EMERGENCY_STOP=false` | ENGINEERING/SAFETY |
-| Final project heartbeat fix | Scheduler heartbeat is not proof of a live trading worker | Dashboard must distinguish scheduler liveness from successful market-cycle liveness | `worker_heartbeat.json` is written only after a successful market cycle; scheduler shown separately | 15-minute stale threshold in UI | ENGINEERING/SAFETY |
+| Final project heartbeat fix | Scheduler heartbeat is not proof of a live trading worker | Dashboard must distinguish scheduler liveness from successful market-cycle liveness | Scheduler heartbeat is written every scheduled invocation; worker heartbeat records cycle success/degradation separately | 5-minute scheduled interval | ENGINEERING/SAFETY |
+| Paper-validation risk decision | ₹1,000 virtual account requires meaningful absolute safety gates | Scale absolute limits instead of retaining real-capital values that cannot bind | `daily_loss_limit=₹20`, `max_position_exposure=₹800` by default | `MAX_DAILY_LOSS=20`, `MAX_POSITION_EXPOSURE=800` | ENGINEERING/SAFETY |
+| Runtime ownership decision | `runtime.py` is the active engine; `runtime_v2.py` was an obsolete parallel implementation | One active runtime prevents future edits to the wrong engine | `scripts/run_daily_cycle.py` → `intraday_bot.runtime.run_cycle()`; obsolete `runtime_v2.py` removed | N/A | ENGINEERING |
+| Dhan paper-data credential decision | Current paper phase uses the longer-valid Dhan credential configured as `DHAN_API_KEY`; short-lived access token is not required by this path | Avoid making daily token regeneration a development blocker | `DhanBroker` uses `settings.dhan_market_data_token`; workflow preflight validates it before a market cycle | `DHAN_API_KEY` | ENGINEERING/SAFETY |
 
 ## Important separation
 
@@ -31,6 +34,10 @@ Long-term concepts such as Compounders, 100 Baggers, Buffett, Peter Lynch, ROCE,
 ## PAPER CAPITAL RULE
 
 The current paper-testing account is virtual. `PAPER` position sizing must use `BOT_RESEARCH_REFERENCE_CAPITAL` and must not be reduced by the real Dhan account balance. This rule does not authorize real trading.
+
+## PAPER RISK RULE
+
+For the current ₹1,000 validation account, the default daily loss ceiling is ₹20 and the maximum single-position exposure is ₹800. These are defaults, not permanent production limits; they may be overridden through deployment secrets when the paper account is intentionally scaled.
 
 ## RISK SAFETY RULE
 
