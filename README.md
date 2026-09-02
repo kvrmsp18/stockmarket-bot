@@ -18,11 +18,13 @@ This repository implements the production-oriented paper-trading architecture ba
 
 ## Dhan authentication for the current paper phase
 
-Dhan's REST API uses `DHAN_CLIENT_ID` plus an **access token** for API authentication. The Bot therefore prefers `DHAN_ACCESS_TOKEN`. The project's historical `DHAN_API_KEY` name is retained only as a compatibility alias for a value that is itself a valid Dhan access token; a generic API key/secret cannot be substituted for an access token.
+Dhan's REST API endpoints used by this Bot authenticate with `DHAN_CLIENT_ID` plus a valid **Dhan access token**. The Bot therefore prefers `DHAN_ACCESS_TOKEN`. The historical `DHAN_API_KEY` name is retained only as a compatibility alias for a value that is itself a valid Dhan access token; a generic API key/secret is not interchangeable with an access token.
 
-The current persisted failure is explicit: `DHAN_HTTP_401` / Dhan error `808` (`Authentication Failed - Client ID or Token invalid`). This proves the deployed client/token combination is being rejected by Dhan; the Bot must not fabricate quotes or trades around that failure. Once the correct valid access token is stored, the paper cycle can proceed without requiring a new token merely because the Bot is running continuously. The Bot also supports the Dhan LTP market-feed fallback when the quote endpoint itself is unavailable.
+The latest GitHub Actions preflight reached Dhan successfully but Dhan rejected the configured credential pair with **HTTP 401 / error `DH-901`**: `Client ID or user generated access token is invalid or expired.` The Bot must not fabricate quotes, candidates or trades around that failure. This is a credential-value/type problem, not a market-scanning problem.
 
-The Dhan preflight validates both account authentication and the actual market-feed path with a real mapped security ID before the expensive cycle. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
+If the user's longer-valid Dhan credential is in fact a valid access token, it can be used for the paper phase by storing that value in the `DHAN_ACCESS_TOKEN` GitHub secret (with the matching `DHAN_CLIENT_ID`). No separate daily token is required by the Bot merely because the scheduler runs continuously; however, the credential itself must remain valid according to Dhan's authentication rules. If the credential is only a generic API key/secret and not an access token, the Bot cannot use it as an access token.
+
+The Dhan preflight validates account authentication and, when `DHAN_SECURITY_IDS_JSON` contains a mapped security ID, validates the actual market-feed path before the expensive cycle. The market-feed adapter also has an LTP fallback when the quote endpoint itself is unavailable. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
 
 ## Architecture
 
