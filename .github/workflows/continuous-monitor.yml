@@ -124,10 +124,11 @@ jobs:
           def fail(message: str) -> None:
               path = Path('data/monitor_status.json')
               path.parent.mkdir(parents=True, exist_ok=True)
+              now = datetime.now(ZoneInfo('Asia/Kolkata')).isoformat()
               payload = {
                   'cycle_id': 'PREFLIGHT-' + datetime.now(ZoneInfo('Asia/Kolkata')).strftime('%Y%m%dT%H%M%S%f'),
-                  'started_at': datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),
-                  'ended_at': datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),
+                  'started_at': now,
+                  'ended_at': now,
                   'mode': 'PAPER',
                   'market_open': os.getenv('MARKET_OPEN') == 'true',
                   'stocks_observed': 0,
@@ -159,9 +160,6 @@ jobs:
           if not token:
               fail('DHAN_PREFLIGHT_ERROR: no Dhan Access Token available')
 
-          # Reuse the effective token for the rest of this GitHub job.
-          # When DHAN_ACCESS_TOKEN is supplied it takes precedence over
-          # PIN+TOTP and avoids the failing automated TOTP route entirely.
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env_file:
               env_file.write('DHAN_ACCESS_TOKEN=' + token + '\n')
           print('Dhan access token prepared for reuse by the cycle.')
@@ -213,6 +211,38 @@ jobs:
       - name: Build complete NSE cash-equity universe
         if: steps.market.outputs.run_cycle == 'true'
         run: python scripts/load_universe.py
+
+      - name: Verify Dhan quotes against fresh universe
+        if: steps.market.outputs.run_cycle == 'true'
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+          DHAN_PIN: ${{ secrets.DHAN_PIN }}
+          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from intraday_bot.brokers import DhanBroker
+          from intraday_bot.config import settings
+
+          universe = json.loads(Path('data/universe.json').read_text(encoding='utf-8'))
+          if not universe:
+              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: universe is empty')
+          sample = universe[:10]
+          try:
+              quotes = DhanBroker().bulk_quotes(sample)
+          except Exception as exc:
+              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: ' + str(exc))
+          print('Fresh universe symbols:', len(universe))
+          print('Fresh universe quote sample:', len(quotes))
+          if not quotes:
+              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: fresh universe returned zero quotes')
+          print('DHAN_FRESH_UNIVERSE_QUOTE_VERIFY_PASSED')
+          PY
 
       - name: Run complete 5-minute paper cycle
         id: run_cycle
