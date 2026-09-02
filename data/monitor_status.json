@@ -1,7 +1,7 @@
 {
-  "cycle_id": "PREFLIGHT-20260902T140531413243",
-  "started_at": "2026-09-02T14:05:31.413536+05:30",
-  "ended_at": "2026-09-02T14:05:31.413547+05:30",
+  "cycle_id": "PREFLIGHT-20260902T140659568588",
+  "started_at": "2026-09-02T14:06:59.568840+05:30",
+  "ended_at": "2026-09-02T14:06:59.568852+05:30",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 0,
@@ -13,7 +13,7 @@
   "rejection_details": [],
   "orders": [],
   "errors": [
-    "DHAN_PREFLIGHT_ERROR: DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_ACCESS_TOKEN; client_id_configured=yes; credential_length=327]"
+    "DHAN_PREFLIGHT_ERROR: DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_API_KEY_ALIAS; client_id_configured=yes; credential_length=36]"
   ],
   "execution_gate": "PREFLIGHT_FAILED"
 }
