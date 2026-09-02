@@ -76,11 +76,10 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # The paper-trading deployment uses the user's longer-valid Dhan
-    # credential stored in DHAN_API_KEY. Do not fall back to the short-lived
-    # DHAN_ACCESS_TOKEN secret: DHAN_API_KEY is the single source of truth
-    # for Dhan authentication in this bot.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
+    dhan_pin: str = _credential("DHAN_PIN", "")
+    dhan_totp_secret: str = _credential("DHAN_TOTP_SECRET", "")
+    dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
     telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
@@ -94,12 +93,26 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Return only the configured DHAN_API_KEY credential."""
-        return self.dhan_api_key
+        """Return a real Dhan Access Token, never an API Key."""
+        if self.dhan_access_token:
+            return self.dhan_access_token
+        if self.dhan_client_id and self.dhan_pin and self.dhan_totp_secret:
+            from .dhan_auth import get_access_token
+            token, _ = get_access_token(
+                self.dhan_client_id,
+                self.dhan_pin,
+                self.dhan_totp_secret,
+            )
+            return token
+        return ""
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        return "DHAN_API_KEY" if self.dhan_api_key else "NONE"
+        if self.dhan_access_token:
+            return "DHAN_ACCESS_TOKEN"
+        if self.dhan_client_id and self.dhan_pin and self.dhan_totp_secret:
+            return "DHAN_PIN_TOTP"
+        return "NONE"
 
     @property
     def live_mode_requested(self) -> bool:
@@ -121,7 +134,7 @@ class Settings:
         if self.daily_loss_limit <= 0 or self.max_position_exposure <= 0:
             raise ValueError("Paper risk limits must be positive")
         if self.live_mode_requested and (not self.dhan_client_id or not self.dhan_market_data_token):
-            raise ValueError("LIVE requested but Dhan credentials are missing")
+            raise ValueError("LIVE requested but Dhan authentication is unavailable")
 
 
 settings = Settings()
