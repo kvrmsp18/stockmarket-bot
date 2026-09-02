@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: b3c6c54c7466972ebe6381285db83970025d4828
-Generated UTC: 2026-09-02T17:18:00.698811+00:00
+Commit SHA: 7034af8cfcd4f24b01776059a229cfc561cb158f
+Generated UTC: 2026-09-02T17:23:09.732683+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -63,6 +63,7 @@ intraday_bot/runtime.py	21507 bytes
 intraday_bot/safety.py	715 bytes
 intraday_bot/technical.py	4484 bytes
 pages/00_TOTP_Diagnostic.py	3165 bytes
+pages/01_Dhan_Auth_Request_Diagnostic.py	3495 bytes
 reports/.gitkeep	0 bytes
 reports/daily/.gitkeep	1 bytes
 reports/daily/2026-08-29.md	428 bytes
@@ -1590,9 +1591,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-02T22:33:02.973827+05:30",
+  "updated_at": "2026-09-02T22:48:20.749701+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33658658533",
+  "workflow_run_id": "33660224517",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17674,10 +17675,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-02T22:33:03.052426+05:30",
+  "updated_at": "2026-09-02T22:48:20.790370+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33658658533",
+  "workflow_run_id": "33660224517",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -20128,6 +20129,102 @@ if st.button("Check TOTP match", type="primary"):
 
 st.divider()
 st.caption("Security: the entered OTP is used only for an in-memory comparison; it is not written to the database, GitHub, logs, or session state.")
+
+====================================================================
+FILE: pages/01_Dhan_Auth_Request_Diagnostic.py
+SIZE: 3495 bytes
+====================================================================
+from __future__ import annotations
+
+import time
+from typing import Any
+
+import pyotp
+import requests
+import streamlit as st
+
+from intraday_bot.config import settings
+from intraday_bot.dhan_auth import _normalise_totp_secret
+
+
+st.set_page_config(page_title="Dhan Auth Request Diagnostic", layout="centered")
+
+st.title("🧪 Dhan Auth Request Diagnostic")
+st.info(
+    "This test performs one real Dhan Access Token generation request using the "
+    "configured Client ID + PIN + TOTP. It never displays or stores the Client ID, "
+    "PIN, TOTP secret, or generated 6-digit OTP."
+)
+
+client_id = settings.dhan_client_id
+pin = settings.dhan_pin
+secret = settings.dhan_totp_secret
+
+if not client_id or not pin or not secret:
+    st.error("Required Dhan authentication settings are not available in Streamlit Secrets.")
+    st.stop()
+
+try:
+    normalised = _normalise_totp_secret(secret)
+    generator = pyotp.TOTP(normalised)
+    current_code = generator.now()
+    remaining = int(generator.interval - (time.time() % generator.interval))
+except Exception as exc:
+    st.error(f"Unable to initialise TOTP locally: {exc}")
+    st.stop()
+
+st.write(f"TOTP period: **{generator.interval}s**")
+st.write(f"Current TOTP window expires in approximately **{remaining}s**")
+st.caption("The generated OTP is used only for this request and is never shown.")
+
+if st.button("Run Dhan authentication test", type="primary"):
+    started = time.perf_counter()
+    try:
+        response = requests.post(
+            "https://auth.dhan.co/app/generateAccessToken",
+            params={"dhanClientId": client_id, "pin": pin, "totp": current_code},
+            timeout=15,
+        )
+        elapsed_ms = (time.perf_counter() - started) * 1000
+
+        try:
+            payload: Any = response.json()
+        except ValueError:
+            payload = {"raw": response.text[:500]}
+
+        safe = {}
+        if isinstance(payload, dict):
+            for key in ("status", "message"):
+                if payload.get(key) is not None:
+                    safe[key] = str(payload.get(key))[:500]
+            remarks = payload.get("remarks")
+            if isinstance(remarks, dict):
+                for key in ("error_type", "message", "error_message"):
+                    if remarks.get(key) is not None:
+                        safe[f"remarks.{key}"] = str(remarks.get(key))[:500]
+
+        st.write(f"HTTP status: **{response.status_code}**")
+        st.write(f"Response time: **{elapsed_ms:.0f} ms**")
+
+        if safe:
+            st.json(safe)
+        else:
+            st.code("Dhan returned a response without a recognized non-secret status/message field.")
+
+        if response.status_code == 200:
+            st.success("✅ Dhan accepted the authentication HTTP request. Check the response above for token-generation status.")
+        elif response.status_code in {400, 401, 403}:
+            st.error("❌ Dhan rejected the authentication request. The non-secret response above is the key diagnostic evidence.")
+        else:
+            st.warning("⚠️ Dhan returned an unexpected HTTP status. The response above is the diagnostic evidence.")
+
+    except requests.RequestException as exc:
+        st.error(f"❌ HTTP request to Dhan failed: {type(exc).__name__}")
+    except Exception as exc:
+        st.error(f"❌ Diagnostic failed: {type(exc).__name__}")
+
+st.divider()
+st.caption("Security: credentials and OTP are kept in memory only; no secrets, OTP values, or access tokens are displayed or persisted.")
 
 ====================================================================
 FILE: reports/.gitkeep
