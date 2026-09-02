@@ -33,8 +33,8 @@ def test_indicators_and_trend_thresholds():
 
 def test_quantity_is_minimum_of_safety_limits():
     r=position_size(100,98,106,100000,available_funds=5000,liquidity_qty=20,broker_max_qty=50)
-    assert r.quantity==20
-    assert r.risk_safe>=r.quantity and r.funds_safe>=r.quantity
+    assert r.quantity==8
+    assert r.risk_safe>=r.quantity and r.funds_safe>=r.quantity and r.position_safe>=r.quantity
 
 
 def test_paper_quantity_ignores_real_broker_cash():
@@ -45,6 +45,8 @@ def test_paper_quantity_ignores_real_broker_cash():
 
 def test_rr_and_risk_gate():
     assert settings.max_trades_per_day == 2
+    assert settings.daily_loss_limit == 20.0
+    assert settings.max_position_exposure == 800.0
     assert risk_reward(100,98,106)==3
     assert risk_gate(3,0,0,0,consecutive_losses=0)[0]
     assert risk_gate(2.9,0,0,0,consecutive_losses=0)[0] is False
