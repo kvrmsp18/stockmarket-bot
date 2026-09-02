@@ -1,0 +1,17 @@
+{
+  "date": "2026-09-02",
+  "mode": "PAPER",
+  "starting_reference_capital": 1000.0,
+  "ending_reference_capital": 1000.0,
+  "signals_today": 0,
+  "trades": 0,
+  "wins": 0,
+  "losses": 0,
+  "breakeven": 0,
+  "gross_pnl": 0,
+  "charges": 0,
+  "net_pnl": 0,
+  "win_rate": 0.0,
+  "profit_factor": null,
+  "open_positions": 0
+}
