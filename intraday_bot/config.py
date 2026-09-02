@@ -77,6 +77,7 @@ class Settings:
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
+    dhan_api_secret: str = _credential("DHAN_API_SECRET", "")
     dhan_pin: str = _credential("DHAN_PIN", "")
     dhan_totp_secret: str = _credential("DHAN_TOTP_SECRET", "")
     dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
