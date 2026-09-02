@@ -76,7 +76,11 @@ class PaperTradingBroker(BrokerInterface):
 
 
 class DhanBroker(BrokerInterface):
-    """Dhan adapter using the configured one-month API key for authentication."""
+    """Dhan adapter for the configured long-valid credential.
+
+    DHAN_API_KEY is preferred for the current paper-validation phase. The
+    short-lived DHAN_ACCESS_TOKEN is an optional compatibility fallback only.
+    """
 
     _rate_lock = threading.Lock()
     _last_quote_call = 0.0
@@ -88,19 +92,23 @@ class DhanBroker(BrokerInterface):
 
     def __init__(self) -> None:
         self.client_id = settings.dhan_client_id
-        # The one-month credential is stored as DHAN_API_KEY. Prefer it over
-        # the legacy DHAN_ACCESS_TOKEN so the deployed Bot uses the credential
-        # selected by the user. The legacy token remains a compatibility fallback.
         self.token = settings.dhan_market_data_token
         self.credential_source = settings.dhan_market_data_credential_source
         self.base = settings.dhan_base_url.rstrip("/")
         self.session = requests.Session()
-        self.session.headers.update({
+        # Dhan market APIs use access-token/client-id headers. Sending the
+        # configured API credential in api-key as well is harmless for servers
+        # that ignore unknown headers and supports deployments where the value
+        # is explicitly treated as an API key.
+        headers = {
             "access-token": self.token,
             "client-id": self.client_id,
             "Content-Type": "application/json",
             "Accept": "application/json",
-        })
+        }
+        if self.credential_source == "DHAN_API_KEY":
+            headers["api-key"] = self.token
+        self.session.headers.update(headers)
 
     @classmethod
     def _throttle(cls, category: str) -> None:
@@ -219,6 +227,31 @@ class DhanBroker(BrokerInterface):
         except (TypeError, ValueError) as exc:
             raise ValueError(f"INVALID_DHAN_SECURITY_ID: {text[:40]}") from exc
 
+    @staticmethod
+    def _quote_rows(payload: Any, exchange_segment: str) -> dict[str, dict[str, Any]]:
+        body = payload.get("data", payload) if isinstance(payload, dict) else {}
+        if not isinstance(body, dict):
+            return {}
+        rows = body.get(exchange_segment, body)
+        if not isinstance(rows, dict):
+            return {}
+        out: dict[str, dict[str, Any]] = {}
+        for key, value in rows.items():
+            if isinstance(value, dict):
+                out[str(key)] = value
+            elif isinstance(value, (int, float)):
+                out[str(key)] = {"last_price": float(value), "ltp": float(value)}
+        return out
+
+    def _ltp_batch(self, exchange_segment: str, batch: list[int]) -> dict[str, dict[str, Any]]:
+        payload = self._request(
+            "POST",
+            "/v2/marketfeed/ltp",
+            category="quote",
+            json={exchange_segment: batch},
+        )
+        return self._quote_rows(payload, exchange_segment)
+
     def bulk_quotes(self, instruments: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         groups: dict[str, list[int]] = {}
         for item in instruments:
@@ -237,11 +270,37 @@ class DhanBroker(BrokerInterface):
             unique_ids = list(dict.fromkeys(ids))
             for start in range(0, len(unique_ids), 500):
                 batch = unique_ids[start:start + 500]
-                data = self._request("POST", "/v2/marketfeed/quote", category="quote", json={exchange_segment: batch})
-                body = data.get("data", data) if isinstance(data, dict) else {}
-                rows = body.get(exchange_segment, body) if isinstance(body, dict) else {}
-                if isinstance(rows, dict):
-                    out.update({str(key): value for key, value in rows.items() if isinstance(value, dict)})
+                try:
+                    data = self._request(
+                        "POST",
+                        "/v2/marketfeed/quote",
+                        category="quote",
+                        json={exchange_segment: batch},
+                    )
+                    rows = self._quote_rows(data, exchange_segment)
+                    if rows:
+                        out.update(rows)
+                        continue
+                    # A successful HTTP response with no usable rows is still
+                    # a market-data failure; try the lighter LTP endpoint.
+                    ltp_rows = self._ltp_batch(exchange_segment, batch)
+                    out.update(ltp_rows)
+                except RuntimeError as quote_error:
+                    # Quote and LTP expose the same real-time price universe,
+                    # but Dhan deployments can differ in endpoint permissions.
+                    # Do not fabricate prices: use LTP only when it returns
+                    # actual rows, otherwise surface both errors to Diagnostics.
+                    try:
+                        ltp_rows = self._ltp_batch(exchange_segment, batch)
+                    except Exception as ltp_error:
+                        raise RuntimeError(
+                            f"DHAN_MARKETFEED_FAILED: quote={quote_error}; ltp={ltp_error}"
+                        ) from ltp_error
+                    if not ltp_rows:
+                        raise RuntimeError(
+                            f"DHAN_MARKETFEED_EMPTY: quote={quote_error}; ltp returned zero rows"
+                        )
+                    out.update(ltp_rows)
         return out
 
     def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5) -> pd.DataFrame:
