@@ -113,6 +113,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json
+          import os
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
@@ -155,6 +156,15 @@ jobs:
           print('Dhan access token length:', len(token))
           if not token:
               fail('DHAN_PREFLIGHT_ERROR: no Dhan Access Token available')
+
+          # Dhan limits automatic Access Token generation to once every 2 minutes.
+          # The preflight and the actual cycle run as separate Python processes.
+          # Reuse the already-generated token for the rest of this GitHub job
+          # instead of generating a second token immediately.
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env_file:
+              env_file.write('DHAN_ACCESS_TOKEN=' + token + '\n')
+          print('Dhan access token prepared for reuse by the cycle.')
+
           try:
               health = DhanBroker().health()
           except Exception as exc:
