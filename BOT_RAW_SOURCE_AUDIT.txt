@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: b9c9fd79f3e3f70639af29944ce7cfdaf0dcb9db
-Generated UTC: 2026-09-02T08:33:53.690473+00:00
+Commit SHA: cea8e4bdeffb2493c7ce58ca0453527dfd5ebddc
+Generated UTC: 2026-09-02T08:34:54.554403+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -24,7 +24,7 @@ FILE INVENTORY
 .streamlit/secrets.toml.example	431 bytes
 Dockerfile	229 bytes
 README.md	6366 bytes
-SOURCE_RULES.md	8822 bytes
+SOURCE_RULES.md	9145 bytes
 app.py	21180 bytes
 config/risk.yaml	244 bytes
 config/settings.yaml	303 bytes
@@ -112,6 +112,7 @@ src/validation_gate.py	9636 bytes
 src/validation_store.py	2407 bytes
 start.sh	504 bytes
 tests/__init__.py	0 bytes
+tests/test_dhan_market_data.py	734 bytes
 tests/test_platform.py	2236 bytes
 tests/test_research_frameworks.py	1267 bytes
 tests/test_run_daily_cycle.py	4389 bytes
@@ -876,7 +877,7 @@ This is the correct free-tier architecture for the current paper-validation phas
 
 ====================================================================
 FILE: SOURCE_RULES.md
-SIZE: 8822 bytes
+SIZE: 9145 bytes
 ====================================================================
 # SOURCE_RULES.md
 
@@ -905,7 +906,8 @@ This file records the supplied specification as the source of truth for source-d
 | Final project heartbeat fix | Scheduler heartbeat is not proof of a live trading worker | Dashboard must distinguish scheduler liveness from successful market-cycle liveness | Scheduler heartbeat is written every scheduled invocation; worker heartbeat records cycle success/degradation/heartbeat-only state separately | 5-minute scheduled interval, all days | ENGINEERING/SAFETY |
 | Paper-validation risk decision | ₹1,000 virtual account requires meaningful absolute safety gates | Scale absolute limits instead of retaining real-capital values that cannot bind | `daily_loss_limit=₹20`, `max_position_exposure=₹800` by default | `MAX_DAILY_LOSS=20`, `MAX_POSITION_EXPOSURE=800` | ENGINEERING/SAFETY |
 | Runtime ownership decision | `runtime.py` is the active engine; `runtime_v2.py` was an obsolete parallel implementation | One active runtime prevents future edits to the wrong engine | `scripts/run_daily_cycle.py` → `intraday_bot.runtime.run_cycle()`; obsolete `runtime_v2.py` removed | N/A | ENGINEERING |
-| Dhan paper-data credential decision | Current paper phase uses the longer-valid Dhan credential configured as `DHAN_API_KEY`; short-lived access token is not required when the API key is present | Avoid making daily token regeneration a development blocker | `DhanBroker` uses API key first and optional access-token fallback | `DHAN_API_KEY` preferred; `DHAN_ACCESS_TOKEN` fallback only | ENGINEERING/SAFETY |
+| Dhan authentication decision | Dhan REST authentication requires `client_id` plus an access token | A generic API key/secret cannot be sent as the access token | `DhanBroker` uses `DHAN_ACCESS_TOKEN`; legacy `DHAN_API_KEY` is accepted only as an alias when its value is itself a valid access token | `DHAN_ACCESS_TOKEN` preferred; `DHAN_API_KEY` alias fallback | ENGINEERING/SAFETY |
+| Dhan live diagnostic | Persisted cycle returned Dhan error 808: `Authentication Failed - Client ID or Token invalid` | Account health/market-feed failure must stop the cycle instead of producing fake quotes | Preflight checks account auth and one real market-feed quote before full cycle | Correct client/token pair required | ENGINEERING/SAFETY |
 | Dhan market-data hardening | Authentication success alone does not prove market-feed access | Preflight the real market-feed path and never fabricate quotes | Workflow validates one mapped quote; `DhanBroker.bulk_quotes()` can fall back to Dhan LTP endpoint and reports both errors if neither works | `DHAN_SECURITY_IDS_JSON` for quote preflight | ENGINEERING/SAFETY |
 | Dashboard truthfulness fix | Scheduler/heartbeat timestamps must not be interpreted with a server-local timezone | Compare aware timestamps in UTC | `heartbeat_age_seconds()` parses timezone-aware ISO timestamps | N/A | ENGINEERING/SAFETY |
 | Dashboard refresh fix | Manual refresh must visibly report whether persisted state was actually retrieved | A button click alone is not proof of fresh data | `sync(force=True)` records sync success/failure and the UI exposes the result | N/A | ENGINEERING |
@@ -1521,9 +1523,9 @@ SIZE: 346 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-02T13:58:43.086683+05:30",
+  "updated_at": "2026-09-02T14:03:13.396012+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33608882247",
+  "workflow_run_id": "33609312389",
   "event": "push",
   "market_open": true,
   "scheduled_interval_seconds": 300,
@@ -17605,10 +17607,10 @@ SIZE: 428 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect Diagnostics",
-  "updated_at": "2026-09-02T13:59:11.231775+05:30",
+  "updated_at": "2026-09-02T14:03:35.310039+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33608882247",
+  "workflow_run_id": "33609312389",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -27636,6 +27638,35 @@ FILE: tests/__init__.py
 SIZE: 0 bytes
 ====================================================================
 
+
+====================================================================
+FILE: tests/test_dhan_market_data.py
+SIZE: 734 bytes
+====================================================================
+from __future__ import annotations
+
+from intraday_bot.brokers import DhanBroker
+
+
+def test_quote_rows_normalizes_dhan_quote_payload():
+    payload = {
+        "data": {
+            "NSE_EQ": {
+                "1333": {"last_price": 1750.25, "volume": 123456},
+                "11536": {"ltp": 42.5},
+            }
+        },
+        "status": "success",
+    }
+    rows = DhanBroker._quote_rows(payload, "NSE_EQ")
+    assert rows["1333"]["last_price"] == 1750.25
+    assert rows["11536"]["ltp"] == 42.5
+
+
+def test_ltp_scalar_payload_is_usable_as_price_row():
+    payload = {"data": {"NSE_EQ": {"1333": 1750.25}}}
+    rows = DhanBroker._quote_rows(payload, "NSE_EQ")
+    assert rows == {"1333": {"last_price": 1750.25, "ltp": 1750.25}}
 
 ====================================================================
 FILE: tests/test_platform.py
