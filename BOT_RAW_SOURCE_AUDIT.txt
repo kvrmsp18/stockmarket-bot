@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 61fd955f881b1c39795f9d049e681dd1e3c73fb1
-Generated UTC: 2026-09-02T20:21:38.304405+00:00
+Commit SHA: 06997361c0db460024c42d81ee66b2aa90d5516c
+Generated UTC: 2026-09-02T21:25:43.499534+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1097 bytes
 .github/workflows/ci.yml	363 bytes
-.github/workflows/continuous-monitor.yml	12557 bytes
+.github/workflows/continuous-monitor.yml	12793 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	5380 bytes
 .gitignore	684 bytes
@@ -43,7 +43,7 @@ dashboard/pages/06_Dhan_OAuth_Browser_Login_Diagnostic.py	297 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	526 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	347 bytes
+data/scheduler_heartbeat.json	351 bytes
 data/trading.db	12640256 bytes
 data/universe.json	307971 bytes
 data/watchdog_heartbeat.json	422 bytes
@@ -253,7 +253,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 12557 bytes
+SIZE: 12793 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -364,6 +364,7 @@ jobs:
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
           DHAN_PIN: ${{ secrets.DHAN_PIN }}
           DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
         shell: bash
         run: |
@@ -385,7 +386,7 @@ jobs:
                   'started_at': datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),
                   'ended_at': datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),
                   'mode': 'PAPER',
-                  'market_open': True,
+                  'market_open': os.getenv('MARKET_OPEN') == 'true',
                   'stocks_observed': 0,
                   'quotes': 0,
                   'deep_analysis_pool': 0,
@@ -405,19 +406,19 @@ jobs:
           print('Dhan API key configured:', bool(settings.dhan_api_key))
           print('Dhan PIN configured:', bool(settings.dhan_pin))
           print('Dhan TOTP secret configured:', bool(settings.dhan_totp_secret))
+          print('Dhan explicit access token configured:', bool(settings.dhan_access_token))
           try:
               token = settings.dhan_market_data_token
           except Exception as exc:
               fail('DHAN_PREFLIGHT_ERROR: automatic token generation failed: ' + str(exc))
-          print('Dhan access token generated:', bool(token))
+          print('Dhan access token available:', bool(token))
           print('Dhan access token length:', len(token))
           if not token:
               fail('DHAN_PREFLIGHT_ERROR: no Dhan Access Token available')
 
-          # Dhan limits automatic Access Token generation to once every 2 minutes.
-          # The preflight and the actual cycle run as separate Python processes.
-          # Reuse the already-generated token for the rest of this GitHub job
-          # instead of generating a second token immediately.
+          # Reuse the effective token for the rest of this GitHub job.
+          # When DHAN_ACCESS_TOKEN is supplied it takes precedence over
+          # PIN+TOTP and avoids the failing automated TOTP route entirely.
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env_file:
               env_file.write('DHAN_ACCESS_TOKEN=' + token + '\n')
           print('Dhan access token prepared for reuse by the cycle.')
@@ -463,6 +464,8 @@ jobs:
               print('DHAN_QUOTE_PREFLIGHT_SKIPPED: DHAN_SECURITY_IDS_JSON not configured')
           print('DHAN_AUTH_PREFLIGHT_PASSED')
           PY
+        env:
+          MARKET_OPEN: ${{ steps.market.outputs.market_open }}
 
       - name: Build complete NSE cash-equity universe
         if: steps.market.outputs.run_cycle == 'true'
@@ -476,6 +479,7 @@ jobs:
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
           DHAN_PIN: ${{ secrets.DHAN_PIN }}
           DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -1711,15 +1715,15 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 347 bytes
+SIZE: 351 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-03T01:46:13.576156+05:30",
+  "updated_at": "2026-09-03T02:49:43.325794+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33678252840",
-  "event": "push",
+  "workflow_run_id": "33684509182",
+  "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -17800,10 +17804,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-03T01:46:13.658648+05:30",
+  "updated_at": "2026-09-03T02:49:43.402794+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33678252840",
+  "workflow_run_id": "33684509182",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
