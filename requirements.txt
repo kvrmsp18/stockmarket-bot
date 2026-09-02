@@ -7,3 +7,4 @@ streamlit>=1.35
 pytest>=8.0
 tzdata>=2024.1
 pyotp>=2.9
+dhanhq==2.3.0rc1
