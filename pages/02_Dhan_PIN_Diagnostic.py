@@ -68,6 +68,24 @@ configured = inspect_value("Effective configured value", configured_value)
 st.subheader("Safe PIN diagnostics")
 st.dataframe(rows + [configured], use_container_width=True, hide_index=True)
 
+st.subheader("Effective source selection")
+if env_present and env_value.strip():
+    st.info("The application is currently using DHAN_PIN from the Environment value when both sources are available.")
+else:
+    st.info("The application is currently using DHAN_PIN from Streamlit Secrets.")
+
+if env_present and secret_present:
+    env_raw = inspect_value("Environment", env_value)
+    secret_raw = inspect_value("Streamlit Secrets", secret_value)
+    env_matches_secret_raw = env_raw["raw_fingerprint"] == secret_raw["raw_fingerprint"]
+    env_matches_secret_stripped = env_raw["stripped_fingerprint"] == secret_raw["stripped_fingerprint"]
+    if env_matches_secret_raw:
+        st.success("✅ Environment DHAN_PIN and Streamlit Secrets DHAN_PIN are identical (fingerprint match).")
+    elif env_matches_secret_stripped:
+        st.warning("⚠️ Environment and Streamlit Secrets differ only by leading/trailing whitespace; the effective value is normalized before use.")
+    else:
+        st.error("❌ Environment DHAN_PIN and Streamlit Secrets DHAN_PIN are different hidden values. The Environment value takes precedence in the current application configuration.")
+
 st.subheader("Interpretation")
 checks = [
     ("Effective PIN is exactly 6 numeric characters", configured["stripped_is_6_digits"]),
