@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 7cf1891fa13f645ab719f99667fc9b8f387916f4
-Generated UTC: 2026-09-02T09:10:23.836344+00:00
+Commit SHA: dd5707c8f53a85c85729dcf12b1e26fa658f1295
+Generated UTC: 2026-09-02T11:16:25.335706+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -17,7 +17,7 @@ FILE INVENTORY
 .env.example	1063 bytes
 .github/workflows/ci.yml	363 bytes
 .github/workflows/continuous-monitor.yml	11466 bytes
-.github/workflows/eod-close.yml	1709 bytes
+.github/workflows/eod-close.yml	1647 bytes
 .github/workflows/export-source-audit.yml	5380 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
@@ -33,13 +33,13 @@ config/validation_criteria.json	1063 bytes
 dashboard/__init__.py	0 bytes
 dashboard/app.py	742 bytes
 data/.gitkeep	1 bytes
-data/monitor_status.json	710 bytes
+data/monitor_status.json	703 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	346 bytes
+data/scheduler_heartbeat.json	351 bytes
 data/trading.db	10915840 bytes
 data/universe.json	307969 bytes
 data/watchdog_heartbeat.json	422 bytes
-data/worker_heartbeat.json	428 bytes
+data/worker_heartbeat.json	461 bytes
 deploy/README.md	2755 bytes
 deploy/stockmarket-worker.service	697 bytes
 docker-compose.yml	805 bytes
@@ -52,6 +52,7 @@ intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	15255 bytes
 intraday_bot/config.py	5389 bytes
 intraday_bot/database.py	5203 bytes
+intraday_bot/dhan_auth.py	3024 bytes
 intraday_bot/engine.py	16163 bytes
 intraday_bot/news.py	830 bytes
 intraday_bot/paper.py	1447 bytes
@@ -66,6 +67,7 @@ reports/daily/2026-08-29.md	428 bytes
 reports/daily/2026-08-31.json	294 bytes
 reports/daily/2026-08-31.md	428 bytes
 reports/daily/2026-09-01.json	323 bytes
+reports/daily/2026-09-02.json	323 bytes
 reports/readiness/.gitkeep	1 bytes
 reports/weekly/.gitkeep	1 bytes
 requirements.txt	114 bytes
@@ -524,7 +526,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/eod-close.yml
-SIZE: 1709 bytes
+SIZE: 1647 bytes
 ====================================================================
 name: EOD Paper Trading Close
 
@@ -558,7 +560,6 @@ jobs:
       - name: Close paper signals and build reports
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
@@ -1513,12 +1514,12 @@ SIZE: 1 bytes
 
 ====================================================================
 FILE: data/monitor_status.json
-SIZE: 710 bytes
+SIZE: 703 bytes
 ====================================================================
 {
-  "cycle_id": "PREFLIGHT-20260902T143119597175",
-  "started_at": "2026-09-02T14:31:19.597490+05:30",
-  "ended_at": "2026-09-02T14:31:19.597500+05:30",
+  "cycle_id": "PREFLIGHT-20260902T152412715805",
+  "started_at": "2026-09-02T15:24:12.716110+05:30",
+  "ended_at": "2026-09-02T15:24:12.716121+05:30",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 0,
@@ -1530,7 +1531,7 @@ SIZE: 710 bytes
   "rejection_details": [],
   "orders": [],
   "errors": [
-    "DHAN_PREFLIGHT_ERROR: DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_ACCESS_TOKEN; client_id_configured=yes; credential_length=327]"
+    "DHAN_PREFLIGHT_ERROR: DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_API_KEY; client_id_configured=yes; credential_length=8]"
   ],
   "execution_gate": "PREFLIGHT_FAILED"
 }
@@ -1544,16 +1545,16 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 346 bytes
+SIZE: 351 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-02T14:39:15.719294+05:30",
+  "updated_at": "2026-09-02T16:36:12.441084+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33612541980",
-  "event": "push",
-  "market_open": true,
+  "workflow_run_id": "33622852579",
+  "event": "schedule",
+  "market_open": false,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
   "live_order_submission": false
@@ -17628,20 +17629,20 @@ SIZE: 422 bytes
 
 ====================================================================
 FILE: data/worker_heartbeat.json
-SIZE: 428 bytes
+SIZE: 461 bytes
 ====================================================================
 {
-  "state": "DEGRADED",
-  "message": "Market-cycle invocation failed; inspect Diagnostics",
-  "updated_at": "2026-09-02T14:39:41.394630+05:30",
+  "state": "HEARTBEAT_ONLY",
+  "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
+  "updated_at": "2026-09-02T16:36:12.506201+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33612541980",
+  "workflow_run_id": "33622852579",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
-  "market_open": true,
-  "market_cycle": true,
-  "cycle_success": false,
+  "market_open": false,
+  "market_cycle": false,
+  "cycle_success": null,
   "scheduler_based_monitor": true
 }
 
@@ -18661,6 +18662,111 @@ class Database:
         with self.connect() as con:
             row = con.execute(sql, params).fetchone()
             return row[0] if row else None
+
+====================================================================
+FILE: intraday_bot/dhan_auth.py
+SIZE: 3024 bytes
+====================================================================
+from __future__ import annotations
+
+import os
+import threading
+from typing import Any
+
+import requests
+
+try:
+    import pyotp
+except ImportError as exc:  # pragma: no cover
+    pyotp = None  # type: ignore[assignment]
+
+
+_AUTH_BASE_URL = "https://auth.dhan.co"
+_token_lock = threading.Lock()
+_cached_token = ""
+
+
+def _clean(value: str | None) -> str:
+    value = (value or "").strip()
+    if value.lower().startswith("bearer "):
+        value = value[7:].strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"', "`"}:
+        value = value[1:-1].strip()
+    return value
+
+
+def _extract_access_token(payload: Any) -> str:
+    if isinstance(payload, dict):
+        candidates: list[Any] = [payload.get("accessToken"), payload.get("access_token")]
+        data = payload.get("data")
+        if isinstance(data, dict):
+            candidates.extend([data.get("accessToken"), data.get("access_token")])
+        for value in candidates:
+            token = _clean(str(value)) if value is not None else ""
+            if token:
+                return token
+    return ""
+
+
+def generate_access_token(
+    client_id: str,
+    pin: str,
+    totp_secret: str,
+    timeout: int = 15,
+) -> str:
+    """Generate a fresh Dhan Access Token using Client ID + PIN + TOTP seed."""
+    global _cached_token
+
+    client_id = _clean(client_id)
+    pin = _clean(pin)
+    totp_secret = _clean(totp_secret).replace(" ", "")
+    if not client_id or not pin or not totp_secret:
+        raise RuntimeError("DHAN_AUTO_AUTH_UNAVAILABLE: DHAN_CLIENT_ID, DHAN_PIN and DHAN_TOTP_SECRET are required")
+    if pyotp is None:
+        raise RuntimeError("DHAN_AUTO_AUTH_DEPENDENCY_MISSING: install pyotp")
+
+    with _token_lock:
+        if _cached_token:
+            return _cached_token
+
+        totp = pyotp.TOTP(totp_secret).now()
+        response = requests.post(
+            f"{_AUTH_BASE_URL}/app/generateAccessToken",
+            params={"dhanClientId": client_id, "pin": pin, "totp": totp},
+            timeout=timeout,
+        )
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {"raw": response.text[:500]}
+
+        if response.status_code >= 400:
+            raise RuntimeError(f"DHAN_AUTO_AUTH_HTTP_{response.status_code}: {payload}")
+
+        token = _extract_access_token(payload)
+        if not token:
+            raise RuntimeError(f"DHAN_AUTO_AUTH_NO_TOKEN: {payload}")
+        _cached_token = token
+        return token
+
+
+def get_access_token(
+    client_id: str,
+    pin: str,
+    totp_secret: str,
+    manual_access_token: str = "",
+) -> tuple[str, str]:
+    """Return (token, source), preferring an explicitly supplied runtime token."""
+    manual_access_token = _clean(manual_access_token)
+    if manual_access_token:
+        return manual_access_token, "DHAN_ACCESS_TOKEN"
+    return generate_access_token(client_id, pin, totp_secret), "DHAN_PIN_TOTP"
+
+
+def clear_cached_token() -> None:
+    global _cached_token
+    with _token_lock:
+        _cached_token = ""
 
 ====================================================================
 FILE: intraday_bot/engine.py
@@ -19951,6 +20057,28 @@ SIZE: 323 bytes
 ====================================================================
 {
   "date": "2026-09-01",
+  "mode": "PAPER",
+  "starting_reference_capital": 1000.0,
+  "ending_reference_capital": 1000.0,
+  "signals_today": 0,
+  "trades": 0,
+  "wins": 0,
+  "losses": 0,
+  "breakeven": 0,
+  "gross_pnl": 0,
+  "charges": 0,
+  "net_pnl": 0,
+  "win_rate": 0.0,
+  "profit_factor": null,
+  "open_positions": 0
+}
+
+====================================================================
+FILE: reports/daily/2026-09-02.json
+SIZE: 323 bytes
+====================================================================
+{
+  "date": "2026-09-02",
   "mode": "PAPER",
   "starting_reference_capital": 1000.0,
   "ending_reference_capital": 1000.0,
