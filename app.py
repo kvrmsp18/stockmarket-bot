@@ -41,9 +41,9 @@ def flat(df):
         z={k:r[k] for k in ["id","ts","component","severity","event_type","symbol","mode"]};z.update(x);out.append(z)
     return pd.DataFrame(out)
 
-def sync():
+def sync(force=False):
     now=time.time(); last=st.session_state.get("sync",0)
-    if now-last<60:return True
+    if not force and now-last<60:return True
     ok=True; base="https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
     for name,path in {"trading.db":ROOT/"trading.db","monitor_status.json":STATUS,"worker_heartbeat.json":HB,"scheduler_heartbeat.json":SHB}.items():
         tmp=None
@@ -65,10 +65,23 @@ def header(t,d):st.title(t);st.info(d)
 def dashboard():
     s=j(STATUS);h=j(HB);sh=j(SHB);header("📈 NSE/BSE Intraday AI Trading Desk","Observe → Analyse → Filter → Rank → Decide → Validate → Size → Execute → Monitor → Exit → Reconcile. Paper mode is default; AI is advisory only.")
     a,b,c,d,e,f,g=st.columns(7);a.metric("Mode",s.get("mode","PAPER"));b.metric("Universe",s.get("stocks_observed",0));c.metric("Quotes",s.get("quotes",0));d.metric("Candidates",len(s.get("candidates",[])));e.metric("Open Positions",s.get("positions_open",0));f.metric("Today's P&L",f"₹{float(s.get('today_realized_pnl',0) or 0):,.2f}");g.metric("Capital",f"₹{settings.reference_capital:,.0f}")
-    st.write(f"**Trading heartbeat:** {h.get('state','NOT FOUND')} · {h.get('updated_at','—')}")
+    cycle_errors=s.get("errors") or []
+    age_seconds=(time.time()-time.mktime(time.strptime(h.get("updated_at","")[:19],"%Y-%m-%dT%H:%M:%S"))) if h.get("updated_at") else 10**9
+    if h.get("state")=="ERROR":
+        st.error(f"TRADING ENGINE ERROR: {h.get('message','Unknown error')} · last heartbeat {h.get('updated_at','—')}")
+    elif age_seconds>900:
+        st.error(f"TRADING ENGINE: OFFLINE · last real cycle heartbeat {h.get('updated_at','—')} ({age_seconds/60:.1f} min ago)")
+    elif h.get("state")=="DEGRADED":
+        detail=f" — {cycle_errors[0]}" if cycle_errors else f" — {h.get('message','cycle completed with errors')}"
+        st.warning(f"TRADING ENGINE: DEGRADED · last cycle attempt {h.get('updated_at','—')}{detail}")
+    else:
+        st.success(f"TRADING ENGINE: ONLINE · last successful market cycle {h.get('updated_at','—')}")
     st.write(f"**Scheduler:** {sh.get('state','NOT FOUND')} · {sh.get('updated_at','—')} · market {'OPEN' if sh.get('market_open') else 'CLOSED'}")
     cdf=pd.DataFrame(s.get("candidates",[])); st.subheader("Actionable candidates")
-    st.dataframe(cdf,use_container_width=True,hide_index=True) if not cdf.empty else st.warning("No actionable candidates persisted. Diagnostics and Rejected Signals show the exact reason.")
+    if cdf.empty:
+        if cycle_errors: st.error(f"Latest cycle failed before producing candidates: {cycle_errors[0]}")
+        else: st.warning("No actionable candidates persisted. Diagnostics and Rejected Signals show the exact reason.")
+    else: st.dataframe(cdf,use_container_width=True,hide_index=True)
 
 def prompt():
     header("🤖 AI Prompt Guide","Operational AI contract. Missing data is reported, never invented; AI cannot override deterministic gates.")
@@ -140,7 +153,9 @@ def charts():
 def main():
     sync();mode=st.sidebar.radio("Mode",["PAPER TRADING","LIVE TRADING"],index=0,key="mode_radio");st.session_state.mode=PAPER_MODE if mode.startswith("PAPER") else LIVE_TEST_MODE
     st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS" if st.session_state.mode==PAPER_MODE else "🟠 LIVE TEST — NO LIVE ORDERS")
-    if st.sidebar.button("🔄 Refresh Search / Dashboard",key="refresh_button"):sync();st.rerun()
+    if st.sidebar.button("🔄 Refresh Search / Dashboard",key="refresh_button"):
+        sync(force=True)
+        st.rerun()
     if st.sidebar.button("▶ Run Analysis",type="primary",key="run_analysis"):
         x=run_cycle(st.session_state.mode);st.sidebar.write(f"Cycle complete · {len(x.get('candidates',[]))} candidates · {len(x.get('errors',[]))} errors");st.rerun()
     page=st.sidebar.selectbox("Desk",PAGES,key="desk_page")
