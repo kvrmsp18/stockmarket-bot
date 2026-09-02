@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import email.utils
 import threading
-import time
-from datetime import timezone
 from typing import Any
 
 import requests
@@ -60,29 +57,22 @@ def _safe_auth_message(payload: Any) -> str:
     return str(message or payload.get("status") or payload)[:500]
 
 
-def _dhan_server_clock_offset(timeout: int = 8) -> float:
-    """Estimate Dhan auth-server clock minus runner clock from HTTP Date."""
-    try:
-        response = requests.get(_AUTH_BASE_URL, timeout=timeout, allow_redirects=False)
-        date_header = response.headers.get("Date", "")
-        if not date_header:
-            return 0.0
-        server_dt = email.utils.parsedate_to_datetime(date_header)
-        if server_dt.tzinfo is None:
-            server_dt = server_dt.replace(tzinfo=timezone.utc)
-        return server_dt.timestamp() - time.time()
-    except Exception:
-        return 0.0
-
-
 def generate_access_token(client_id: str, pin: str, totp_secret: str, timeout: int = 15) -> str:
-    """Generate a fresh Dhan Access Token using Client ID + PIN + TOTP seed."""
+    """Generate a fresh Dhan Access Token using Client ID + PIN + TOTP seed.
+
+    GitHub-hosted runners and Streamlit Cloud use synchronized system clocks.
+    Generate the TOTP directly from the local system clock. Do not adjust the
+    code using an HTTP Date header because a cached/proxy Date can move the
+    TOTP into the wrong 30-second window.
+    """
     global _cached_token
     client_id = _clean(client_id)
     pin = _clean(pin)
     totp_secret = _normalise_totp_secret(totp_secret)
     if not client_id or not pin or not totp_secret:
-        raise RuntimeError("DHAN_AUTO_AUTH_UNAVAILABLE: DHAN_CLIENT_ID, DHAN_PIN and DHAN_TOTP_SECRET are required")
+        raise RuntimeError(
+            "DHAN_AUTO_AUTH_UNAVAILABLE: DHAN_CLIENT_ID, DHAN_PIN and DHAN_TOTP_SECRET are required"
+        )
     if pyotp is None:
         raise RuntimeError("DHAN_AUTO_AUTH_DEPENDENCY_MISSING: install pyotp")
 
@@ -90,9 +80,9 @@ def generate_access_token(client_id: str, pin: str, totp_secret: str, timeout: i
         if _cached_token:
             return _cached_token
 
-        offset = _dhan_server_clock_offset()
-        effective_time = time.time() + offset
-        totp_code = pyotp.TOTP(totp_secret).at(int(effective_time))
+        # pyotp.now() uses the host's synchronized Unix clock and produces the
+        # standard 6-digit RFC 6238 TOTP used by Dhan's authentication endpoint.
+        totp_code = pyotp.TOTP(totp_secret).now()
 
         response = requests.post(
             f"{_AUTH_BASE_URL}/app/generateAccessToken",
@@ -104,15 +94,15 @@ def generate_access_token(client_id: str, pin: str, totp_secret: str, timeout: i
         except ValueError:
             payload = {"raw": response.text[:500]}
 
-        # Dhan can return HTTP 200 with a failure status, so inspect the
-        # response body instead of assuming that HTTP 200 means success.
         if isinstance(payload, dict):
             status = str(payload.get("status", "")).lower()
             if status in {"failure", "failed", "error"}:
                 raise RuntimeError(f"DHAN_AUTO_AUTH_FAILED: {_safe_auth_message(payload)}")
 
         if response.status_code >= 400:
-            raise RuntimeError(f"DHAN_AUTO_AUTH_HTTP_{response.status_code}: {_safe_auth_message(payload)}")
+            raise RuntimeError(
+                f"DHAN_AUTO_AUTH_HTTP_{response.status_code}: {_safe_auth_message(payload)}"
+            )
 
         token = _extract_access_token(payload)
         if not token:
@@ -121,7 +111,12 @@ def generate_access_token(client_id: str, pin: str, totp_secret: str, timeout: i
         return token
 
 
-def get_access_token(client_id: str, pin: str, totp_secret: str, manual_access_token: str = "") -> tuple[str, str]:
+def get_access_token(
+    client_id: str,
+    pin: str,
+    totp_secret: str,
+    manual_access_token: str = "",
+) -> tuple[str, str]:
     """Return (token, source), preferring an explicitly supplied runtime token."""
     manual_access_token = _clean(manual_access_token)
     if manual_access_token:
