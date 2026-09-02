@@ -2,7 +2,7 @@ name: Complete Intraday Monitor
 
 on:
   schedule:
-    - cron: '*/5 * * * 1-5'
+    - cron: '*/5 * * * *'
   push:
     branches: [main]
     paths:
@@ -70,7 +70,7 @@ jobs:
           market_open = os.getenv('MARKET_OPEN') == 'true'
           payload = {
             'state': 'RUNNING',
-            'message': 'Scheduled monitor invocation is active',
+            'message': '24/7 scheduled monitor heartbeat is active',
             'updated_at': now.isoformat(),
             'source': 'github-actions-scheduler',
             'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
@@ -104,10 +104,13 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
+          import json
           from intraday_bot.brokers import DhanBroker
           from intraday_bot.config import settings
 
@@ -115,12 +118,43 @@ jobs:
           print('Dhan client configured:', bool(settings.dhan_client_id))
           print('Dhan credential configured:', bool(settings.dhan_market_data_token))
           print('Dhan credential length:', len(settings.dhan_market_data_token))
-          if settings.dhan_market_data_credential_source != 'DHAN_API_KEY':
-              raise SystemExit('DHAN_API_KEY is required for this paper-validation phase')
+          if not settings.dhan_market_data_token:
+              raise SystemExit('DHAN_AUTH_PREFLIGHT_FAILED: no Dhan market-data credential configured')
           health = DhanBroker().health()
           print('Dhan authentication:', health.message)
           if not health.authenticated:
               raise SystemExit('DHAN_AUTH_PREFLIGHT_FAILED: ' + health.message)
+
+          # Authentication alone is not enough: validate the actual market-feed
+          # permission/path with one real security ID before the expensive cycle.
+          raw = settings.dhan_security_ids_json.strip()
+          if raw:
+              try:
+                  mapping = json.loads(raw)
+              except json.JSONDecodeError as exc:
+                  raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: invalid DHAN_SECURITY_IDS_JSON') from exc
+              instruments = []
+              for symbol, value in mapping.items():
+                  if isinstance(value, dict):
+                      sid = value.get('security_id')
+                      segment = value.get('exchange_segment', 'NSE_EQ')
+                  else:
+                      sid = value
+                      segment = 'NSE_EQ'
+                  if sid:
+                      instruments.append({'symbol': str(symbol), 'security_id': sid, 'exchange_segment': segment})
+                  if len(instruments) >= 1:
+                      break
+              if instruments:
+                  quotes = DhanBroker().bulk_quotes(instruments)
+                  print('Dhan market-feed preflight quotes:', len(quotes))
+                  if not quotes:
+                      raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: market-feed returned zero quotes')
+                  print('DHAN_MARKET_DATA_PREFLIGHT_PASSED')
+              else:
+                  print('DHAN_QUOTE_PREFLIGHT_SKIPPED: no mapped security ID')
+          else:
+              print('DHAN_QUOTE_PREFLIGHT_SKIPPED: DHAN_SECURITY_IDS_JSON not configured')
           print('DHAN_AUTH_PREFLIGHT_PASSED')
           PY
 
@@ -134,6 +168,7 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -167,8 +202,8 @@ jobs:
               state = 'DEGRADED'
               message = 'Market-cycle invocation failed; inspect Diagnostics'
           else:
-              state = 'RUNNING'
-              message = 'Monitor heartbeat; NSE market closed or cycle not scheduled'
+              state = 'HEARTBEAT_ONLY'
+              message = '24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled'
           payload = {
             'state': state,
             'message': message,
@@ -219,5 +254,5 @@ jobs:
             git commit -m 'Update Bot scheduler, worker heartbeat and paper state [skip ci]' || true
             sleep 2
           done
-          echo 'Could not persist state after 5 attempts.'
+          echo 'Unable to persist state after 5 attempts.'
           exit 1
