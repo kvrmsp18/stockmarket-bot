@@ -76,12 +76,13 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # Dhan's REST API authenticates with client-id + access-token. The project
-    # historically stored the user's long-valid credential under DHAN_API_KEY,
-    # so that name is kept as an alias. The alias must contain a valid Dhan
-    # access token; a generic API key/secret pair is not an access token.
-    dhan_api_key: str = _credential("DHAN_API_KEY", "")
+    # Dhan REST endpoints used by this project authenticate with client-id +
+    # access-token. DHAN_ACCESS_TOKEN is therefore the primary credential.
+    # DHAN_API_KEY remains only as a legacy compatibility alias for a value
+    # that is itself a valid Dhan access token. A generic API key/secret is not
+    # interchangeable with the access-token required by these endpoints.
     dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
+    dhan_api_key: str = _credential("DHAN_API_KEY", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
     telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
@@ -95,15 +96,15 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Prefer the configured long-valid credential; token is fallback only."""
-        return self.dhan_api_key or self.dhan_access_token
+        """Use the official access-token field first; legacy alias is fallback."""
+        return self.dhan_access_token or self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        if self.dhan_api_key:
-            return "DHAN_API_KEY_ALIAS"
         if self.dhan_access_token:
-            return "DHAN_ACCESS_TOKEN_FALLBACK"
+            return "DHAN_ACCESS_TOKEN"
+        if self.dhan_api_key:
+            return "DHAN_API_KEY_LEGACY_ACCESS_TOKEN"
         return "NONE"
 
     @property
