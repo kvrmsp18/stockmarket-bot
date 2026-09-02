@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 4c80998d4be36b965b7d837fc31d48f4b239816f
-Generated UTC: 2026-09-02T18:28:32.517372+00:00
+Commit SHA: 5a888c8c0654e4d1c0b91b41ac19f60f17205f3b
+Generated UTC: 2026-09-02T18:30:06.790187+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -34,6 +34,7 @@ dashboard/__init__.py	0 bytes
 dashboard/app.py	742 bytes
 dashboard/pages/00_TOTP_Diagnostic.py	201 bytes
 dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py	290 bytes
+dashboard/pages/02_Dhan_PIN_Diagnostic.py	281 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	526 bytes
 data/paper_trading_journal.jsonl	814 bytes
@@ -65,7 +66,7 @@ intraday_bot/safety.py	715 bytes
 intraday_bot/technical.py	4484 bytes
 pages/00_TOTP_Diagnostic.py	3165 bytes
 pages/01_Dhan_Auth_Request_Diagnostic.py	3495 bytes
-pages/02_Dhan_PIN_Diagnostic.py	2752 bytes
+pages/02_Dhan_PIN_Diagnostic.py	3922 bytes
 reports/.gitkeep	0 bytes
 reports/daily/.gitkeep	1 bytes
 reports/daily/2026-08-29.md	428 bytes
@@ -1564,6 +1565,22 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 runpy.run_path(str(ROOT / "pages" / "01_Dhan_Auth_Request_Diagnostic.py"), run_name="__main__")
+
+====================================================================
+FILE: dashboard/pages/02_Dhan_PIN_Diagnostic.py
+SIZE: 281 bytes
+====================================================================
+from __future__ import annotations
+
+import runpy
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+runpy.run_path(str(ROOT / "pages" / "02_Dhan_PIN_Diagnostic.py"), run_name="__main__")
 
 ====================================================================
 FILE: data/.gitkeep
@@ -20246,7 +20263,7 @@ st.caption("Security: credentials and OTP are kept in memory only; no secrets, O
 
 ====================================================================
 FILE: pages/02_Dhan_PIN_Diagnostic.py
-SIZE: 2752 bytes
+SIZE: 3922 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -20317,6 +20334,24 @@ configured = inspect_value("Effective configured value", configured_value)
 
 st.subheader("Safe PIN diagnostics")
 st.dataframe(rows + [configured], use_container_width=True, hide_index=True)
+
+st.subheader("Effective source selection")
+if env_present and env_value.strip():
+    st.info("The application is currently using DHAN_PIN from the Environment value when both sources are available.")
+else:
+    st.info("The application is currently using DHAN_PIN from Streamlit Secrets.")
+
+if env_present and secret_present:
+    env_raw = inspect_value("Environment", env_value)
+    secret_raw = inspect_value("Streamlit Secrets", secret_value)
+    env_matches_secret_raw = env_raw["raw_fingerprint"] == secret_raw["raw_fingerprint"]
+    env_matches_secret_stripped = env_raw["stripped_fingerprint"] == secret_raw["stripped_fingerprint"]
+    if env_matches_secret_raw:
+        st.success("✅ Environment DHAN_PIN and Streamlit Secrets DHAN_PIN are identical (fingerprint match).")
+    elif env_matches_secret_stripped:
+        st.warning("⚠️ Environment and Streamlit Secrets differ only by leading/trailing whitespace; the effective value is normalized before use.")
+    else:
+        st.error("❌ Environment DHAN_PIN and Streamlit Secrets DHAN_PIN are different hidden values. The Environment value takes precedence in the current application configuration.")
 
 st.subheader("Interpretation")
 checks = [
