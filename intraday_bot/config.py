@@ -76,12 +76,10 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # Dhan REST endpoints used by this project authenticate with client-id +
-    # access-token. DHAN_ACCESS_TOKEN is therefore the primary credential.
-    # DHAN_API_KEY remains only as a legacy compatibility alias for a value
-    # that is itself a valid Dhan access token. A generic API key/secret is not
-    # interchangeable with the access-token required by these endpoints.
-    dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
+    # The paper-trading deployment uses the user's longer-valid Dhan
+    # credential stored in DHAN_API_KEY. Do not fall back to the short-lived
+    # DHAN_ACCESS_TOKEN secret: DHAN_API_KEY is the single source of truth
+    # for Dhan authentication in this bot.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
@@ -96,16 +94,12 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Use the official access-token field first; legacy alias is fallback."""
-        return self.dhan_access_token or self.dhan_api_key
+        """Return only the configured DHAN_API_KEY credential."""
+        return self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        if self.dhan_access_token:
-            return "DHAN_ACCESS_TOKEN"
-        if self.dhan_api_key:
-            return "DHAN_API_KEY_LEGACY_ACCESS_TOKEN"
-        return "NONE"
+        return "DHAN_API_KEY" if self.dhan_api_key else "NONE"
 
     @property
     def live_mode_requested(self) -> bool:
