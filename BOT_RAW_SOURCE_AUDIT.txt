@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: d9e8d34ceb1f558e3d2ce786e0402d196fa01e78
-Generated UTC: 2026-09-02T18:15:59.576990+00:00
+Commit SHA: 4c80998d4be36b965b7d837fc31d48f4b239816f
+Generated UTC: 2026-09-02T18:28:32.517372+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -33,7 +33,7 @@ config/validation_criteria.json	1063 bytes
 dashboard/__init__.py	0 bytes
 dashboard/app.py	742 bytes
 dashboard/pages/00_TOTP_Diagnostic.py	201 bytes
-dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py	214 bytes
+dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py	290 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	526 bytes
 data/paper_trading_journal.jsonl	814 bytes
@@ -1551,14 +1551,18 @@ runpy.run_path(str(ROOT / "pages" / "00_TOTP_Diagnostic.py"), run_name="__main__
 
 ====================================================================
 FILE: dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py
-SIZE: 214 bytes
+SIZE: 290 bytes
 ====================================================================
 from __future__ import annotations
 
 import runpy
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 runpy.run_path(str(ROOT / "pages" / "01_Dhan_Auth_Request_Diagnostic.py"), run_name="__main__")
 
 ====================================================================
