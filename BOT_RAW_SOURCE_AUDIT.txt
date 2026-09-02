@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: ec9580a54209995f7d15b77332aa690213ef68e6
-Generated UTC: 2026-09-02T08:35:35.950834+00:00
+Commit SHA: 2b98337f604253ffb1721017523a551d37bf54ab
+Generated UTC: 2026-09-02T08:36:53.423788+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -33,7 +33,7 @@ config/validation_criteria.json	1063 bytes
 dashboard/__init__.py	0 bytes
 dashboard/app.py	742 bytes
 data/.gitkeep	1 bytes
-data/monitor_status.json	692 bytes
+data/monitor_status.json	710 bytes
 data/paper_trading_journal.jsonl	814 bytes
 data/scheduler_heartbeat.json	346 bytes
 data/trading.db	10915840 bytes
@@ -50,7 +50,7 @@ intraday_bot/alerts.py	860 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	15255 bytes
-intraday_bot/config.py	5851 bytes
+intraday_bot/config.py	5654 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/engine.py	16163 bytes
 intraday_bot/news.py	830 bytes
@@ -1513,14 +1513,15 @@ SIZE: 1 bytes
 
 ====================================================================
 FILE: data/monitor_status.json
-SIZE: 692 bytes
+SIZE: 710 bytes
 ====================================================================
 {
-  "cycle_id": "f80b83ebe7344e11966e60598b14da6e",
-  "started_at": "2026-09-01T05:19:39.736127+00:00",
+  "cycle_id": "PREFLIGHT-20260902T140531413243",
+  "started_at": "2026-09-02T14:05:31.413536+05:30",
+  "ended_at": "2026-09-02T14:05:31.413547+05:30",
   "mode": "PAPER",
   "market_open": true,
-  "stocks_observed": 2673,
+  "stocks_observed": 0,
   "quotes": 0,
   "deep_analysis_pool": 0,
   "dynamic_pool": true,
@@ -1529,15 +1530,9 @@ SIZE: 692 bytes
   "rejection_details": [],
   "orders": [],
   "errors": [
-    "DATA_ERROR: DHAN_HTTP_401: {\"data\":{\"808\":\"Authentication Failed - Client ID or Token invalid\"},\"status\":\"failed\"}"
+    "DHAN_PREFLIGHT_ERROR: DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_ACCESS_TOKEN; client_id_configured=yes; credential_length=327]"
   ],
-  "suggested_buy_investment": 0.0,
-  "suggested_sell_value": 0.0,
-  "duration_seconds": 0.426,
-  "ended_at": "2026-09-01T10:49:40.160081+05:30",
-  "positions_open": 0,
-  "realized_pnl": 0.0,
-  "today_realized_pnl": 0.0
+  "execution_gate": "PREFLIGHT_FAILED"
 }
 
 ====================================================================
@@ -1554,9 +1549,9 @@ SIZE: 346 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-02T14:03:13.396012+05:30",
+  "updated_at": "2026-09-02T14:05:09.839725+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33609312389",
+  "workflow_run_id": "33609489346",
   "event": "push",
   "market_open": true,
   "scheduled_interval_seconds": 300,
@@ -17638,10 +17633,10 @@ SIZE: 428 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect Diagnostics",
-  "updated_at": "2026-09-02T14:03:35.310039+05:30",
+  "updated_at": "2026-09-02T14:05:31.620166+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33609312389",
+  "workflow_run_id": "33609489346",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -18405,7 +18400,7 @@ def load_security_map() -> dict[str, dict[str, Any]]:
 
 ====================================================================
 FILE: intraday_bot/config.py
-SIZE: 5851 bytes
+SIZE: 5654 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18419,7 +18414,6 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _secret_or_env(name: str, default: str = "") -> str:
-    """Read configuration from environment first, then Streamlit Secrets."""
     value = os.getenv(name)
     if value is not None and value.strip() != "":
         return value.strip()
@@ -18434,7 +18428,6 @@ def _secret_or_env(name: str, default: str = "") -> str:
 
 
 def _credential(name: str, default: str = "") -> str:
-    """Normalize a credential pasted from a dashboard or secret store."""
     value = _secret_or_env(name, default).strip()
     if value.lower().startswith("bearer "):
         value = value[7:].strip()
@@ -18487,13 +18480,12 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # Dhan's REST API authenticates with client-id + access-token. Keep
-    # DHAN_API_KEY as a compatibility alias because the project historically
-    # used that name for the user's longer-valid credential. The value stored
-    # there must itself be a valid Dhan access token; a generic API key/secret
-    # pair cannot be sent as an access-token.
-    dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
+    # Dhan's REST API authenticates with client-id + access-token. The project
+    # historically stored the user's long-valid credential under DHAN_API_KEY,
+    # so that name is kept as an alias. The alias must contain a valid Dhan
+    # access token; a generic API key/secret pair is not an access token.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
+    dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
     telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
@@ -18507,15 +18499,15 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Prefer the official access-token secret; accept the legacy alias."""
-        return self.dhan_access_token or self.dhan_api_key
+        """Prefer the configured long-valid credential; token is fallback only."""
+        return self.dhan_api_key or self.dhan_access_token
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        if self.dhan_access_token:
-            return "DHAN_ACCESS_TOKEN"
         if self.dhan_api_key:
             return "DHAN_API_KEY_ALIAS"
+        if self.dhan_access_token:
+            return "DHAN_ACCESS_TOKEN_FALLBACK"
         return "NONE"
 
     @property
@@ -18537,9 +18529,8 @@ class Settings:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.daily_loss_limit <= 0 or self.max_position_exposure <= 0:
             raise ValueError("Paper risk limits must be positive")
-        if self.live_mode_requested:
-            if not self.dhan_client_id or not self.dhan_market_data_token:
-                raise ValueError("LIVE requested but Dhan credentials are missing")
+        if self.live_mode_requested and (not self.dhan_client_id or not self.dhan_market_data_token):
+            raise ValueError("LIVE requested but Dhan credentials are missing")
 
 
 settings = Settings()
