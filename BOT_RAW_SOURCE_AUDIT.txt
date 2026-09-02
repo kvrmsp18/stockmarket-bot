@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 6e721eca753ed2901c8df4111407a9f91749fb49
-Generated UTC: 2026-09-02T14:20:17.997224+00:00
+Commit SHA: b3c6c54c7466972ebe6381285db83970025d4828
+Generated UTC: 2026-09-02T17:18:00.698811+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -32,6 +32,7 @@ config/strategy.yaml	451 bytes
 config/validation_criteria.json	1063 bytes
 dashboard/__init__.py	0 bytes
 dashboard/app.py	742 bytes
+dashboard/pages/00_TOTP_Diagnostic.py	201 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	526 bytes
 data/paper_trading_journal.jsonl	814 bytes
@@ -1534,6 +1535,18 @@ if root_str not in sys.path:
 runpy.run_path(str(ROOT / "app.py"), run_name="__main__")
 
 ====================================================================
+FILE: dashboard/pages/00_TOTP_Diagnostic.py
+SIZE: 201 bytes
+====================================================================
+from __future__ import annotations
+
+import runpy
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+runpy.run_path(str(ROOT / "pages" / "00_TOTP_Diagnostic.py"), run_name="__main__")
+
+====================================================================
 FILE: data/.gitkeep
 SIZE: 1 bytes
 ====================================================================
@@ -1577,9 +1590,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-02T19:43:00.906862+05:30",
+  "updated_at": "2026-09-02T22:33:02.973827+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33640595445",
+  "workflow_run_id": "33658658533",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17661,10 +17674,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-02T19:43:00.985467+05:30",
+  "updated_at": "2026-09-02T22:33:03.052426+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmejwal",
-  "workflow_run_id": "33640595445",
+  "hostname": "runnervmgx7h7",
+  "workflow_run_id": "33658658533",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
