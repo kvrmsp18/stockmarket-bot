@@ -60,9 +60,11 @@ class Settings:
     max_consecutive_losses: int = _int("MAX_CONSECUTIVE_LOSSES", 3)
     max_trades_per_day: int = _int("MAX_TRADES_PER_DAY", 2)
     risk_per_trade_pct: float = _float("RISK_PER_TRADE_PCT", 0.5)
-    daily_loss_limit: float = _float("MAX_DAILY_LOSS", 15000.0)
+    # Paper validation uses a virtual ₹1,000 account. Absolute limits are
+    # intentionally scaled to that account so the safety gates are meaningful.
+    daily_loss_limit: float = _float("MAX_DAILY_LOSS", 20.0)
     max_positions: int = _int("MAX_OPEN_POSITIONS", 5)
-    max_position_exposure: float = _float("MAX_POSITION_EXPOSURE", 250000.0)
+    max_position_exposure: float = _float("MAX_POSITION_EXPOSURE", 800.0)
     max_sector_exposure: float = _float("MAX_SECTOR_EXPOSURE", 0.30)
     max_capital_deployment: float = _float("MAX_CAPITAL_DEPLOYMENT", 0.80)
     cash_reserve_pct: float = _float("CASH_RESERVE_PCT", 0.20)
@@ -78,9 +80,9 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # PAPER/market-data validation uses the user's one-month Dhan credential
-    # stored in DHAN_API_KEY. The short-lived/legacy DHAN_ACCESS_TOKEN is
-    # intentionally ignored for market-data authentication in this phase.
+    # PAPER/market-data validation uses the user's longer-valid Dhan credential
+    # stored in DHAN_API_KEY. The short-lived access token is not required for
+    # this phase and remains only as a compatibility secret.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
     dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
@@ -96,7 +98,7 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Return only the configured one-month DHAN_API_KEY."""
+        """Return the configured longer-valid Dhan market-data credential."""
         return self.dhan_api_key
 
     @property
@@ -120,6 +122,8 @@ class Settings:
             raise ValueError("MAX_TRADES_PER_DAY must be >=1")
         if self.reference_capital <= 0:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
+        if self.daily_loss_limit <= 0 or self.max_position_exposure <= 0:
+            raise ValueError("Paper risk limits must be positive")
         if self.live_mode_requested:
             if not self.dhan_client_id or not self.dhan_market_data_token:
                 raise ValueError("LIVE requested but Dhan credentials are missing")
