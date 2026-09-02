@@ -105,6 +105,8 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+          DHAN_PIN: ${{ secrets.DHAN_PIN }}
+          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
         shell: bash
         run: |
@@ -142,10 +144,17 @@ jobs:
 
           print('Dhan credential source:', settings.dhan_market_data_credential_source)
           print('Dhan client configured:', bool(settings.dhan_client_id))
-          print('Dhan API credential configured:', bool(settings.dhan_market_data_token))
-          print('Dhan credential length:', len(settings.dhan_market_data_token))
-          if not settings.dhan_market_data_token:
-              fail('DHAN_PREFLIGHT_ERROR: no Dhan API key configured')
+          print('Dhan API key configured:', bool(settings.dhan_api_key))
+          print('Dhan PIN configured:', bool(settings.dhan_pin))
+          print('Dhan TOTP secret configured:', bool(settings.dhan_totp_secret))
+          try:
+              token = settings.dhan_market_data_token
+          except Exception as exc:
+              fail('DHAN_PREFLIGHT_ERROR: automatic token generation failed: ' + str(exc))
+          print('Dhan access token generated:', bool(token))
+          print('Dhan access token length:', len(token))
+          if not token:
+              fail('DHAN_PREFLIGHT_ERROR: no Dhan Access Token available')
           try:
               health = DhanBroker().health()
           except Exception as exc:
@@ -198,6 +207,8 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+          DHAN_PIN: ${{ secrets.DHAN_PIN }}
+          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
