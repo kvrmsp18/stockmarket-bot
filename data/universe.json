@@ -4152,6 +4152,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "ENERGYAXIS",
+    "security_id": "765499",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "ENERGYDEV",
     "security_id": "15049",
     "exchange_segment": "NSE_EQ",
@@ -6488,12 +6494,6 @@
   {
     "symbol": "INDIACEM",
     "security_id": "1515",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "INDIAGLYCO",
-    "security_id": "1521",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
