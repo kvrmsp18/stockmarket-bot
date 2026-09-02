@@ -18,9 +18,11 @@ This repository implements the production-oriented paper-trading architecture ba
 
 ## Dhan authentication for the current paper phase
 
-The Bot prefers the configured `DHAN_API_KEY` value as the market-data credential and uses `DHAN_CLIENT_ID` as the client identifier. `DHAN_ACCESS_TOKEN` is retained only as an optional compatibility fallback if `DHAN_API_KEY` is absent; the short-lived token is not required when the longer-valid API credential is configured. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
+Dhan's REST API uses `DHAN_CLIENT_ID` plus an **access token** for API authentication. The Bot therefore prefers `DHAN_ACCESS_TOKEN`. The project's historical `DHAN_API_KEY` name is retained only as a compatibility alias for a value that is itself a valid Dhan access token; a generic API key/secret cannot be substituted for an access token.
 
-The Dhan preflight now validates both account authentication and the actual market-feed path with a real mapped security ID. The runtime uses Dhan's quote endpoint first and can fall back to the Dhan LTP market-feed endpoint when the quote path is unavailable, without fabricating prices.
+The current persisted failure is explicit: `DHAN_HTTP_401` / Dhan error `808` (`Authentication Failed - Client ID or Token invalid`). This proves the deployed client/token combination is being rejected by Dhan; the Bot must not fabricate quotes or trades around that failure. Once the correct valid access token is stored, the paper cycle can proceed without requiring a new token merely because the Bot is running continuously. The Bot also supports the Dhan LTP market-feed fallback when the quote endpoint itself is unavailable.
+
+The Dhan preflight validates both account authentication and the actual market-feed path with a real mapped security ID before the expensive cycle. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
 
 ## Architecture
 
