@@ -22,10 +22,13 @@ This file records the supplied specification as the source of truth for source-d
 | Final project override #15 | Validate source audit → syntax/import → tests → Actions → paper cycle → persisted state → dashboard → candidate/rejection verification | CI passing alone is insufficient | Release/verification sequence | N/A | ENGINEERING |
 | Final project risk constraint | Start with a maximum of 2 trades per day | Daily trade-count limit is deterministic and cannot be bypassed by AI/dashboard | `risk_gate()` counts filled simulated entries for the current IST date | `MAX_TRADES_PER_DAY=2` | ENGINEERING/SAFETY |
 | Final project risk constraint | Maximum consecutive losses and emergency stop are deterministic risk controls | Block new trades when configured safety limits are reached | `risk_gate()` | `MAX_CONSECUTIVE_LOSSES=3`, `BOT_EMERGENCY_STOP=false` | ENGINEERING/SAFETY |
-| Final project heartbeat fix | Scheduler heartbeat is not proof of a live trading worker | Dashboard must distinguish scheduler liveness from successful market-cycle liveness | Scheduler heartbeat is written every scheduled invocation; worker heartbeat records cycle success/degradation separately | 5-minute scheduled interval | ENGINEERING/SAFETY |
+| Final project heartbeat fix | Scheduler heartbeat is not proof of a live trading worker | Dashboard must distinguish scheduler liveness from successful market-cycle liveness | Scheduler heartbeat is written every scheduled invocation; worker heartbeat records cycle success/degradation/heartbeat-only state separately | 5-minute scheduled interval, all days | ENGINEERING/SAFETY |
 | Paper-validation risk decision | ₹1,000 virtual account requires meaningful absolute safety gates | Scale absolute limits instead of retaining real-capital values that cannot bind | `daily_loss_limit=₹20`, `max_position_exposure=₹800` by default | `MAX_DAILY_LOSS=20`, `MAX_POSITION_EXPOSURE=800` | ENGINEERING/SAFETY |
 | Runtime ownership decision | `runtime.py` is the active engine; `runtime_v2.py` was an obsolete parallel implementation | One active runtime prevents future edits to the wrong engine | `scripts/run_daily_cycle.py` → `intraday_bot.runtime.run_cycle()`; obsolete `runtime_v2.py` removed | N/A | ENGINEERING |
-| Dhan paper-data credential decision | Current paper phase uses the longer-valid Dhan credential configured as `DHAN_API_KEY`; short-lived access token is not required by this path | Avoid making daily token regeneration a development blocker | `DhanBroker` uses `settings.dhan_market_data_token`; workflow preflight validates it before a market cycle | `DHAN_API_KEY` | ENGINEERING/SAFETY |
+| Dhan paper-data credential decision | Current paper phase uses the longer-valid Dhan credential configured as `DHAN_API_KEY`; short-lived access token is not required when the API key is present | Avoid making daily token regeneration a development blocker | `DhanBroker` uses API key first and optional access-token fallback | `DHAN_API_KEY` preferred; `DHAN_ACCESS_TOKEN` fallback only | ENGINEERING/SAFETY |
+| Dhan market-data hardening | Authentication success alone does not prove market-feed access | Preflight the real market-feed path and never fabricate quotes | Workflow validates one mapped quote; `DhanBroker.bulk_quotes()` can fall back to Dhan LTP endpoint and reports both errors if neither works | `DHAN_SECURITY_IDS_JSON` for quote preflight | ENGINEERING/SAFETY |
+| Dashboard truthfulness fix | Scheduler/heartbeat timestamps must not be interpreted with a server-local timezone | Compare aware timestamps in UTC | `heartbeat_age_seconds()` parses timezone-aware ISO timestamps | N/A | ENGINEERING/SAFETY |
+| Dashboard refresh fix | Manual refresh must visibly report whether persisted state was actually retrieved | A button click alone is not proof of fresh data | `sync(force=True)` records sync success/failure and the UI exposes the result | N/A | ENGINEERING |
 
 ## Important separation
 
@@ -42,6 +45,10 @@ For the current ₹1,000 validation account, the default daily loss ceiling is �
 ## RISK SAFETY RULE
 
 `BOT_EMERGENCY_STOP=true` blocks new trades. `MAX_CONSECUTIVE_LOSSES` blocks new trades once the configured number of consecutive closed losing trades is reached. `MAX_TRADES_PER_DAY=2` blocks additional simulated entries after two filled paper/live-test entries in the current IST date. These are deterministic controls and cannot be overridden by AI or the dashboard.
+
+## 24/7 FREE-TIER RULE
+
+The current free paper deployment uses GitHub Actions as a five-minute scheduler/heartbeat. The workflow is scheduled every five minutes every day. During NSE cash-market hours it runs the paper market cycle; outside the market window it records a heartbeat-only state. This is not a persistent Linux worker and must never be presented as one. A paid/persistent worker is a later production requirement for live trading, not a prerequisite for current paper validation.
 
 ## SOURCE-UNCLEAR policy
 
