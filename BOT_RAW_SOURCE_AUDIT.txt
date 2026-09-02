@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: ef575fbc53c852862d86b7043a893a4dbd577fc0
-Generated UTC: 2026-09-02T19:56:18.814498+00:00
+Commit SHA: 5646b4f0e9e17b3a2064bb5764ec2f0e9a47fc6b
+Generated UTC: 2026-09-02T20:09:47.602165+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -36,6 +36,7 @@ dashboard/pages/00_TOTP_Diagnostic.py	201 bytes
 dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py	290 bytes
 dashboard/pages/02_Dhan_PIN_Diagnostic.py	281 bytes
 dashboard/pages/03_Dhan_Credential_Pair_Diagnostic.py	293 bytes
+dashboard/pages/04_Dhan_JSON_Body_Auth_Diagnostic.py	292 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	526 bytes
 data/paper_trading_journal.jsonl	814 bytes
@@ -79,7 +80,7 @@ reports/daily/2026-09-01.json	323 bytes
 reports/daily/2026-09-02.json	323 bytes
 reports/readiness/.gitkeep	1 bytes
 reports/weekly/.gitkeep	1 bytes
-requirements.txt	125 bytes
+requirements.txt	142 bytes
 scripts/__init__.py	0 bytes
 scripts/eod_report.py	3477 bytes
 scripts/load_universe.py	2067 bytes
@@ -1602,6 +1603,22 @@ if str(ROOT) not in sys.path:
 runpy.run_path(str(ROOT / "pages" / "03_Dhan_Credential_Pair_Diagnostic.py"), run_name="__main__")
 
 ====================================================================
+FILE: dashboard/pages/04_Dhan_JSON_Body_Auth_Diagnostic.py
+SIZE: 292 bytes
+====================================================================
+from __future__ import annotations
+
+import runpy
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+runpy.run_path(str(ROOT / "pages" / "04_Dhan_JSON_Body_Auth_Diagnostic.py"), run_name="__main__")
+
+====================================================================
 FILE: data/.gitkeep
 SIZE: 1 bytes
 ====================================================================
@@ -1645,9 +1662,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-03T01:25:34.185216+05:30",
+  "updated_at": "2026-09-03T01:37:35.304992+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33676204416",
+  "workflow_run_id": "33677399362",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17729,10 +17746,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-03T01:25:34.267072+05:30",
+  "updated_at": "2026-09-03T01:37:35.392615+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmejwal",
-  "workflow_run_id": "33676204416",
+  "hostname": "runnervmgx7h7",
+  "workflow_run_id": "33677399362",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -20775,7 +20792,7 @@ SIZE: 1 bytes
 
 ====================================================================
 FILE: requirements.txt
-SIZE: 125 bytes
+SIZE: 142 bytes
 ====================================================================
 requests>=2.31
 python-dotenv>=1.0
@@ -20786,6 +20803,7 @@ streamlit>=1.35
 pytest>=8.0
 tzdata>=2024.1
 pyotp>=2.9
+dhanhq==2.3.0rc1
 
 ====================================================================
 FILE: scripts/__init__.py
