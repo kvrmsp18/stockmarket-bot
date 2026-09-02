@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
 import requests
 import streamlit as st
-
-from intraday_bot.config import settings
 
 AUTH_BASE_URL = "https://auth.dhan.co"
 
@@ -18,9 +17,21 @@ st.info(
     "and never displays credentials."
 )
 
-client_id = (settings.dhan_client_id or "").strip()
-api_key = (settings.dhan_api_key or "").strip()
-api_secret = (settings.dhan_api_secret or "").strip()
+
+def _secret_or_env(name: str, default: str = "") -> str:
+    value = os.getenv(name)
+    if value is not None and value.strip() != "":
+        return value.strip()
+    try:
+        secret_value = st.secrets.get(name, default)
+    except Exception:
+        secret_value = default
+    return "" if secret_value is None else str(secret_value).strip()
+
+
+client_id = _secret_or_env("DHAN_CLIENT_ID")
+api_key = _secret_or_env("DHAN_API_KEY")
+api_secret = _secret_or_env("DHAN_API_SECRET")
 
 st.write(f"Client ID configured: **{bool(client_id)}**")
 st.write(f"API Key configured: **{bool(api_key)}**")
@@ -62,12 +73,22 @@ if st.button("Run Dhan API Key consent test", type="primary"):
         st.write(f"Response time: **{elapsed_ms:.0f} ms**")
         st.json(safe)
 
-        success = isinstance(payload, dict) and str(payload.get("status", "")).lower() == "success" and bool(payload.get("consentAppId"))
+        success = (
+            isinstance(payload, dict)
+            and str(payload.get("status", "")).lower() == "success"
+            and bool(payload.get("consentAppId"))
+        )
         if success:
             st.success("✅ Dhan accepted the API Key + API Secret consent request.")
-            st.info("This test only proves the API Key/Secret can start an OAuth consent session. It does not complete browser login or generate an Access Token.")
+            st.info(
+                "This test only proves the API Key/Secret can start an OAuth consent session. "
+                "It does not complete browser login or generate an Access Token."
+            )
         else:
-            st.error("❌ Dhan did not accept the API Key + API Secret consent request. The non-secret response above is the diagnostic evidence.")
+            st.error(
+                "❌ Dhan did not accept the API Key + API Secret consent request. "
+                "The non-secret response above is the diagnostic evidence."
+            )
     except Exception as exc:
         elapsed_ms = (time.perf_counter() - started) * 1000
         st.write(f"Response time: **{elapsed_ms:.0f} ms**")
@@ -75,4 +96,7 @@ if st.button("Run Dhan API Key consent test", type="primary"):
         st.caption("No credentials are displayed or persisted.")
 
 st.divider()
-st.caption("Security: API credentials remain in memory only; no API key, API secret, consent ID, token, PIN, or OTP is displayed or persisted.")
+st.caption(
+    "Security: API credentials remain in memory only; no API key, API secret, consent ID, "
+    "token, PIN, or OTP is displayed or persisted."
+)
