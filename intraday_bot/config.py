@@ -78,11 +78,13 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # Prefer the user's longer-valid API credential. The short-lived access
-    # token remains only as an optional compatibility fallback; it is never
-    # required when DHAN_API_KEY is configured.
-    dhan_api_key: str = _credential("DHAN_API_KEY", "")
+    # Dhan's REST API authenticates with client-id + access-token. Keep
+    # DHAN_API_KEY as a compatibility alias because the project historically
+    # used that name for the user's longer-valid credential. The value stored
+    # there must itself be a valid Dhan access token; a generic API key/secret
+    # pair cannot be sent as an access-token.
     dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
+    dhan_api_key: str = _credential("DHAN_API_KEY", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
     telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
@@ -96,15 +98,15 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Use the long-valid API credential first; token is fallback only."""
-        return self.dhan_api_key or self.dhan_access_token
+        """Prefer the official access-token secret; accept the legacy alias."""
+        return self.dhan_access_token or self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        if self.dhan_api_key:
-            return "DHAN_API_KEY"
         if self.dhan_access_token:
-            return "DHAN_ACCESS_TOKEN_FALLBACK"
+            return "DHAN_ACCESS_TOKEN"
+        if self.dhan_api_key:
+            return "DHAN_API_KEY_ALIAS"
         return "NONE"
 
     @property
