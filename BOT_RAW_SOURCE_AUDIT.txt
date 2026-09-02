@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 53920b9e3404b55b4244a2fa2fb69db0fd24f8fa
-Generated UTC: 2026-09-02T18:53:40.216118+00:00
+Commit SHA: ef575fbc53c852862d86b7043a893a4dbd577fc0
+Generated UTC: 2026-09-02T19:56:18.814498+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -69,6 +69,7 @@ pages/00_TOTP_Diagnostic.py	3165 bytes
 pages/01_Dhan_Auth_Request_Diagnostic.py	3495 bytes
 pages/02_Dhan_PIN_Diagnostic.py	3922 bytes
 pages/03_Dhan_Credential_Pair_Diagnostic.py	4832 bytes
+pages/04_Dhan_JSON_Body_Auth_Diagnostic.py	3833 bytes
 reports/.gitkeep	0 bytes
 reports/daily/.gitkeep	1 bytes
 reports/daily/2026-08-29.md	428 bytes
@@ -1644,9 +1645,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-03T00:15:22.964791+05:30",
+  "updated_at": "2026-09-03T01:25:34.185216+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33669150832",
+  "workflow_run_id": "33676204416",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17728,10 +17729,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-03T00:15:23.024033+05:30",
+  "updated_at": "2026-09-03T01:25:34.267072+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33669150832",
+  "hostname": "runnervmejwal",
+  "workflow_run_id": "33676204416",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -20520,6 +20521,113 @@ else:
 st.caption(
     "Security: only lengths, types, whitespace state and one-way SHA-256 prefixes are shown. "
     "No credential, OTP, token, or authentication request is exposed or persisted."
+)
+
+====================================================================
+FILE: pages/04_Dhan_JSON_Body_Auth_Diagnostic.py
+SIZE: 3833 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+import time
+from typing import Any
+
+import pyotp
+import requests
+import streamlit as st
+
+from intraday_bot.config import settings
+from intraday_bot.dhan_auth import _normalise_totp_secret
+
+st.set_page_config(page_title="Dhan JSON Body Auth Diagnostic", layout="centered")
+st.title("🧪 Dhan JSON-Body Auth Diagnostic")
+st.info(
+    "This is an AUTH-ONLY A/B test. It makes one real Dhan Access Token "
+    "generation request using a JSON body instead of query parameters. "
+    "No credential or OTP value is displayed or persisted."
+)
+
+client_id = settings.dhan_client_id
+pin = settings.dhan_pin
+secret = settings.dhan_totp_secret
+
+if not client_id or not pin or not secret:
+    st.error("Required Dhan authentication settings are not available.")
+    st.stop()
+
+try:
+    totp = pyotp.TOTP(_normalise_totp_secret(secret))
+    remaining = int(totp.interval - (time.time() % totp.interval))
+except Exception as exc:
+    st.error(f"Unable to initialise TOTP locally: {type(exc).__name__}")
+    st.stop()
+
+st.write(f"TOTP period: **{totp.interval}s**")
+st.write(f"Current TOTP window expires in approximately **{remaining}s**")
+st.warning(
+    "Run this only after the normal Dhan Auth Request Diagnostic has been "
+    "tested recently enough that Dhan's token-generation cooldown is respected."
+)
+
+if st.button("Run JSON-body Dhan authentication test", type="primary"):
+    code = totp.now()
+    started = time.perf_counter()
+    try:
+        payload = {
+            "dhanClientId": client_id,
+            "pin": pin,
+            "totp": code,
+        }
+        response = requests.post(
+            "https://auth.dhan.co/app/generateAccessToken",
+            json=payload,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            timeout=15,
+        )
+        elapsed_ms = (time.perf_counter() - started) * 1000
+
+        try:
+            body: Any = response.json()
+        except ValueError:
+            body = {"raw_response": response.text[:500]}
+
+        safe: dict[str, Any] = {}
+        if isinstance(body, dict):
+            for key in ("status", "message"):
+                if body.get(key) is not None:
+                    safe[key] = str(body.get(key))[:500]
+            remarks = body.get("remarks")
+            if isinstance(remarks, dict):
+                for key in ("error_type", "message", "error_message"):
+                    if remarks.get(key) is not None:
+                        safe[f"remarks.{key}"] = str(remarks.get(key))[:500]
+            if body.get("accessToken") or body.get("access_token") or body.get("token"):
+                safe["token_present"] = True
+
+        st.write(f"HTTP status: **{response.status_code}**")
+        st.write(f"Response time: **{elapsed_ms:.0f} ms**")
+        st.json(safe if safe else {"response": "No recognized non-secret fields returned"})
+
+        if any(k in body for k in ("accessToken", "access_token", "token")) if isinstance(body, dict) else False:
+            st.success("✅ JSON-body request produced a token field. This indicates the request format is accepted.")
+        elif isinstance(body, dict) and str(body.get("message", "")).strip():
+            st.error(f"❌ Dhan rejected the JSON-body request: {str(body.get('message'))[:200]}")
+        else:
+            st.warning("⚠️ JSON-body request returned no recognized token or error message.")
+
+    except requests.RequestException as exc:
+        st.error(f"❌ HTTP request failed: {type(exc).__name__}")
+    except Exception as exc:
+        st.error(f"❌ Diagnostic failed: {type(exc).__name__}")
+
+st.divider()
+st.caption(
+    "Security: credentials and OTP are held in memory only. No secret, OTP, "
+    "or access token value is displayed or persisted."
 )
 
 ====================================================================
