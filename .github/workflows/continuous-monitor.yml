@@ -6,6 +6,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'app.py'
       - 'intraday_bot/**'
       - 'scripts/**'
       - 'config/**'
@@ -99,7 +100,7 @@ jobs:
         if: steps.market.outputs.run_cycle == 'true'
         run: pip install -r requirements.txt --quiet
 
-      - name: Dhan authentication preflight
+      - name: Dhan authentication and market-feed preflight
         if: steps.market.outputs.run_cycle == 'true'
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
@@ -111,28 +112,55 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
           from intraday_bot.brokers import DhanBroker
           from intraday_bot.config import settings
+
+          def fail(message: str) -> None:
+              path = Path('data/monitor_status.json')
+              path.parent.mkdir(parents=True, exist_ok=True)
+              payload = {
+                  'cycle_id': 'PREFLIGHT-' + datetime.now(ZoneInfo('Asia/Kolkata')).strftime('%Y%m%dT%H%M%S%f'),
+                  'started_at': datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),
+                  'ended_at': datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),
+                  'mode': 'PAPER',
+                  'market_open': True,
+                  'stocks_observed': 0,
+                  'quotes': 0,
+                  'deep_analysis_pool': 0,
+                  'dynamic_pool': True,
+                  'candidates': [],
+                  'rejections': {},
+                  'rejection_details': [],
+                  'orders': [],
+                  'errors': [message],
+                  'execution_gate': 'PREFLIGHT_FAILED',
+              }
+              path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
+              raise SystemExit(message)
 
           print('Dhan credential source:', settings.dhan_market_data_credential_source)
           print('Dhan client configured:', bool(settings.dhan_client_id))
           print('Dhan credential configured:', bool(settings.dhan_market_data_token))
           print('Dhan credential length:', len(settings.dhan_market_data_token))
           if not settings.dhan_market_data_token:
-              raise SystemExit('DHAN_AUTH_PREFLIGHT_FAILED: no Dhan market-data credential configured')
-          health = DhanBroker().health()
+              fail('DHAN_PREFLIGHT_ERROR: no Dhan access token configured')
+          try:
+              health = DhanBroker().health()
+          except Exception as exc:
+              fail('DHAN_PREFLIGHT_ERROR: ' + str(exc))
           print('Dhan authentication:', health.message)
           if not health.authenticated:
-              raise SystemExit('DHAN_AUTH_PREFLIGHT_FAILED: ' + health.message)
+              fail('DHAN_PREFLIGHT_ERROR: ' + health.message)
 
-          # Authentication alone is not enough: validate the actual market-feed
-          # permission/path with one real security ID before the expensive cycle.
           raw = settings.dhan_security_ids_json.strip()
           if raw:
               try:
                   mapping = json.loads(raw)
-              except json.JSONDecodeError as exc:
-                  raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: invalid DHAN_SECURITY_IDS_JSON') from exc
+              except json.JSONDecodeError:
+                  fail('DHAN_QUOTE_PREFLIGHT_FAILED: invalid DHAN_SECURITY_IDS_JSON')
               instruments = []
               for symbol, value in mapping.items():
                   if isinstance(value, dict):
@@ -146,10 +174,13 @@ jobs:
                   if len(instruments) >= 1:
                       break
               if instruments:
-                  quotes = DhanBroker().bulk_quotes(instruments)
+                  try:
+                      quotes = DhanBroker().bulk_quotes(instruments)
+                  except Exception as exc:
+                      fail('DHAN_QUOTE_PREFLIGHT_FAILED: ' + str(exc))
                   print('Dhan market-feed preflight quotes:', len(quotes))
                   if not quotes:
-                      raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: market-feed returned zero quotes')
+                      fail('DHAN_QUOTE_PREFLIGHT_FAILED: market-feed returned zero quotes')
                   print('DHAN_MARKET_DATA_PREFLIGHT_PASSED')
               else:
                   print('DHAN_QUOTE_PREFLIGHT_SKIPPED: no mapped security ID')
