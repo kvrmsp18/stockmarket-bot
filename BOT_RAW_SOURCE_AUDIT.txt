@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 537af5f227d0b14cbaa453fca7430b2693ddd57b
-Generated UTC: 2026-09-02T12:39:29.824054+00:00
+Commit SHA: 5451edaf7d8ecc3ecaf023f3f21d97e29e6bcb77
+Generated UTC: 2026-09-02T12:44:33.590940+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1097 bytes
 .github/workflows/ci.yml	363 bytes
-.github/workflows/continuous-monitor.yml	12013 bytes
+.github/workflows/continuous-monitor.yml	12557 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	5380 bytes
 .gitignore	684 bytes
@@ -237,7 +237,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 12013 bytes
+SIZE: 12557 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -354,6 +354,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json
+          import os
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
@@ -396,6 +397,15 @@ jobs:
           print('Dhan access token length:', len(token))
           if not token:
               fail('DHAN_PREFLIGHT_ERROR: no Dhan Access Token available')
+
+          # Dhan limits automatic Access Token generation to once every 2 minutes.
+          # The preflight and the actual cycle run as separate Python processes.
+          # Reuse the already-generated token for the rest of this GitHub job
+          # instead of generating a second token immediately.
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env_file:
+              env_file.write('DHAN_ACCESS_TOKEN=' + token + '\n')
+          print('Dhan access token prepared for reuse by the cycle.')
+
           try:
               health = DhanBroker().health()
           except Exception as exc:
@@ -1566,9 +1576,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-02T17:56:25.142926+05:30",
+  "updated_at": "2026-09-02T18:12:50.493115+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33629908304",
+  "workflow_run_id": "33631457244",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17650,10 +17660,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-02T17:56:25.205610+05:30",
+  "updated_at": "2026-09-02T18:12:50.853999+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33629908304",
+  "workflow_run_id": "33631457244",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
