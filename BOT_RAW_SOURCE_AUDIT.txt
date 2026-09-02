@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 01b0e0ad41c9a901971f9d535bc7b499aaa90c65
-Generated UTC: 2026-09-02T08:50:06.651862+00:00
+Commit SHA: 712e35f62b2955b0736dd444dfd74e79a7baed24
+Generated UTC: 2026-09-02T08:50:54.876715+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -23,7 +23,7 @@ FILE INVENTORY
 .streamlit/config.toml	199 bytes
 .streamlit/secrets.toml.example	431 bytes
 Dockerfile	229 bytes
-README.md	6366 bytes
+README.md	6864 bytes
 SOURCE_RULES.md	9145 bytes
 app.py	21180 bytes
 config/risk.yaml	244 bytes
@@ -35,7 +35,7 @@ dashboard/app.py	742 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	710 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	350 bytes
+data/scheduler_heartbeat.json	346 bytes
 data/trading.db	10915840 bytes
 data/universe.json	307969 bytes
 data/watchdog_heartbeat.json	422 bytes
@@ -798,7 +798,7 @@ CMD ["/app/start.sh"]
 
 ====================================================================
 FILE: README.md
-SIZE: 6366 bytes
+SIZE: 6864 bytes
 ====================================================================
 # NSE/BSE Intraday AI Trading Desk — New Build
 
@@ -820,11 +820,13 @@ This repository implements the production-oriented paper-trading architecture ba
 
 ## Dhan authentication for the current paper phase
 
-Dhan's REST API uses `DHAN_CLIENT_ID` plus an **access token** for API authentication. The Bot therefore prefers `DHAN_ACCESS_TOKEN`. The project's historical `DHAN_API_KEY` name is retained only as a compatibility alias for a value that is itself a valid Dhan access token; a generic API key/secret cannot be substituted for an access token.
+Dhan's REST API endpoints used by this Bot authenticate with `DHAN_CLIENT_ID` plus a valid **Dhan access token**. The Bot therefore prefers `DHAN_ACCESS_TOKEN`. The historical `DHAN_API_KEY` name is retained only as a compatibility alias for a value that is itself a valid Dhan access token; a generic API key/secret is not interchangeable with an access token.
 
-The current persisted failure is explicit: `DHAN_HTTP_401` / Dhan error `808` (`Authentication Failed - Client ID or Token invalid`). This proves the deployed client/token combination is being rejected by Dhan; the Bot must not fabricate quotes or trades around that failure. Once the correct valid access token is stored, the paper cycle can proceed without requiring a new token merely because the Bot is running continuously. The Bot also supports the Dhan LTP market-feed fallback when the quote endpoint itself is unavailable.
+The latest GitHub Actions preflight reached Dhan successfully but Dhan rejected the configured credential pair with **HTTP 401 / error `DH-901`**: `Client ID or user generated access token is invalid or expired.` The Bot must not fabricate quotes, candidates or trades around that failure. This is a credential-value/type problem, not a market-scanning problem.
 
-The Dhan preflight validates both account authentication and the actual market-feed path with a real mapped security ID before the expensive cycle. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
+If the user's longer-valid Dhan credential is in fact a valid access token, it can be used for the paper phase by storing that value in the `DHAN_ACCESS_TOKEN` GitHub secret (with the matching `DHAN_CLIENT_ID`). No separate daily token is required by the Bot merely because the scheduler runs continuously; however, the credential itself must remain valid according to Dhan's authentication rules. If the credential is only a generic API key/secret and not an access token, the Bot cannot use it as an access token.
+
+The Dhan preflight validates account authentication and, when `DHAN_SECURITY_IDS_JSON` contains a mapped security ID, validates the actual market-feed path before the expensive cycle. The market-feed adapter also has an LTP fallback when the quote endpoint itself is unavailable. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
 
 ## Architecture
 
@@ -1516,9 +1518,9 @@ FILE: data/monitor_status.json
 SIZE: 710 bytes
 ====================================================================
 {
-  "cycle_id": "PREFLIGHT-20260902T141200152909",
-  "started_at": "2026-09-02T14:12:00.153196+05:30",
-  "ended_at": "2026-09-02T14:12:00.153206+05:30",
+  "cycle_id": "PREFLIGHT-20260902T141956616597",
+  "started_at": "2026-09-02T14:19:56.616891+05:30",
+  "ended_at": "2026-09-02T14:19:56.616903+05:30",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 0,
@@ -1530,7 +1532,7 @@ SIZE: 710 bytes
   "rejection_details": [],
   "orders": [],
   "errors": [
-    "DHAN_PREFLIGHT_ERROR: DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_API_KEY_ALIAS; client_id_configured=yes; credential_length=36]"
+    "DHAN_PREFLIGHT_ERROR: DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_ACCESS_TOKEN; client_id_configured=yes; credential_length=327]"
   ],
   "execution_gate": "PREFLIGHT_FAILED"
 }
@@ -1544,15 +1546,15 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 350 bytes
+SIZE: 346 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-02T14:11:37.135570+05:30",
+  "updated_at": "2026-09-02T14:19:35.584517+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33610060886",
-  "event": "schedule",
+  "workflow_run_id": "33610780308",
+  "event": "push",
   "market_open": true,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -17633,10 +17635,10 @@ SIZE: 428 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect Diagnostics",
-  "updated_at": "2026-09-02T14:12:00.374251+05:30",
+  "updated_at": "2026-09-02T14:19:56.809030+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33610060886",
+  "workflow_run_id": "33610780308",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
