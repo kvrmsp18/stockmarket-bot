@@ -46,6 +46,20 @@ def _extract_access_token(payload: Any) -> str:
     return ""
 
 
+def _safe_auth_message(payload: Any) -> str:
+    """Extract only non-secret authentication diagnostics from Dhan's response."""
+    if not isinstance(payload, dict):
+        return str(payload)[:500]
+    message = payload.get("message")
+    remarks = payload.get("remarks")
+    if isinstance(remarks, dict):
+        message = remarks.get("message") or remarks.get("error_message") or message
+        error_type = remarks.get("error_type")
+        if error_type and message:
+            return f"{error_type}: {message}"
+    return str(message or payload.get("status") or payload)[:500]
+
+
 def _dhan_server_clock_offset(timeout: int = 8) -> float:
     """Estimate Dhan auth-server clock minus runner clock from HTTP Date."""
     try:
@@ -90,15 +104,19 @@ def generate_access_token(client_id: str, pin: str, totp_secret: str, timeout: i
         except ValueError:
             payload = {"raw": response.text[:500]}
 
+        # Dhan can return HTTP 200 with a failure status, so inspect the
+        # response body instead of assuming that HTTP 200 means success.
+        if isinstance(payload, dict):
+            status = str(payload.get("status", "")).lower()
+            if status in {"failure", "failed", "error"}:
+                raise RuntimeError(f"DHAN_AUTO_AUTH_FAILED: {_safe_auth_message(payload)}")
+
         if response.status_code >= 400:
-            message = payload.get("message") if isinstance(payload, dict) else None
-            remarks = payload.get("remarks") if isinstance(payload, dict) else None
-            safe_detail = message or remarks or payload
-            raise RuntimeError(f"DHAN_AUTO_AUTH_HTTP_{response.status_code}: {safe_detail}")
+            raise RuntimeError(f"DHAN_AUTO_AUTH_HTTP_{response.status_code}: {_safe_auth_message(payload)}")
 
         token = _extract_access_token(payload)
         if not token:
-            raise RuntimeError("DHAN_AUTO_AUTH_NO_TOKEN: Dhan returned no Access Token")
+            raise RuntimeError(f"DHAN_AUTO_AUTH_NO_TOKEN: {_safe_auth_message(payload)}")
         _cached_token = token
         return token
 
