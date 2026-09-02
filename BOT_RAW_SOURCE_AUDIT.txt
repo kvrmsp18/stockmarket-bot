@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 5646b4f0e9e17b3a2064bb5764ec2f0e9a47fc6b
-Generated UTC: 2026-09-02T20:09:47.602165+00:00
+Commit SHA: 9164f9b9f70a880c1fbf1b55ce82f3a4e1b01633
+Generated UTC: 2026-09-02T20:13:49.837152+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -37,10 +37,11 @@ dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py	290 bytes
 dashboard/pages/02_Dhan_PIN_Diagnostic.py	281 bytes
 dashboard/pages/03_Dhan_Credential_Pair_Diagnostic.py	293 bytes
 dashboard/pages/04_Dhan_JSON_Body_Auth_Diagnostic.py	292 bytes
+dashboard/pages/04_Dhan_Official_SDK_Auth_Diagnostic.py	295 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	526 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	351 bytes
+data/scheduler_heartbeat.json	347 bytes
 data/trading.db	12640256 bytes
 data/universe.json	307971 bytes
 data/watchdog_heartbeat.json	422 bytes
@@ -71,6 +72,8 @@ pages/01_Dhan_Auth_Request_Diagnostic.py	3495 bytes
 pages/02_Dhan_PIN_Diagnostic.py	3922 bytes
 pages/03_Dhan_Credential_Pair_Diagnostic.py	4832 bytes
 pages/04_Dhan_JSON_Body_Auth_Diagnostic.py	3833 bytes
+pages/04_Dhan_Official_SDK_Auth_Diagnostic.py	3327 bytes
+pages/05_Dhan_API_Key_Consent_Diagnostic.py	3296 bytes
 reports/.gitkeep	0 bytes
 reports/daily/.gitkeep	1 bytes
 reports/daily/2026-08-29.md	428 bytes
@@ -1619,6 +1622,22 @@ if str(ROOT) not in sys.path:
 runpy.run_path(str(ROOT / "pages" / "04_Dhan_JSON_Body_Auth_Diagnostic.py"), run_name="__main__")
 
 ====================================================================
+FILE: dashboard/pages/04_Dhan_Official_SDK_Auth_Diagnostic.py
+SIZE: 295 bytes
+====================================================================
+from __future__ import annotations
+
+import runpy
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+runpy.run_path(str(ROOT / "pages" / "04_Dhan_Official_SDK_Auth_Diagnostic.py"), run_name="__main__")
+
+====================================================================
 FILE: data/.gitkeep
 SIZE: 1 bytes
 ====================================================================
@@ -1657,15 +1676,15 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 351 bytes
+SIZE: 347 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-03T01:37:35.304992+05:30",
+  "updated_at": "2026-09-03T01:39:25.971195+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33677399362",
-  "event": "schedule",
+  "workflow_run_id": "33677587567",
+  "event": "push",
   "market_open": false,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -17746,10 +17765,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-03T01:37:35.392615+05:30",
+  "updated_at": "2026-09-03T01:39:26.054957+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33677399362",
+  "hostname": "runnervmejwal",
+  "workflow_run_id": "33677587567",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -20646,6 +20665,175 @@ st.caption(
     "Security: credentials and OTP are held in memory only. No secret, OTP, "
     "or access token value is displayed or persisted."
 )
+
+====================================================================
+FILE: pages/04_Dhan_Official_SDK_Auth_Diagnostic.py
+SIZE: 3327 bytes
+====================================================================
+from __future__ import annotations
+
+import time
+from typing import Any
+
+import pyotp
+import streamlit as st
+
+from dhanhq import DhanLogin
+from intraday_bot.config import settings
+from intraday_bot.dhan_auth import _normalise_totp_secret
+
+
+st.set_page_config(page_title="Dhan Official SDK Auth Diagnostic", layout="centered")
+
+st.title("🧪 Dhan Official SDK Auth Diagnostic")
+st.info(
+    "AUTH-ONLY A/B test. This uses Dhan's official Python SDK DhanLogin.generate_token() "
+    "with the configured Client ID + PIN + freshly generated TOTP. It never displays "
+    "credentials, OTP values, or an access token."
+)
+
+client_id = settings.dhan_client_id
+pin = settings.dhan_pin
+secret = settings.dhan_totp_secret
+
+if not client_id or not pin or not secret:
+    st.error("Required Dhan authentication settings are not available.")
+    st.stop()
+
+try:
+    normalised = _normalise_totp_secret(secret)
+    generator = pyotp.TOTP(normalised)
+    remaining = int(generator.interval - (time.time() % generator.interval))
+except Exception as exc:
+    st.error(f"Unable to initialise TOTP locally: {type(exc).__name__}")
+    st.stop()
+
+st.write(f"TOTP period: **{generator.interval}s**")
+st.write(f"Current TOTP window expires in approximately **{remaining}s**")
+st.caption("OTP is generated immediately before the SDK call and is never shown.")
+
+if st.button("Run official Dhan SDK authentication test", type="primary"):
+    started = time.perf_counter()
+    try:
+        # Generate immediately before the authentication call.
+        current_code = generator.now()
+        dhan_login = DhanLogin(client_id)
+        payload: Any = dhan_login.generate_token(pin, current_code)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+
+        safe: dict[str, Any] = {}
+        if isinstance(payload, dict):
+            for key in ("status", "message", "dhanClientId", "expiryTime", "dhanClientName", "dhanClientUcc", "givenPowerOfAttorney"):
+                if key in payload:
+                    value = payload[key]
+                    if key == "dhanClientId":
+                        safe[key] = "present"
+                    else:
+                        safe[key] = value
+            safe["accessToken"] = "present" if payload.get("accessToken") else "absent"
+        else:
+            safe["response_type"] = type(payload).__name__
+
+        st.write(f"SDK response time: **{elapsed_ms:.0f} ms**")
+        st.json(safe)
+
+        if isinstance(payload, dict) and payload.get("accessToken"):
+            st.success("✅ OFFICIAL SDK AUTHENTICATION SUCCEEDED — Dhan returned an Access Token.")
+            st.info("Do not use this diagnostic token for trading. This test only establishes the authentication result.")
+        else:
+            st.error("❌ OFFICIAL SDK AUTHENTICATION DID NOT RETURN AN ACCESS TOKEN. The non-secret response above is the diagnostic evidence.")
+
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        st.write(f"SDK response time: **{elapsed_ms:.0f} ms**")
+        st.error(f"❌ Official SDK authentication failed: {type(exc).__name__}")
+        st.caption("No credential, OTP, or access-token value is displayed.")
+
+st.divider()
+st.caption("Security: credentials and OTP remain in memory only; no secrets or access tokens are displayed or persisted.")
+
+====================================================================
+FILE: pages/05_Dhan_API_Key_Consent_Diagnostic.py
+SIZE: 3296 bytes
+====================================================================
+from __future__ import annotations
+
+import time
+from typing import Any
+
+import requests
+import streamlit as st
+
+from intraday_bot.config import settings
+
+AUTH_BASE_URL = "https://auth.dhan.co"
+
+st.set_page_config(page_title="Dhan API Key Consent Diagnostic", layout="centered")
+st.title("🧪 Dhan API Key + Secret Consent Diagnostic")
+st.info(
+    "AUTH-ONLY test. This checks whether the configured Dhan Client ID + API Key + API Secret "
+    "are accepted by Dhan's Generate Consent endpoint. It does not generate an Access Token "
+    "and never displays credentials."
+)
+
+client_id = (settings.dhan_client_id or "").strip()
+api_key = (settings.dhan_api_key or "").strip()
+api_secret = (settings.dhan_api_secret or "").strip()
+
+st.write(f"Client ID configured: **{bool(client_id)}**")
+st.write(f"API Key configured: **{bool(api_key)}**")
+st.write(f"API Secret configured: **{bool(api_secret)}**")
+
+if not (client_id and api_key and api_secret):
+    st.error("Required Dhan API Key authentication settings are not available.")
+    st.stop()
+
+st.warning(
+    "This performs one real Generate Consent request. Run it by itself; do not run other Dhan "
+    "authentication diagnostics at the same time."
+)
+
+if st.button("Run Dhan API Key consent test", type="primary"):
+    started = time.perf_counter()
+    try:
+        response = requests.post(
+            f"{AUTH_BASE_URL}/app/generate-consent",
+            params={"client_id": client_id},
+            headers={"app_id": api_key, "app_secret": api_secret},
+            timeout=15,
+        )
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        try:
+            payload: Any = response.json()
+        except ValueError:
+            payload = {"response_type": "non_json", "status_code": response.status_code}
+
+        safe: dict[str, Any] = {"http_status": response.status_code}
+        if isinstance(payload, dict):
+            for key in ("status", "consentAppStatus", "message"):
+                if key in payload:
+                    safe[key] = payload[key]
+            safe["consentAppId"] = "present" if payload.get("consentAppId") else "absent"
+        else:
+            safe["response_type"] = type(payload).__name__
+
+        st.write(f"Response time: **{elapsed_ms:.0f} ms**")
+        st.json(safe)
+
+        success = isinstance(payload, dict) and str(payload.get("status", "")).lower() == "success" and bool(payload.get("consentAppId"))
+        if success:
+            st.success("✅ Dhan accepted the API Key + API Secret consent request.")
+            st.info("This test only proves the API Key/Secret can start an OAuth consent session. It does not complete browser login or generate an Access Token.")
+        else:
+            st.error("❌ Dhan did not accept the API Key + API Secret consent request. The non-secret response above is the diagnostic evidence.")
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        st.write(f"Response time: **{elapsed_ms:.0f} ms**")
+        st.error(f"❌ API Key consent test failed: {type(exc).__name__}")
+        st.caption("No credentials are displayed or persisted.")
+
+st.divider()
+st.caption("Security: API credentials remain in memory only; no API key, API secret, consent ID, token, PIN, or OTP is displayed or persisted.")
 
 ====================================================================
 FILE: reports/.gitkeep
