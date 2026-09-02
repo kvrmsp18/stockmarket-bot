@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 062c924cd59667da2ad8118da8c62add24646183
-Generated UTC: 2026-09-01T06:09:12.731629+00:00
+Commit SHA: 5a97b1aa177a670ea5bf3c802336aa5903c85601
+Generated UTC: 2026-09-02T08:19:38.515935+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -14,7 +14,7 @@ but their raw bytes are not embedded.
 FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
-.env.example	924 bytes
+.env.example	1089 bytes
 .github/workflows/ci.yml	363 bytes
 .github/workflows/continuous-monitor.yml	8543 bytes
 .github/workflows/eod-close.yml	1709 bytes
@@ -23,9 +23,9 @@ FILE INVENTORY
 .streamlit/config.toml	199 bytes
 .streamlit/secrets.toml.example	431 bytes
 Dockerfile	229 bytes
-README.md	7428 bytes
-SOURCE_RULES.md	6043 bytes
-app.py	16483 bytes
+README.md	5379 bytes
+SOURCE_RULES.md	7402 bytes
+app.py	17428 bytes
 config/risk.yaml	244 bytes
 config/settings.yaml	303 bytes
 config/strategy.yaml	451 bytes
@@ -50,7 +50,7 @@ intraday_bot/alerts.py	860 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	12752 bytes
-intraday_bot/config.py	5445 bytes
+intraday_bot/config.py	5743 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/engine.py	16163 bytes
 intraday_bot/news.py	830 bytes
@@ -58,7 +58,6 @@ intraday_bot/paper.py	1447 bytes
 intraday_bot/research.py	8014 bytes
 intraday_bot/risk.py	4581 bytes
 intraday_bot/runtime.py	21507 bytes
-intraday_bot/runtime_v2.py	6784 bytes
 intraday_bot/safety.py	715 bytes
 intraday_bot/technical.py	4484 bytes
 reports/.gitkeep	0 bytes
@@ -66,6 +65,7 @@ reports/daily/.gitkeep	1 bytes
 reports/daily/2026-08-29.md	428 bytes
 reports/daily/2026-08-31.json	294 bytes
 reports/daily/2026-08-31.md	428 bytes
+reports/daily/2026-09-01.json	323 bytes
 reports/readiness/.gitkeep	1 bytes
 reports/weekly/.gitkeep	1 bytes
 requirements.txt	114 bytes
@@ -112,7 +112,7 @@ src/validation_gate.py	9636 bytes
 src/validation_store.py	2407 bytes
 start.sh	504 bytes
 tests/__init__.py	0 bytes
-tests/test_platform.py	2109 bytes
+tests/test_platform.py	2236 bytes
 tests/test_research_frameworks.py	1267 bytes
 tests/test_run_daily_cycle.py	4389 bytes
 tests/test_runtime_safety.py	1812 bytes
@@ -159,7 +159,7 @@ SIZE: 1034 bytes
 
 ====================================================================
 FILE: .env.example
-SIZE: 924 bytes
+SIZE: 1089 bytes
 ====================================================================
 # NEVER put real credentials in GitHub. Use local .env or GitHub/Streamlit secrets.
 BOT_MODE=PAPER
@@ -169,9 +169,11 @@ MAX_CONSECUTIVE_LOSSES=3
 MAX_TRADES_PER_DAY=2
 USE_DHAN_DATA=true
 
+# Current paper phase: use the longer-valid Dhan market-data credential.
+# The short-lived access token is not required by the current paper path.
 DHAN_CLIENT_ID=
-DHAN_ACCESS_TOKEN=
 DHAN_API_KEY=
+DHAN_ACCESS_TOKEN=
 DHAN_API_BASE_URL=https://api.dhan.co
 DHAN_SECURITY_IDS_JSON=
 BSE_SCRIP_CODES_JSON=
@@ -186,11 +188,12 @@ TWELVEDATA_API_KEY=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 
+# Virtual paper account
 BOT_RESEARCH_REFERENCE_CAPITAL=1000
 RISK_PER_TRADE_PCT=0.5
-MAX_DAILY_LOSS=15000
+MAX_DAILY_LOSS=20
 MAX_OPEN_POSITIONS=5
-MAX_POSITION_EXPOSURE=250000
+MAX_POSITION_EXPOSURE=800
 MAX_SECTOR_EXPOSURE=0.30
 MAX_CAPITAL_DEPLOYMENT=0.80
 CASH_RESERVE_PCT=0.20
@@ -728,7 +731,7 @@ CMD ["/app/start.sh"]
 
 ====================================================================
 FILE: README.md
-SIZE: 7428 bytes
+SIZE: 5379 bytes
 ====================================================================
 # NSE/BSE Intraday AI Trading Desk — New Build
 
@@ -744,7 +747,15 @@ This repository implements the production-oriented paper-trading architecture ba
 - SCRAP preserves **SECTORS >15%, COMPANIES >25%, RED FLAGS → REJECTION**.
 - Missing data is `DATA_UNAVAILABLE`, not silently negative.
 - AI is advisory only and cannot override deterministic risk, funds, execution or reconciliation gates.
-- Paper sizing uses the configured virtual reference capital (currently **₹1,000**) and never depends on the real Dhan cash balance.
+- Paper sizing uses the configured virtual reference capital (**₹1,000**).
+- Paper-validation risk limits are scaled to the ₹1,000 virtual account: **₹20 daily loss limit** and **₹800 maximum single-position exposure**, unless explicitly overridden through secrets.
+- Maximum **2 filled simulated entries per IST trading day**.
+
+## Dhan authentication for the current paper phase
+
+The Bot uses the configured `DHAN_API_KEY` value as the market-data credential and `DHAN_CLIENT_ID` as the client identifier. The short-lived `DHAN_ACCESS_TOKEN` is not required by the current paper-validation path. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
+
+The Dhan preflight runs before the market cycle. If authentication fails, the cycle is marked degraded and no candidates/orders are fabricated.
 
 ## Architecture
 
@@ -778,6 +789,10 @@ P&L / journal / reconciliation / reports / Telegram
 
 The complete universe is observed using a bulk quote stage. Expensive per-symbol candle/research work is bounded to the highest-information rotating shortlist so a scheduled cycle remains within the workflow budget.
 
+## Runtime entry point
+
+`intraday_bot/runtime.py` is the **only active runtime implementation**. `scripts/run_daily_cycle.py` invokes its `run_cycle()` function. The obsolete parallel `runtime_v2.py` implementation has been removed so future fixes cannot accidentally be made to an inactive engine.
+
 ## Repository layout
 
 - `intraday_bot/config.py` — configuration and safety defaults
@@ -794,11 +809,12 @@ The complete universe is observed using a bulk quote stage. Expensive per-symbol
 - `scripts/eod_report.py` — authoritative daily paper P&L report from the intraday ledger
 - `scripts/worker.py` — independent always-on worker for a Linux/VPS deployment
 - `app.py` — Streamlit trading desk UI and live chart interface
-- `src/` — legacy/compatibility validation layer retained because the current validation tests still import it
+- `src/` — legacy/compatibility validation layer retained because current validation tests still import it
 - `tests/` — automated platform, validation, framework, worker and runtime-safety tests
 - `SOURCE_RULES.md` — source/engineering rule traceability
-- `.github/workflows/continuous-monitor.yml` — five-minute fallback monitor
+- `.github/workflows/continuous-monitor.yml` — five-minute scheduled monitor/heartbeat
 - `.github/workflows/eod-close.yml` — scheduled EOD paper close
+- `.github/workflows/export-source-audit.yml` — complete source audit and validation
 
 ## Complete NSE universe
 
@@ -811,80 +827,17 @@ python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
 python scripts/load_universe.py
 python scripts/run_daily_cycle.py
-streamlit run app.py
 ```
 
-For a paper run using real Dhan market data, configure `DHAN_CLIENT_ID`, `DHAN_ACCESS_TOKEN` and the `DHAN_SECURITY_IDS_JSON` mapping. If credentials are absent, the system reports data unavailability; it does not invent live prices.
+## 24/7 free-tier behavior
 
-## GitHub Actions
-
-The fallback monitor is scheduled every 5 minutes on NSE weekdays, with concurrency protection so overlapping cycles cannot create duplicate work. The job has an eight-minute workflow timeout while the internal cycle budget is four minutes.
-
-GitHub Actions secrets required when using Dhan data:
-
-- `DHAN_CLIENT_ID`
-- `DHAN_ACCESS_TOKEN`
-- `DHAN_API_KEY` (if required by the selected Dhan API operation)
-- `DHAN_SECURITY_IDS_JSON`
-- optional `OPENAI_API_KEY`
-- optional `ANTHROPIC_API_KEY`
-- optional Telegram secrets
-
-`DHAN_LIVE_TRADING_ENABLED` is hard-set to `false` in the monitor workflow.
-
-## Telegram
-
-During a market cycle, the bot can report the Dhan available balance, virtual paper capital, universe/quote counts, candidates, simulated orders and rejection funnel. The EOD job reports daily trades, wins/losses, gross P&L, estimated charges, net P&L, starting/ending paper reference capital and open positions.
-
-## UI
-
-The Streamlit desk contains dashboard, screener, stock/360° view, live charts, P&L/journal/performance, diagnostics, health and settings navigation. It is an interface, not the trading engine. The dashboard synchronizes persisted GitHub state with cache-busting and distinguishes the real trading-cycle heartbeat from the scheduler heartbeat.
-
-## Always-on worker
-
-For a true persistent process, deploy `scripts/worker.py` on an always-on Linux/VPS host using `deploy/stockmarket-worker.service`. Streamlit Community Cloud is the UI layer and is not relied upon to host the background worker. GitHub Actions remains the fallback five-minute scheduler for paper monitoring.
-
-## Dhan / Live trading
-
-Dhan is implemented behind `BrokerInterface`. The adapter supports authentication headers, funds, bulk quotes, intraday history, positions, orders and guarded order submission. Credentials are environment variables only.
-
-Live execution is **not enabled by this deployment**. The eventual live path must additionally satisfy the project's explicit validation, reconciliation, daily-loss, funds, data-freshness, duplicate-order, broker-health and emergency-stop gates before a real order can be submitted.
-
-## Tests
-
-```bash
-PYTHONPATH=. pytest -q
-```
-
-Tests cover source formulas, SCRAP rejection, Trend Score thresholds, quantity safety, risk/reward gates, framework evidence, validation locking, worker heartbeat persistence and runtime portfolio safety. External broker/AI integrations remain advisory/simulation-only until separately validated.
-
-## Verification standard
-
-The release verification sequence is:
-
-1. source audit
-2. syntax/import validation
-3. automated tests
-4. GitHub Actions workflow validation
-5. paper market-data cycle
-6. persisted state verification
-7. dashboard synchronization verification
-8. candidate/rejection funnel verification
-9. EOD P&L/report verification
-10. Telegram delivery verification when credentials are configured
-
-CI passing alone is not treated as proof of end-to-end correctness.
-
-## No fake features
-
-The UI reports `DATA UNAVAILABLE` when live data is not configured. No synthetic price is labeled live. Paper mode and live mode are separate. AI failure never becomes a BUY. A broker request is never treated as a fill until the broker confirms it. No live order endpoint is enabled by the current deployment.
+The free deployment uses GitHub Actions as a five-minute scheduler/heartbeat rather than pretending that Streamlit Community Cloud is a persistent background worker. During NSE market hours it runs the complete paper cycle. Outside the market window it continues the scheduler heartbeat without inventing market data or trades. A persistent Linux worker remains the production option for live trading later.
 
 ====================================================================
 FILE: SOURCE_RULES.md
-SIZE: 6043 bytes
+SIZE: 7402 bytes
 ====================================================================
 # SOURCE_RULES.md
 
@@ -896,7 +849,7 @@ This file records the supplied specification as the source of truth for source-d
 | Supplied specification §25 | SECTORS > 15%; COMPANIES > 25%; RED FLAGS → REJECTION | Preserve thresholds exactly | SCRAP rejection gate | Configurable but source defaults remain 15/25 | SOURCE-DERIVED |
 | Supplied specification §27 | STOCK PRICE = EPS × P/E | Research/valuation relationship | `source_valuation()` | No direct intraday trigger | SOURCE-DERIVED |
 | Supplied specification §31 | ROCE = PROFIT / CAPITAL × 100 | Preserve formula | `source_roce()` | Capital definition must be verified if source is more specific | SOURCE-DERIVED |
-| Supplied specification §32 | R.R = (F.A + W.C) / CASH | Handwritten/unclear abbreviation meaning | Preserve as reference only | Not an automatic trading trigger | SOURCE-UNCLEAR |
+| Supplied specification §32 | R.R = (F.A + W.C) / CASH | Handwritten/unclear abbreviation meaning | Preserve as reference only | Not an automatic intraday trigger | SOURCE-UNCLEAR |
 | Supplied specification §35 | TREND SCORE 0–10; >7 BULLISH; <4 BEARISH | Transparent trend classification | `technical.py` | Thresholds configurable, source defaults 7/4 | SOURCE-DERIVED |
 | Supplied specification §41 | Buffett, Rakesh Jhunjhunwala, Peter Lynch, 100 Baggers, CANSLIM | Research/conviction frameworks | `conviction()` | Framework weights may be configured | SOURCE-DERIVED RESEARCH |
 | Supplied specification §67 | EOD report with starting/ending capital, funds, deployed capital, signals, trades, wins/losses, P&L, drawdown, etc. | Required reporting | Database/reporting layer | Report schedule configurable | ENGINEERING REQUIREMENT |
@@ -910,7 +863,10 @@ This file records the supplied specification as the source of truth for source-d
 | Final project override #15 | Validate source audit → syntax/import → tests → Actions → paper cycle → persisted state → dashboard → candidate/rejection verification | CI passing alone is insufficient | Release/verification sequence | N/A | ENGINEERING |
 | Final project risk constraint | Start with a maximum of 2 trades per day | Daily trade-count limit is deterministic and cannot be bypassed by AI/dashboard | `risk_gate()` counts filled simulated entries for the current IST date | `MAX_TRADES_PER_DAY=2` | ENGINEERING/SAFETY |
 | Final project risk constraint | Maximum consecutive losses and emergency stop are deterministic risk controls | Block new trades when configured safety limits are reached | `risk_gate()` | `MAX_CONSECUTIVE_LOSSES=3`, `BOT_EMERGENCY_STOP=false` | ENGINEERING/SAFETY |
-| Final project heartbeat fix | Scheduler heartbeat is not proof of a live trading worker | Dashboard must distinguish scheduler liveness from successful market-cycle liveness | `worker_heartbeat.json` is written only after a successful market cycle; scheduler shown separately | 15-minute stale threshold in UI | ENGINEERING/SAFETY |
+| Final project heartbeat fix | Scheduler heartbeat is not proof of a live trading worker | Dashboard must distinguish scheduler liveness from successful market-cycle liveness | Scheduler heartbeat is written every scheduled invocation; worker heartbeat records cycle success/degradation separately | 5-minute scheduled interval | ENGINEERING/SAFETY |
+| Paper-validation risk decision | ₹1,000 virtual account requires meaningful absolute safety gates | Scale absolute limits instead of retaining real-capital values that cannot bind | `daily_loss_limit=₹20`, `max_position_exposure=₹800` by default | `MAX_DAILY_LOSS=20`, `MAX_POSITION_EXPOSURE=800` | ENGINEERING/SAFETY |
+| Runtime ownership decision | `runtime.py` is the active engine; `runtime_v2.py` was an obsolete parallel implementation | One active runtime prevents future edits to the wrong engine | `scripts/run_daily_cycle.py` → `intraday_bot.runtime.run_cycle()`; obsolete `runtime_v2.py` removed | N/A | ENGINEERING |
+| Dhan paper-data credential decision | Current paper phase uses the longer-valid Dhan credential configured as `DHAN_API_KEY`; short-lived access token is not required by this path | Avoid making daily token regeneration a development blocker | `DhanBroker` uses `settings.dhan_market_data_token`; workflow preflight validates it before a market cycle | `DHAN_API_KEY` | ENGINEERING/SAFETY |
 
 ## Important separation
 
@@ -919,6 +875,10 @@ Long-term concepts such as Compounders, 100 Baggers, Buffett, Peter Lynch, ROCE,
 ## PAPER CAPITAL RULE
 
 The current paper-testing account is virtual. `PAPER` position sizing must use `BOT_RESEARCH_REFERENCE_CAPITAL` and must not be reduced by the real Dhan account balance. This rule does not authorize real trading.
+
+## PAPER RISK RULE
+
+For the current ₹1,000 validation account, the default daily loss ceiling is ₹20 and the maximum single-position exposure is ₹800. These are defaults, not permanent production limits; they may be overridden through deployment secrets when the paper account is intentionally scaled.
 
 ## RISK SAFETY RULE
 
@@ -930,7 +890,7 @@ If a supplied screenshot/video/formula is unreadable, preserve the observed word
 
 ====================================================================
 FILE: app.py
-SIZE: 16483 bytes
+SIZE: 17428 bytes
 ====================================================================
 from __future__ import annotations
 import json, os, tempfile, time
@@ -975,9 +935,9 @@ def flat(df):
         z={k:r[k] for k in ["id","ts","component","severity","event_type","symbol","mode"]};z.update(x);out.append(z)
     return pd.DataFrame(out)
 
-def sync():
+def sync(force=False):
     now=time.time(); last=st.session_state.get("sync",0)
-    if now-last<60:return True
+    if not force and now-last<60:return True
     ok=True; base="https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
     for name,path in {"trading.db":ROOT/"trading.db","monitor_status.json":STATUS,"worker_heartbeat.json":HB,"scheduler_heartbeat.json":SHB}.items():
         tmp=None
@@ -999,10 +959,23 @@ def header(t,d):st.title(t);st.info(d)
 def dashboard():
     s=j(STATUS);h=j(HB);sh=j(SHB);header("📈 NSE/BSE Intraday AI Trading Desk","Observe → Analyse → Filter → Rank → Decide → Validate → Size → Execute → Monitor → Exit → Reconcile. Paper mode is default; AI is advisory only.")
     a,b,c,d,e,f,g=st.columns(7);a.metric("Mode",s.get("mode","PAPER"));b.metric("Universe",s.get("stocks_observed",0));c.metric("Quotes",s.get("quotes",0));d.metric("Candidates",len(s.get("candidates",[])));e.metric("Open Positions",s.get("positions_open",0));f.metric("Today's P&L",f"₹{float(s.get('today_realized_pnl',0) or 0):,.2f}");g.metric("Capital",f"₹{settings.reference_capital:,.0f}")
-    st.write(f"**Trading heartbeat:** {h.get('state','NOT FOUND')} · {h.get('updated_at','—')}")
+    cycle_errors=s.get("errors") or []
+    age_seconds=(time.time()-time.mktime(time.strptime(h.get("updated_at","")[:19],"%Y-%m-%dT%H:%M:%S"))) if h.get("updated_at") else 10**9
+    if h.get("state")=="ERROR":
+        st.error(f"TRADING ENGINE ERROR: {h.get('message','Unknown error')} · last heartbeat {h.get('updated_at','—')}")
+    elif age_seconds>900:
+        st.error(f"TRADING ENGINE: OFFLINE · last real cycle heartbeat {h.get('updated_at','—')} ({age_seconds/60:.1f} min ago)")
+    elif h.get("state")=="DEGRADED":
+        detail=f" — {cycle_errors[0]}" if cycle_errors else f" — {h.get('message','cycle completed with errors')}"
+        st.warning(f"TRADING ENGINE: DEGRADED · last cycle attempt {h.get('updated_at','—')}{detail}")
+    else:
+        st.success(f"TRADING ENGINE: ONLINE · last successful market cycle {h.get('updated_at','—')}")
     st.write(f"**Scheduler:** {sh.get('state','NOT FOUND')} · {sh.get('updated_at','—')} · market {'OPEN' if sh.get('market_open') else 'CLOSED'}")
     cdf=pd.DataFrame(s.get("candidates",[])); st.subheader("Actionable candidates")
-    st.dataframe(cdf,use_container_width=True,hide_index=True) if not cdf.empty else st.warning("No actionable candidates persisted. Diagnostics and Rejected Signals show the exact reason.")
+    if cdf.empty:
+        if cycle_errors: st.error(f"Latest cycle failed before producing candidates: {cycle_errors[0]}")
+        else: st.warning("No actionable candidates persisted. Diagnostics and Rejected Signals show the exact reason.")
+    else: st.dataframe(cdf,use_container_width=True,hide_index=True)
 
 def prompt():
     header("🤖 AI Prompt Guide","Operational AI contract. Missing data is reported, never invented; AI cannot override deterministic gates.")
@@ -1074,7 +1047,9 @@ def charts():
 def main():
     sync();mode=st.sidebar.radio("Mode",["PAPER TRADING","LIVE TRADING"],index=0,key="mode_radio");st.session_state.mode=PAPER_MODE if mode.startswith("PAPER") else LIVE_TEST_MODE
     st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS" if st.session_state.mode==PAPER_MODE else "🟠 LIVE TEST — NO LIVE ORDERS")
-    if st.sidebar.button("🔄 Refresh Search / Dashboard",key="refresh_button"):sync();st.rerun()
+    if st.sidebar.button("🔄 Refresh Search / Dashboard",key="refresh_button"):
+        sync(force=True)
+        st.rerun()
     if st.sidebar.button("▶ Run Analysis",type="primary",key="run_analysis"):
         x=run_cycle(st.session_state.mode);st.sidebar.write(f"Cycle complete · {len(x.get('candidates',[]))} candidates · {len(x.get('errors',[]))} errors");st.rerun()
     page=st.sidebar.selectbox("Desk",PAGES,key="desk_page")
@@ -1285,9 +1260,9 @@ SIZE: 342 bytes
 {
   "state": "RUNNING",
   "message": "Scheduled monitor invocation is active",
-  "updated_at": "2026-09-01T11:37:57.268387+05:30",
+  "updated_at": "2026-09-02T13:46:03.876420+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33476292140",
+  "workflow_run_id": "33607797012",
   "event": "push",
   "market_open": true,
   "scheduled_interval_seconds": 300,
@@ -17369,10 +17344,10 @@ SIZE: 428 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect Diagnostics",
-  "updated_at": "2026-09-01T11:38:23.399486+05:30",
+  "updated_at": "2026-09-02T13:46:25.089878+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33476292140",
+  "workflow_run_id": "33607797012",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -18077,7 +18052,7 @@ def load_security_map() -> dict[str, dict[str, Any]]:
 
 ====================================================================
 FILE: intraday_bot/config.py
-SIZE: 5445 bytes
+SIZE: 5743 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18141,9 +18116,11 @@ class Settings:
     max_consecutive_losses: int = _int("MAX_CONSECUTIVE_LOSSES", 3)
     max_trades_per_day: int = _int("MAX_TRADES_PER_DAY", 2)
     risk_per_trade_pct: float = _float("RISK_PER_TRADE_PCT", 0.5)
-    daily_loss_limit: float = _float("MAX_DAILY_LOSS", 15000.0)
+    # Paper validation uses a virtual ₹1,000 account. Absolute limits are
+    # intentionally scaled to that account so the safety gates are meaningful.
+    daily_loss_limit: float = _float("MAX_DAILY_LOSS", 20.0)
     max_positions: int = _int("MAX_OPEN_POSITIONS", 5)
-    max_position_exposure: float = _float("MAX_POSITION_EXPOSURE", 250000.0)
+    max_position_exposure: float = _float("MAX_POSITION_EXPOSURE", 800.0)
     max_sector_exposure: float = _float("MAX_SECTOR_EXPOSURE", 0.30)
     max_capital_deployment: float = _float("MAX_CAPITAL_DEPLOYMENT", 0.80)
     cash_reserve_pct: float = _float("CASH_RESERVE_PCT", 0.20)
@@ -18159,9 +18136,9 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # PAPER/market-data validation uses the user's one-month Dhan credential
-    # stored in DHAN_API_KEY. The short-lived/legacy DHAN_ACCESS_TOKEN is
-    # intentionally ignored for market-data authentication in this phase.
+    # PAPER/market-data validation uses the user's longer-valid Dhan credential
+    # stored in DHAN_API_KEY. The short-lived access token is not required for
+    # this phase and remains only as a compatibility secret.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
     dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
@@ -18177,7 +18154,7 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Return only the configured one-month DHAN_API_KEY."""
+        """Return the configured longer-valid Dhan market-data credential."""
         return self.dhan_api_key
 
     @property
@@ -18201,6 +18178,8 @@ class Settings:
             raise ValueError("MAX_TRADES_PER_DAY must be >=1")
         if self.reference_capital <= 0:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
+        if self.daily_loss_limit <= 0 or self.max_position_exposure <= 0:
+            raise ValueError("Paper risk limits must be positive")
         if self.live_mode_requested:
             if not self.dhan_client_id or not self.dhan_market_data_token:
                 raise ValueError("LIVE requested but Dhan credentials are missing")
@@ -19405,116 +19384,6 @@ def finish(result: dict[str, Any], start: float, db: Database) -> dict[str, Any]
     return result
 
 ====================================================================
-FILE: intraday_bot/runtime_v2.py
-SIZE: 6784 bytes
-====================================================================
-from __future__ import annotations
-
-import json, os, time, uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, time as clock
-from pathlib import Path
-from typing import Any
-
-from .brokers import DhanBroker
-from .config import IST, settings
-from .database import Database
-from .research import conviction, fundamental_score, scrap_analysis
-from .risk import position_size, risk_gate
-from .technical import technical_setup
-
-
-def market_open() -> bool:
-    n=datetime.now(IST)
-    return n.weekday()<5 and clock(9,15)<=n.time()<=clock(15,30)
-
-
-def universe() -> list[dict[str,Any]]:
-    p=Path("data/universe.json")
-    if not p.exists(): return []
-    try:
-        x=json.loads(p.read_text(encoding="utf-8")); return x if isinstance(x,list) else []
-    except Exception:return []
-
-
-def quote(q:dict[str,Any])->tuple[float,float,float]:
-    o=q.get("ohlc") or q.get("OHLC") or {}
-    def n(v):
-        try:return float(v)
-        except:return 0.0
-    return n(q.get("last_price",q.get("ltp",q.get("lastPrice")))),n(q.get("prev_close",q.get("previousClose",o.get("close")))),n(q.get("volume",q.get("volumeTraded",q.get("volumeTradedToday"))))
-
-
-def sector(s:str)->str:
-    for name,items in {"BANKING":{"HDFCBANK","ICICIBANK","SBIN","KOTAKBANK","AXISBANK"},"IT":{"TCS","INFY","WIPRO","HCLTECH","TECHM"},"ENERGY":{"RELIANCE","ONGC","NTPC","POWERGRID","COALINDIA"},"AUTO":{"MARUTI","M&M","EICHERMOT","TATAMOTORS"},"PHARMA":{"SUNPHARMA","CIPLA","DRREDDY"},"METALS":{"TATASTEEL","HINDALCO","JSWSTEEL"},"FMCG":{"ITC","HINDUNILVR"}}.items():
-        if s in items:return name
-    return "OTHER"
-
-
-def fundamentals(s:str)->dict[str,Any]:
-    p=Path("data/fundamentals.json")
-    if not p.exists():return {}
-    try:
-        x=json.loads(p.read_text(encoding="utf-8")); return x.get(s,{}) if isinstance(x,dict) else {}
-    except:return {}
-
-
-def analyse(broker,item,price,volume,funds)->dict[str,Any]:
-    s=item["symbol"]; sec=sector(s); f=fundamentals(s); sr=scrap_analysis(s,f)
-    base={"symbol":s,"sector":sec,"theme":"UNKNOWN","price":price,"decision":"NO TRADE","scrap_score":sr.scrap_score,"fundamental_score":0.0,"technical_score":0.0,"trend_score":0.0,"multi_timeframe_score":0.0,"liquidity_score":5.0,"volume_score":min(10,volume/1e6),"market_score":5.0,"news_score":5.0,"ai_score":5.0}
-    if sr.rejection_reason:base.update(reason="SCRAP rejection",rejection_reason=sr.rejection_reason);return base
-    h=broker.history(str(item["security_id"]),item.get("exchange_segment","NSE_EQ"),5)
-    if len(h)<60:base.update(reason="DATA UNAVAILABLE",rejection_reason="DATA_ERROR");return base
-    t=technical_setup(h); fs=fundamental_score(f); cv=conviction(f); ai=5.0; ai_state="NO_DECISION"
-    # AI calls are opt-in; they never create a trade by themselves.
-    if os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY"):
-        ai_state="ADVISORY_AVAILABLE"
-    base.update({"entry":t["entry"],"entry_zone":[t["entry_low"],t["entry_high"]],"max_chase":t["max_chase"],"stop":t["stop"],"target":t["target"],"rr":t["rr"],"trend_score":t["trend_score"],"technical_score":t["technical_score"],"fundamental_score":fs,"conviction_score":cv["overall"],"ai_score":ai,"ai_consensus":ai_state})
-    if t["direction"]=="HOLD":base.update(reason="No valid intraday direction",rejection_reason="TECHNICAL_REJECTION");return base
-    ok,why=risk_gate(t["rr"],0,0,0)
-    if not ok:base.update(reason="Risk gate failed",rejection_reason=why);return base
-    size=position_size(t["entry"],t["stop"],t["target"],settings.reference_capital,funds,liquidity_qty=max(1,int(volume/1000) if volume else 1))
-    if not size.quantity:base.update(reason="No safe affordable quantity",rejection_reason="INSUFFICIENT_FUNDS");return base
-    base.update({"decision":t["direction"],"quantity":size.quantity,"capital_required":size.capital_required,"max_risk":size.max_risk,"potential_reward":size.potential_reward,"overall_score":t["trend_score"]*.35+fs*.10+cv["overall"]*.10+ai*.10+base["volume_score"]*.10+5*.25,"reason":f"Trend={t['trend_state']}; R:R={t['rr']:.2f}; AI={ai_state}"})
-    return base
-
-
-def run_cycle()->dict[str,Any]:
-    started=time.monotonic(); db=Database(); uni=universe(); result={"cycle_id":uuid.uuid4().hex,"mode":"PAPER","market_open":market_open(),"stocks_observed":len(uni),"quotes":0,"candidates":[],"rejections":{},"orders":[],"errors":[]}
-    db.event("engine","INFO","CYCLE_START",result)
-    if not uni:result["errors"].append("DATA_UNAVAILABLE: empty universe");return finish(result,started,db)
-    broker=DhanBroker()
-    try:qmap=broker.bulk_quotes(uni);result["quotes"]=len(qmap)
-    except Exception as e:result["errors"].append("DATA_ERROR: "+str(e));db.event("market_data","ERROR","DATA_ERROR",{"error":str(e)});return finish(result,started,db)
-    ranked=[]
-    for item in uni:
-        p,prev,vol=quote(qmap.get(str(item["security_id"]),{}))
-        if p>0:ranked.append((abs(p/prev-1)*100 if prev else 0,item,p,vol))
-    ranked.sort(reverse=True,key=lambda z:z[0]); shortlist=ranked[:min(60,len(ranked))]
-    try:funds=float(broker.funds() or settings.reference_capital)
-    except:funds=settings.reference_capital
-    with ThreadPoolExecutor(max_workers=settings.scan_workers) as ex:
-        futures=[ex.submit(analyse,broker,item,p,v,funds) for _,item,p,v in shortlist]
-        for f in as_completed(futures):
-            try:
-                c=f.result()
-                if c["decision"] in {"BUY","SELL"}:result["candidates"].append(c)
-                else:
-                    r=c.get("rejection_reason") or "NO_TRADE";result["rejections"][r]=result["rejections"].get(r,0)+1
-            except Exception as e:result["errors"].append("ANALYSIS_ERROR: "+str(e))
-    result["candidates"].sort(key=lambda x:x.get("overall_score",0),reverse=True)
-    # Paper signals are recorded; execution remains deterministic and separate from AI.
-    if result["market_open"]:
-        for c in result["candidates"][:settings.max_positions]:
-            sid="SIG-"+uuid.uuid4().hex[:16];db.signal(sid,c["symbol"],c["decision"],c);db.event("execution","INFO","PAPER_SIGNAL",{"signal_id":sid,**c},c["symbol"],"PAPER")
-    result["execution_gate"]="PAPER_MODE";return finish(result,started,db)
-
-
-def finish(result,started,db):
-    result["duration_seconds"]=round(time.monotonic()-started,3);result["ended_at"]=datetime.now(IST).isoformat();result["positions_open"]=int(db.scalar("SELECT COUNT(*) FROM positions WHERE closed_at IS NULL") or 0);result["realized_pnl"]=float(db.scalar("SELECT COALESCE(SUM(net_pnl),0) FROM trades") or 0)
-    Path("data").mkdir(exist_ok=True);Path("data/monitor_status.json").write_text(json.dumps(result,indent=2,default=str),encoding="utf-8");db.event("engine","INFO","CYCLE_END",result);return result
-
-====================================================================
 FILE: intraday_bot/safety.py
 SIZE: 715 bytes
 ====================================================================
@@ -19732,6 +19601,28 @@ Period: 2026-08-31 to 2026-08-31
 - Average winner: N/A
 - Average loser: N/A
 - Max drawdown: ₹0.00
+
+====================================================================
+FILE: reports/daily/2026-09-01.json
+SIZE: 323 bytes
+====================================================================
+{
+  "date": "2026-09-01",
+  "mode": "PAPER",
+  "starting_reference_capital": 1000.0,
+  "ending_reference_capital": 1000.0,
+  "signals_today": 0,
+  "trades": 0,
+  "wins": 0,
+  "losses": 0,
+  "breakeven": 0,
+  "gross_pnl": 0,
+  "charges": 0,
+  "net_pnl": 0,
+  "win_rate": 0.0,
+  "profit_factor": null,
+  "open_positions": 0
+}
 
 ====================================================================
 FILE: reports/readiness/.gitkeep
@@ -27424,7 +27315,7 @@ SIZE: 0 bytes
 
 ====================================================================
 FILE: tests/test_platform.py
-SIZE: 2109 bytes
+SIZE: 2236 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -27461,8 +27352,8 @@ def test_indicators_and_trend_thresholds():
 
 def test_quantity_is_minimum_of_safety_limits():
     r=position_size(100,98,106,100000,available_funds=5000,liquidity_qty=20,broker_max_qty=50)
-    assert r.quantity==20
-    assert r.risk_safe>=r.quantity and r.funds_safe>=r.quantity
+    assert r.quantity==8
+    assert r.risk_safe>=r.quantity and r.funds_safe>=r.quantity and r.position_safe>=r.quantity
 
 
 def test_paper_quantity_ignores_real_broker_cash():
@@ -27473,6 +27364,8 @@ def test_paper_quantity_ignores_real_broker_cash():
 
 def test_rr_and_risk_gate():
     assert settings.max_trades_per_day == 2
+    assert settings.daily_loss_limit == 20.0
+    assert settings.max_position_exposure == 800.0
     assert risk_reward(100,98,106)==3
     assert risk_gate(3,0,0,0,consecutive_losses=0)[0]
     assert risk_gate(2.9,0,0,0,consecutive_losses=0)[0] is False
