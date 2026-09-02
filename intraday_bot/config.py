@@ -60,8 +60,6 @@ class Settings:
     max_consecutive_losses: int = _int("MAX_CONSECUTIVE_LOSSES", 3)
     max_trades_per_day: int = _int("MAX_TRADES_PER_DAY", 2)
     risk_per_trade_pct: float = _float("RISK_PER_TRADE_PCT", 0.5)
-    # Paper validation uses a virtual ₹1,000 account. Absolute limits are
-    # intentionally scaled to that account so the safety gates are meaningful.
     daily_loss_limit: float = _float("MAX_DAILY_LOSS", 20.0)
     max_positions: int = _int("MAX_OPEN_POSITIONS", 5)
     max_position_exposure: float = _float("MAX_POSITION_EXPOSURE", 800.0)
@@ -80,9 +78,9 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # PAPER/market-data validation uses the user's longer-valid Dhan credential
-    # stored in DHAN_API_KEY. The short-lived access token is not required for
-    # this phase and remains only as a compatibility secret.
+    # Prefer the user's longer-valid API credential. The short-lived access
+    # token remains only as an optional compatibility fallback; it is never
+    # required when DHAN_API_KEY is configured.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
     dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
@@ -98,12 +96,16 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Return the configured longer-valid Dhan market-data credential."""
-        return self.dhan_api_key
+        """Use the long-valid API credential first; token is fallback only."""
+        return self.dhan_api_key or self.dhan_access_token
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        return "DHAN_API_KEY" if self.dhan_api_key else "NONE"
+        if self.dhan_api_key:
+            return "DHAN_API_KEY"
+        if self.dhan_access_token:
+            return "DHAN_ACCESS_TOKEN_FALLBACK"
+        return "NONE"
 
     @property
     def live_mode_requested(self) -> bool:
