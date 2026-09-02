@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 86f243a82317f0b82b79b723cdaaf7f5d38a946c
-Generated UTC: 2026-09-02T11:17:07.426704+00:00
+Commit SHA: 537af5f227d0b14cbaa453fca7430b2693ddd57b
+Generated UTC: 2026-09-02T12:39:29.824054+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -14,10 +14,10 @@ but their raw bytes are not embedded.
 FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
-.env.example	1063 bytes
+.env.example	1097 bytes
 .github/workflows/ci.yml	363 bytes
 .github/workflows/continuous-monitor.yml	12013 bytes
-.github/workflows/eod-close.yml	1647 bytes
+.github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	5380 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
@@ -35,9 +35,9 @@ dashboard/app.py	742 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	703 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	347 bytes
+data/scheduler_heartbeat.json	351 bytes
 data/trading.db	10915840 bytes
-data/universe.json	307969 bytes
+data/universe.json	307971 bytes
 data/watchdog_heartbeat.json	422 bytes
 data/worker_heartbeat.json	461 bytes
 deploy/README.md	2755 bytes
@@ -162,7 +162,7 @@ SIZE: 1034 bytes
 
 ====================================================================
 FILE: .env.example
-SIZE: 1063 bytes
+SIZE: 1097 bytes
 ====================================================================
 # NEVER put real credentials in GitHub. Use local .env or GitHub/Streamlit secrets.
 BOT_MODE=PAPER
@@ -172,10 +172,13 @@ MAX_CONSECUTIVE_LOSSES=3
 MAX_TRADES_PER_DAY=2
 USE_DHAN_DATA=true
 
-# Current paper phase: use the user's longer-valid Dhan API credential.
-# DHAN_ACCESS_TOKEN (24-hour credential) is intentionally not used.
+# Dhan application credentials and unattended authentication.
+# API Key is an application credential; it is NOT an Access Token.
 DHAN_CLIENT_ID=
 DHAN_API_KEY=
+DHAN_API_SECRET=
+DHAN_PIN=
+DHAN_TOTP_SECRET=
 DHAN_API_BASE_URL=https://api.dhan.co
 DHAN_SECURITY_IDS_JSON=
 BSE_SCRIP_CODES_JSON=
@@ -537,7 +540,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/eod-close.yml
-SIZE: 1647 bytes
+SIZE: 1751 bytes
 ====================================================================
 name: EOD Paper Trading Close
 
@@ -572,6 +575,8 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+          DHAN_PIN: ${{ secrets.DHAN_PIN }}
+          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
@@ -1556,15 +1561,15 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 347 bytes
+SIZE: 351 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-02T16:46:14.374433+05:30",
+  "updated_at": "2026-09-02T17:56:25.142926+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33623716685",
-  "event": "push",
+  "workflow_run_id": "33629908304",
+  "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -1579,7 +1584,7 @@ SIZE: 10915840 bytes
 
 ====================================================================
 FILE: data/universe.json
-SIZE: 307969 bytes
+SIZE: 307971 bytes
 ====================================================================
 [
   {
@@ -5735,6 +5740,12 @@ SIZE: 307969 bytes
     "series": "EQ"
   },
   {
+    "symbol": "ENERGYAXIS",
+    "security_id": "765499",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "ENERGYDEV",
     "security_id": "15049",
     "exchange_segment": "NSE_EQ",
@@ -8071,12 +8082,6 @@ SIZE: 307969 bytes
   {
     "symbol": "INDIACEM",
     "security_id": "1515",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "INDIAGLYCO",
-    "security_id": "1521",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -17645,10 +17650,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-02T16:46:14.452334+05:30",
+  "updated_at": "2026-09-02T17:56:25.205610+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33623716685",
+  "workflow_run_id": "33629908304",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
