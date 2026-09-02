@@ -11,16 +11,16 @@ This repository implements the production-oriented paper-trading architecture ba
 - Trend Score is transparent and uses source defaults **>7 = BULLISH, <4 = BEARISH**.
 - SCRAP preserves **SECTORS >15%, COMPANIES >25%, RED FLAGS → REJECTION**.
 - Missing data is `DATA_UNAVAILABLE`, not silently negative.
-- AI is advisory only and cannot override deterministic risk, funds, execution or reconciliation gates.
+- AI is advisory only and cannot override deterministic risk, funds, data, execution or reconciliation gates.
 - Paper sizing uses the configured virtual reference capital (**₹1,000**).
 - Paper-validation risk limits are scaled to the ₹1,000 virtual account: **₹20 daily loss limit** and **₹800 maximum single-position exposure**, unless explicitly overridden through secrets.
 - Maximum **2 filled simulated entries per IST trading day**.
 
 ## Dhan authentication for the current paper phase
 
-The Bot uses the configured `DHAN_API_KEY` value as the market-data credential and `DHAN_CLIENT_ID` as the client identifier. The short-lived `DHAN_ACCESS_TOKEN` is not required by the current paper-validation path. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
+The Bot prefers the configured `DHAN_API_KEY` value as the market-data credential and uses `DHAN_CLIENT_ID` as the client identifier. `DHAN_ACCESS_TOKEN` is retained only as an optional compatibility fallback if `DHAN_API_KEY` is absent; the short-lived token is not required when the longer-valid API credential is configured. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
 
-The Dhan preflight runs before the market cycle. If authentication fails, the cycle is marked degraded and no candidates/orders are fabricated.
+The Dhan preflight now validates both account authentication and the actual market-feed path with a real mapped security ID. The runtime uses Dhan's quote endpoint first and can fall back to the Dhan LTP market-feed endpoint when the quote path is unavailable, without fabricating prices.
 
 ## Architecture
 
@@ -72,12 +72,12 @@ The complete universe is observed using a bulk quote stage. Expensive per-symbol
 - `scripts/run_daily_cycle.py` — scheduled cycle entry point
 - `scripts/run_eod_close.py` — EOD paper-position close and validation report
 - `scripts/eod_report.py` — authoritative daily paper P&L report from the intraday ledger
-- `scripts/worker.py` — independent always-on worker for a Linux/VPS deployment
+- `scripts/worker.py` — independent always-on worker for a Linux/VPS deployment later
 - `app.py` — Streamlit trading desk UI and live chart interface
 - `src/` — legacy/compatibility validation layer retained because current validation tests still import it
 - `tests/` — automated platform, validation, framework, worker and runtime-safety tests
 - `SOURCE_RULES.md` — source/engineering rule traceability
-- `.github/workflows/continuous-monitor.yml` — five-minute scheduled monitor/heartbeat
+- `.github/workflows/continuous-monitor.yml` — five-minute scheduled monitor/heartbeat, every day
 - `.github/workflows/eod-close.yml` — scheduled EOD paper close
 - `.github/workflows/export-source-audit.yml` — complete source audit and validation
 
@@ -98,4 +98,6 @@ python scripts/run_daily_cycle.py
 
 ## 24/7 free-tier behavior
 
-The free deployment uses GitHub Actions as a five-minute scheduler/heartbeat rather than pretending that Streamlit Community Cloud is a persistent background worker. During NSE market hours it runs the complete paper cycle. Outside the market window it continues the scheduler heartbeat without inventing market data or trades. A persistent Linux worker remains the production option for live trading later.
+The free paper deployment uses GitHub Actions as a five-minute scheduler/heartbeat rather than pretending that Streamlit Community Cloud is a persistent background worker. The monitor is scheduled every five minutes **seven days a week**. During NSE market hours it runs the complete paper cycle. Outside the market window it continues the scheduler heartbeat and explicitly reports `HEARTBEAT_ONLY`; it does not invent market data or trades. The Streamlit dashboard distinguishes scheduler liveness from a successfully completed market cycle.
+
+This is the correct free-tier architecture for the current paper-validation phase. A persistent Linux worker remains the production option for live trading later.
