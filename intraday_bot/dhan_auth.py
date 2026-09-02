@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import os
+import email.utils
 import threading
+import time
+from datetime import timezone
 from typing import Any
 
 import requests
 
 try:
     import pyotp
-except ImportError as exc:  # pragma: no cover
+except ImportError:  # pragma: no cover
     pyotp = None  # type: ignore[assignment]
 
 
@@ -26,6 +28,11 @@ def _clean(value: str | None) -> str:
     return value
 
 
+def _normalise_totp_secret(value: str) -> str:
+    value = _clean(value)
+    return "".join(value.split()).replace("-", "").upper()
+
+
 def _extract_access_token(payload: Any) -> str:
     if isinstance(payload, dict):
         candidates: list[Any] = [payload.get("accessToken"), payload.get("access_token")]
@@ -39,18 +46,27 @@ def _extract_access_token(payload: Any) -> str:
     return ""
 
 
-def generate_access_token(
-    client_id: str,
-    pin: str,
-    totp_secret: str,
-    timeout: int = 15,
-) -> str:
+def _dhan_server_clock_offset(timeout: int = 8) -> float:
+    """Estimate Dhan auth-server clock minus runner clock from HTTP Date."""
+    try:
+        response = requests.get(_AUTH_BASE_URL, timeout=timeout, allow_redirects=False)
+        date_header = response.headers.get("Date", "")
+        if not date_header:
+            return 0.0
+        server_dt = email.utils.parsedate_to_datetime(date_header)
+        if server_dt.tzinfo is None:
+            server_dt = server_dt.replace(tzinfo=timezone.utc)
+        return server_dt.timestamp() - time.time()
+    except Exception:
+        return 0.0
+
+
+def generate_access_token(client_id: str, pin: str, totp_secret: str, timeout: int = 15) -> str:
     """Generate a fresh Dhan Access Token using Client ID + PIN + TOTP seed."""
     global _cached_token
-
     client_id = _clean(client_id)
     pin = _clean(pin)
-    totp_secret = _clean(totp_secret).replace(" ", "")
+    totp_secret = _normalise_totp_secret(totp_secret)
     if not client_id or not pin or not totp_secret:
         raise RuntimeError("DHAN_AUTO_AUTH_UNAVAILABLE: DHAN_CLIENT_ID, DHAN_PIN and DHAN_TOTP_SECRET are required")
     if pyotp is None:
@@ -60,10 +76,13 @@ def generate_access_token(
         if _cached_token:
             return _cached_token
 
-        totp = pyotp.TOTP(totp_secret).now()
+        offset = _dhan_server_clock_offset()
+        effective_time = time.time() + offset
+        totp_code = pyotp.TOTP(totp_secret).at(int(effective_time))
+
         response = requests.post(
             f"{_AUTH_BASE_URL}/app/generateAccessToken",
-            params={"dhanClientId": client_id, "pin": pin, "totp": totp},
+            params={"dhanClientId": client_id, "pin": pin, "totp": totp_code},
             timeout=timeout,
         )
         try:
@@ -72,21 +91,19 @@ def generate_access_token(
             payload = {"raw": response.text[:500]}
 
         if response.status_code >= 400:
-            raise RuntimeError(f"DHAN_AUTO_AUTH_HTTP_{response.status_code}: {payload}")
+            message = payload.get("message") if isinstance(payload, dict) else None
+            remarks = payload.get("remarks") if isinstance(payload, dict) else None
+            safe_detail = message or remarks or payload
+            raise RuntimeError(f"DHAN_AUTO_AUTH_HTTP_{response.status_code}: {safe_detail}")
 
         token = _extract_access_token(payload)
         if not token:
-            raise RuntimeError(f"DHAN_AUTO_AUTH_NO_TOKEN: {payload}")
+            raise RuntimeError("DHAN_AUTO_AUTH_NO_TOKEN: Dhan returned no Access Token")
         _cached_token = token
         return token
 
 
-def get_access_token(
-    client_id: str,
-    pin: str,
-    totp_secret: str,
-    manual_access_token: str = "",
-) -> tuple[str, str]:
+def get_access_token(client_id: str, pin: str, totp_secret: str, manual_access_token: str = "") -> tuple[str, str]:
     """Return (token, source), preferring an explicitly supplied runtime token."""
     manual_access_token = _clean(manual_access_token)
     if manual_access_token:
