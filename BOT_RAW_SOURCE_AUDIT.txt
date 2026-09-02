@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 7034af8cfcd4f24b01776059a229cfc561cb158f
-Generated UTC: 2026-09-02T17:23:09.732683+00:00
+Commit SHA: d9e8d34ceb1f558e3d2ce786e0402d196fa01e78
+Generated UTC: 2026-09-02T18:15:59.576990+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -33,6 +33,7 @@ config/validation_criteria.json	1063 bytes
 dashboard/__init__.py	0 bytes
 dashboard/app.py	742 bytes
 dashboard/pages/00_TOTP_Diagnostic.py	201 bytes
+dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py	214 bytes
 data/.gitkeep	1 bytes
 data/monitor_status.json	526 bytes
 data/paper_trading_journal.jsonl	814 bytes
@@ -64,6 +65,7 @@ intraday_bot/safety.py	715 bytes
 intraday_bot/technical.py	4484 bytes
 pages/00_TOTP_Diagnostic.py	3165 bytes
 pages/01_Dhan_Auth_Request_Diagnostic.py	3495 bytes
+pages/02_Dhan_PIN_Diagnostic.py	2752 bytes
 reports/.gitkeep	0 bytes
 reports/daily/.gitkeep	1 bytes
 reports/daily/2026-08-29.md	428 bytes
@@ -1548,6 +1550,18 @@ ROOT = Path(__file__).resolve().parents[2]
 runpy.run_path(str(ROOT / "pages" / "00_TOTP_Diagnostic.py"), run_name="__main__")
 
 ====================================================================
+FILE: dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py
+SIZE: 214 bytes
+====================================================================
+from __future__ import annotations
+
+import runpy
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+runpy.run_path(str(ROOT / "pages" / "01_Dhan_Auth_Request_Diagnostic.py"), run_name="__main__")
+
+====================================================================
 FILE: data/.gitkeep
 SIZE: 1 bytes
 ====================================================================
@@ -1591,9 +1605,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-02T22:48:20.749701+05:30",
+  "updated_at": "2026-09-02T23:45:12.146366+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33660224517",
+  "workflow_run_id": "33666056851",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17675,10 +17689,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-02T22:48:20.790370+05:30",
+  "updated_at": "2026-09-02T23:45:12.227141+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33660224517",
+  "workflow_run_id": "33666056851",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -20225,6 +20239,94 @@ if st.button("Run Dhan authentication test", type="primary"):
 
 st.divider()
 st.caption("Security: credentials and OTP are kept in memory only; no secrets, OTP values, or access tokens are displayed or persisted.")
+
+====================================================================
+FILE: pages/02_Dhan_PIN_Diagnostic.py
+SIZE: 2752 bytes
+====================================================================
+from __future__ import annotations
+
+import hashlib
+import os
+from typing import Any
+
+import streamlit as st
+
+
+st.set_page_config(page_title="Dhan PIN Handling Diagnostic", layout="centered")
+
+st.title("🔎 Dhan PIN Handling Diagnostic")
+st.info(
+    "This diagnostic checks how DHAN_PIN is being read and normalized. "
+    "It never displays the PIN and never sends an authentication request to Dhan."
+)
+
+
+def fingerprint(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12].upper()
+
+
+def inspect_value(label: str, value: Any) -> dict[str, Any]:
+    text = "" if value is None else str(value)
+    stripped = text.strip()
+    return {
+        "source": label,
+        "python_type": type(value).__name__,
+        "raw_length": len(text),
+        "stripped_length": len(stripped),
+        "raw_is_6_digits": len(text) == 6 and text.isdigit(),
+        "stripped_is_6_digits": len(stripped) == 6 and stripped.isdigit(),
+        "has_leading_or_trailing_whitespace": text != stripped,
+        "raw_fingerprint": fingerprint(text) if text else "EMPTY",
+        "stripped_fingerprint": fingerprint(stripped) if stripped else "EMPTY",
+    }
+
+
+try:
+    env_present = "DHAN_PIN" in os.environ
+    env_value = os.environ.get("DHAN_PIN", "")
+except Exception:
+    env_present = False
+    env_value = ""
+
+try:
+    secret_present = "DHAN_PIN" in st.secrets
+    secret_value = st.secrets.get("DHAN_PIN", "")
+except Exception:
+    secret_present = False
+    secret_value = ""
+
+st.subheader("Credential source checks")
+st.write({
+    "Environment DHAN_PIN present": env_present,
+    "Streamlit Secrets DHAN_PIN present": secret_present,
+})
+
+rows = []
+if env_present:
+    rows.append(inspect_value("Environment", env_value))
+if secret_present:
+    rows.append(inspect_value("Streamlit Secrets", secret_value))
+
+configured_value = env_value.strip() if env_present and env_value.strip() else str(secret_value).strip()
+configured = inspect_value("Effective configured value", configured_value)
+
+st.subheader("Safe PIN diagnostics")
+st.dataframe(rows + [configured], use_container_width=True, hide_index=True)
+
+st.subheader("Interpretation")
+checks = [
+    ("Effective PIN is exactly 6 numeric characters", configured["stripped_is_6_digits"]),
+    ("Effective value has no leading/trailing whitespace", not configured["has_leading_or_trailing_whitespace"]),
+    ("Effective value is represented as a string", configured["python_type"] == "str"),
+]
+for label, ok in checks:
+    st.write(("✅ " if ok else "❌ ") + label)
+
+st.caption(
+    "Fingerprints are one-way SHA-256 prefixes and are provided only to detect whether two hidden values differ. "
+    "No PIN value, authentication request, OTP, or access token is shown or persisted."
+)
 
 ====================================================================
 FILE: reports/.gitkeep
