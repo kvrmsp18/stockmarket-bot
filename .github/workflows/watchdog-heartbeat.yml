@@ -17,35 +17,100 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-
-      - name: Write watchdog heartbeat
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -c 'import json,os,socket; from datetime import datetime; from pathlib import Path; from zoneinfo import ZoneInfo; p=Path("data/watchdog_heartbeat.json"); p.parent.mkdir(parents=True,exist_ok=True); n=datetime.now(ZoneInfo("Asia/Kolkata")); payload={"state":"RUNNING","message":"GitHub Actions heartbeat watchdog is active","updated_at":n.isoformat(),"source":"github-actions-heartbeat-watchdog","hostname":socket.gethostname(),"workflow_run_id":os.getenv("GITHUB_RUN_ID"),"event":os.getenv("GITHUB_EVENT_NAME"),"heartbeat_interval_seconds":300,"is_persistent_worker":False,"paper_mode":True,"live_order_submission":False,"note":"Independent watchdog heartbeat; it does not represent a successful market cycle."}; p.write_text(json.dumps(payload,indent=2),encoding="utf-8")'
-
       - name: Persist watchdog heartbeat
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'stockmarket-bot'
-          git config user.email 'actions@users.noreply.github.com'
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            python -c 'import json,os,socket; from datetime import datetime; from pathlib import Path; from zoneinfo import ZoneInfo; p=Path("data/watchdog_heartbeat.json"); p.parent.mkdir(parents=True,exist_ok=True); n=datetime.now(ZoneInfo("Asia/Kolkata")); payload={"state":"RUNNING","message":"GitHub Actions heartbeat watchdog is active","updated_at":n.isoformat(),"source":"github-actions-heartbeat-watchdog","hostname":socket.gethostname(),"workflow_run_id":os.getenv("GITHUB_RUN_ID"),"event":os.getenv("GITHUB_EVENT_NAME"),"heartbeat_interval_seconds":300,"is_persistent_worker":False,"paper_mode":True,"live_order_submission":False,"note":"Independent watchdog heartbeat; it does not represent a successful market cycle."}; p.write_text(json.dumps(payload,indent=2),encoding="utf-8")'
-            git add data/watchdog_heartbeat.json
-            git commit -m 'Update independent watchdog heartbeat [skip ci]' || true
-            if git push origin HEAD:main; then
-              echo "Watchdog heartbeat persisted on attempt ${attempt}."
-              exit 0
-            fi
-            echo "Push race on attempt ${attempt}; retrying."
-            sleep 2
-          done
-          echo 'Unable to persist watchdog heartbeat after 5 attempts.'
-          exit 1
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import socket
+          import time
+          import urllib.error
+          import urllib.request
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          owner_repo = os.environ['GITHUB_REPOSITORY']
+          token = os.environ['GH_TOKEN']
+          path = 'data/watchdog_heartbeat.json'
+          api_url = f'https://api.github.com/repos/{owner_repo}/contents/{path}'
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'stockmarket-bot-heartbeat',
+          }
+
+          now = datetime.now(ZoneInfo('Asia/Kolkata'))
+          payload = {
+              'state': 'RUNNING',
+              'message': 'GitHub Actions heartbeat watchdog is active',
+              'updated_at': now.isoformat(),
+              'source': 'github-actions-heartbeat-watchdog',
+              'hostname': socket.gethostname(),
+              'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
+              'event': os.environ.get('GITHUB_EVENT_NAME'),
+              'heartbeat_interval_seconds': 300,
+              'is_persistent_worker': False,
+              'paper_mode': True,
+              'live_order_submission': False,
+              'note': 'Independent watchdog heartbeat; it does not represent a successful market cycle.',
+          }
+          encoded = base64.b64encode(
+              json.dumps(payload, indent=2, ensure_ascii=False).encode('utf-8')
+          ).decode('ascii')
+
+          for attempt in range(1, 6):
+              try:
+                  req = urllib.request.Request(api_url, headers=headers, method='GET')
+                  try:
+                      with urllib.request.urlopen(req, timeout=15) as response:
+                          current = json.load(response)
+                      current_sha = current.get('sha', '')
+                  except urllib.error.HTTPError as exc:
+                      if exc.code == 404:
+                          current_sha = ''
+                      else:
+                          raise
+
+                  body = {
+                      'message': 'Update independent watchdog heartbeat [skip ci]',
+                      'content': encoded,
+                  }
+                  if current_sha:
+                      body['sha'] = current_sha
+
+                  put_req = urllib.request.Request(
+                      api_url,
+                      data=json.dumps(body).encode('utf-8'),
+                      headers={**headers, 'Content-Type': 'application/json'},
+                      method='PUT',
+                  )
+                  with urllib.request.urlopen(put_req, timeout=15) as response:
+                      result = json.load(response)
+
+                  commit_sha = result.get('commit', {}).get('sha', '')
+                  print(f'Watchdog heartbeat persisted successfully on attempt {attempt}. Commit: {commit_sha}')
+                  print(f'Heartbeat timestamp: {payload["updated_at"]}')
+                  raise SystemExit(0)
+
+              except urllib.error.HTTPError as exc:
+                  detail = exc.read().decode('utf-8', errors='replace')[:500]
+                  print(f'Attempt {attempt} failed with HTTP {exc.code}: {detail}')
+                  if exc.code not in {409, 422, 429, 500, 502, 503, 504} or attempt == 5:
+                      raise
+              except urllib.error.URLError as exc:
+                  print(f'Attempt {attempt} network failure: {exc}')
+                  if attempt == 5:
+                      raise
+              time.sleep(2 * attempt)
+
+          raise SystemExit('Unable to persist watchdog heartbeat after 5 attempts.')
+          PY
