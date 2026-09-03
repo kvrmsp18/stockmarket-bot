@@ -16,7 +16,7 @@ from intraday_bot.brokers import DhanBroker
 from intraday_bot.config import settings
 from intraday_bot.database import Database
 from intraday_bot.research import FRAMEWORK_RULES
-from intraday_bot.runtime import LIVE_TEST_MODE, PAPER_MODE, run_cycle
+from intraday_bot.runtime import PAPER_MODE, run_cycle
 
 
 st.set_page_config(page_title="NSE/BSE Intraday AI Trading Desk", layout="wide", initial_sidebar_state="expanded")
@@ -26,9 +26,8 @@ STATUS = ROOT / "monitor_status.json"
 HB = ROOT / "worker_heartbeat.json"
 SHB = ROOT / "scheduler_heartbeat.json"
 
-# Production navigation: only pages needed for daily operation, analysis,
-# paper trading, monitoring, and configuration. Troubleshooting-only pages
-# are intentionally kept out of the public navigation.
+# Production navigation: only operational, analytical and reporting views.
+# Live trading remains deliberately unavailable while the broker is paper-only.
 PAGES = [
     "Dashboard",
     "AI Baskets",
@@ -336,9 +335,10 @@ def charts():
 
 def main():
     sync()
-    mode = st.sidebar.radio("Mode", ["PAPER TRADING", "LIVE TRADING"], index=0, key="mode_radio")
-    st.session_state.mode = PAPER_MODE if mode.startswith("PAPER") else LIVE_TEST_MODE
-    st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS" if st.session_state.mode == PAPER_MODE else "🟠 LIVE TEST — NO LIVE ORDERS")
+    # Live order execution is not exposed in the UI. The deployed desk is
+    # intentionally paper-only until the broker/live gate is explicitly enabled.
+    st.session_state.mode = PAPER_MODE
+    st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS")
     if st.sidebar.button("🔄 Refresh Dashboard", key="refresh_button"):
         sync(force=True)
         st.rerun()
@@ -347,7 +347,7 @@ def main():
     else:
         st.sidebar.caption(f"State sync OK · {st.session_state.get('sync_at', '—')}")
     if st.sidebar.button("▶ Run Analysis", type="primary", key="run_analysis"):
-        x = run_cycle(st.session_state.mode)
+        x = run_cycle(PAPER_MODE)
         st.session_state.last_manual_cycle = x
         st.rerun()
     page = st.sidebar.selectbox("Desk", PAGES, key="desk_page")
