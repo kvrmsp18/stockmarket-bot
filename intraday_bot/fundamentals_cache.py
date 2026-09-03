@@ -101,14 +101,13 @@ def refresh_batch(items: list[tuple[str, float | None]]) -> dict[str, dict[str, 
             try:
                 source = fetch_fundamentals(key, current_price=price)
             except Exception as exc:
-                # Keep the last verified snapshot when a provider request fails.
                 if existing:
                     existing = dict(existing)
                     existing["last_refresh_error"] = str(exc)
                     cache[key] = existing
                 continue
             source["fetched_at"] = datetime.now(timezone.utc).isoformat()
-            source["cache_source"] = "Twelve Data"
+            source["cache_source"] = source.get("provider", source.get("source", "unknown"))
             cache[key] = source
             refreshed += 1
         _write(cache)
