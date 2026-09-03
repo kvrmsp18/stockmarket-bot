@@ -15,7 +15,8 @@ import streamlit as st
 from intraday_bot.brokers import DhanBroker
 from intraday_bot.config import settings
 from intraday_bot.database import Database
-from intraday_bot.research import FRAMEWORK_RULES
+from intraday_bot.fundamentals_provider import fetch_fundamentals
+from intraday_bot.research import FRAMEWORK_RULES, framework_analysis, fundamental_score, valuation_score
 from intraday_bot.runtime import PAPER_MODE, run_cycle
 
 
@@ -203,27 +204,111 @@ def prompt():
         st.write(f"**{n}:** {x['label']} — {', '.join(x['factors'])}")
 
 
-def frameworks():
-    header("🧠 Five Research Frameworks", "Each framework is shown separately with score, confidence, evidence and missing data. These are not standalone intraday triggers.")
-    df = events("FRAMEWORK_ANALYSIS")
-    if df.empty:
-        st.warning("No FRAMEWORK_ANALYSIS records persisted yet.")
-        return
-    syms = sorted(df.symbol.dropna().astype(str).unique())
-    sym = st.selectbox("Stock", syms, key="framework_stock")
-    row = df[df.symbol.astype(str) == sym].iloc[0]
-    try:
-        p = json.loads(row.payload)
-    except Exception:
-        p = {}
-    f = p.get("frameworks", {})
-    st.write(f"Last research: {row.ts} · Overall: {f.get('overall', 'DATA UNAVAILABLE')} · Agreement: {f.get('agreement', 'DATA UNAVAILABLE')}")
+def _framework_rows(bundle: dict) -> pd.DataFrame:
     rows = []
-    for n, x in f.get("frameworks", {}).items():
-        rows.append({"Framework": n, "Score": x.get("score", 0), "Confidence": x.get("confidence", 0), "Positive": ", ".join(x.get("positive_factors", [])) or "—", "Negative": ", ".join(x.get("negative_factors", [])) or "—", "Missing": ", ".join(x.get("missing_data", [])) or "—"})
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    with st.expander("Raw evidence"):
-        st.json(p)
+    for name, item in bundle.get("frameworks", {}).items():
+        rows.append(
+            {
+                "Framework": name,
+                "Score": item.get("score", 0),
+                "Confidence": item.get("confidence", 0),
+                "Positive": ", ".join(item.get("positive_factors", [])) or "—",
+                "Negative": ", ".join(item.get("negative_factors", [])) or "—",
+                "Missing": ", ".join(item.get("missing_data", [])) or "—",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def frameworks():
+    header(
+        "🧠 Five Research Frameworks",
+        "The Bot's Deep Research layer. Source-backed company fundamentals are fetched on demand from Twelve Data; missing values remain DATA UNAVAILABLE and are never invented.",
+    )
+
+    persisted = events("FRAMEWORK_ANALYSIS")
+    persisted_symbols = sorted(persisted.symbol.dropna().astype(str).unique()) if not persisted.empty else []
+    default_symbol = persisted_symbols[0] if persisted_symbols else "ABCAPITAL"
+    symbol = st.text_input("NSE symbol", value=default_symbol, key="deep_research_symbol").strip().upper()
+
+    c1, c2 = st.columns([1, 3])
+    with c1:
+        fetch_clicked = st.button("🔄 Refresh source-backed research", type="primary", key="refresh_deep_research")
+    with c2:
+        st.caption("This refreshes source data only. It does not place an order. Research remains advisory; deterministic execution and risk gates remain in force.")
+
+    if fetch_clicked:
+        if not symbol:
+            st.warning("Enter an NSE symbol first.")
+        else:
+            with st.spinner(f"Fetching source fundamentals for {symbol}…"):
+                try:
+                    source = fetch_fundamentals(symbol)
+                    research = {
+                        key: source[key]
+                        for key in (
+                            "profit_growth", "eps_growth", "roce", "roe", "debt_to_equity",
+                            "predictability", "earnings_quality", "pe", "sector_weight_pct",
+                            "company_weight_pct", "red_flags"
+                        )
+                        if key in source
+                    }
+                    bundle = framework_analysis(research)
+                    snapshot = {
+                        "symbol": symbol,
+                        "source": source,
+                        "research_input": research,
+                        "fundamental_score": fundamental_score(research),
+                        "valuation_score": valuation_score(research),
+                        "frameworks": bundle,
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    st.session_state.deep_research_source = snapshot
+                except Exception as exc:
+                    st.error(str(exc))
+
+    live = st.session_state.get("deep_research_source", {})
+    if live and live.get("symbol") == symbol:
+        source = live.get("source", {})
+        bundle = live.get("frameworks", {})
+        st.success(f"SOURCE VERIFIED · {source.get('source', 'Twelve Data')} · fetched {live.get('fetched_at', '—')}")
+        metrics = {
+            k: v for k, v in source.items()
+            if k not in {"missing_provider_fields", "source_status", "symbol", "source"}
+        }
+        if metrics:
+            st.subheader("Source-backed company fundamentals")
+            st.dataframe(pd.DataFrame(sorted(metrics.items()), columns=["Metric", "Value"]), use_container_width=True, hide_index=True)
+        a, b, c = st.columns(3)
+        a.metric("Fundamental Score", f"{float(live.get('fundamental_score', 0)):.2f}/10")
+        b.metric("Valuation Score", f"{float(live.get('valuation_score', 0)):.2f}/10")
+        c.metric("Research Status", bundle.get("status", "DATA UNAVAILABLE"))
+        st.subheader("Framework evidence")
+        st.dataframe(_framework_rows(bundle), use_container_width=True, hide_index=True)
+        st.write(f"**Overall:** {bundle.get('overall', 0)} · **Agreement:** {bundle.get('agreement', 'DATA UNAVAILABLE')} · **Status:** {bundle.get('status', 'DATA UNAVAILABLE')}")
+        missing = source.get("missing_provider_fields", [])
+        if missing:
+            st.warning("Provider did not supply: " + ", ".join(missing))
+        with st.expander("Raw source-backed research evidence"):
+            st.json(live)
+        return
+
+    if persisted_symbols:
+        matching = persisted[persisted.symbol.astype(str) == symbol]
+        if not matching.empty:
+            row = matching.iloc[0]
+            try:
+                p = json.loads(row.payload)
+            except Exception:
+                p = {}
+            f = p.get("frameworks", {})
+            st.write(f"Last persisted research: {row.ts} · Overall: {f.get('overall', 'DATA UNAVAILABLE')} · Agreement: {f.get('agreement', 'DATA UNAVAILABLE')}")
+            st.dataframe(_framework_rows(f), use_container_width=True, hide_index=True)
+            with st.expander("Persisted evidence"):
+                st.json(p)
+            return
+
+    st.info("No source-backed research loaded yet. Click **Refresh source-backed research** to retrieve the selected NSE company's fundamentals.")
 
 
 def research_page(page):
@@ -326,7 +411,7 @@ def main():
     else:
         st.sidebar.caption(f"State sync OK · {st.session_state.get('sync_at', '—')}")
     if st.sidebar.button("▶ Run Analysis", type="primary", key="run_analysis"):
-        current = datetime.now(settings.__class__.__annotations__.get("IST", timezone.utc)) if False else datetime.now(timezone.utc)
+        current = datetime.now(timezone.utc)
         ist_now = current.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
         is_market_open = ist_now.weekday() < 5 and (ist_now.hour, ist_now.minute, ist_now.second) >= (9, 15, 0) and (ist_now.hour, ist_now.minute, ist_now.second) <= (15, 30, 0)
         if not is_market_open:
