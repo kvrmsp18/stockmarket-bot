@@ -33,6 +33,21 @@ def test_source_scoring_is_nonzero_for_valid_data():
     assert research.valuation_score(data) > 0
 
 
+def test_financial_sector_does_not_overweight_leverage():
+    industrial = {
+        "sector": "Industrial",
+        "profit_growth": 12.97,
+        "eps_growth": 21.94,
+        "roce": 8.70,
+        "roe": 11.62,
+        "earnings_quality": -9.71,
+        "debt_to_equity": 4.959,
+    }
+    financial = dict(industrial, sector="Financial Services")
+    assert research.fundamental_score(financial) > research.fundamental_score(industrial)
+    assert research.fundamental_score(financial) > 0
+
+
 def test_frameworks_distinguish_neutral_from_negative():
     result = framework_analysis({
         "profit_growth": 5.0,
@@ -82,6 +97,11 @@ def test_source_formulas_remain_separate(monkeypatch):
         "preopen_market_context",
         lambda: {"status": "DATA UNAVAILABLE", "source": "NSE Pre-Open Market"},
     )
+    monkeypatch.setattr(
+        research,
+        "fetch_event_news",
+        lambda symbol: {"source_status": "DATA UNAVAILABLE", "symbol": symbol, "items": [], "material_high_impact": []},
+    )
 
     assert source_valuation(10, 20) == 200
     assert source_roce(20, 100) == 20
@@ -91,3 +111,26 @@ def test_source_formulas_remain_separate(monkeypatch):
     assert bundle["derivatives"]["status"] == "DATA UNAVAILABLE"
     assert bundle["preopen"]["status"] == "DATA UNAVAILABLE"
     assert bundle["preopen_market_context"]["status"] == "DATA UNAVAILABLE"
+    assert bundle["event_news"]["source_status"] == "DATA UNAVAILABLE"
+    assert bundle["event_news_risk"]["risk_level"] == "UNKNOWN"
+
+
+def test_event_news_is_attached_to_research_bundle(monkeypatch):
+    monkeypatch.setattr(research, "oi_context", lambda symbol: {"status": "AVAILABLE", "symbol": symbol})
+    monkeypatch.setattr(research, "market_context", lambda: {"status": "AVAILABLE"})
+    monkeypatch.setattr(research, "preopen_stock_context", lambda symbol: {"status": "AVAILABLE", "symbol": symbol})
+    monkeypatch.setattr(research, "preopen_market_context", lambda: {"status": "AVAILABLE"})
+    monkeypatch.setattr(
+        research,
+        "fetch_event_news",
+        lambda symbol: {
+            "source_status": "AVAILABLE",
+            "symbol": symbol,
+            "items": [{"title": "Company investigation announced", "fresh": True}],
+            "material_high_impact": [{"title": "Company investigation announced", "sentiment": "NEGATIVE", "materiality": 3}],
+        },
+    )
+    bundle = research_bundle("ABC", {"profit_growth": 10, "roe": 12})
+    assert bundle["event_news"]["source_status"] == "AVAILABLE"
+    assert bundle["event_news_risk"]["risk_level"] == "HIGH"
+    assert bundle["event_news_risk"]["action"] == "REVIEW_BEFORE_ENTRY"
