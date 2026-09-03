@@ -18,6 +18,8 @@ env:
   SCAN_WORKERS: '8'
   CYCLE_BUDGET_SECONDS: '240'
   DHAN_LIVE_TRADING_ENABLED: 'false'
+  FUNDAMENTALS_REFRESH_SECONDS: '604800'
+  FUNDAMENTALS_REFRESH_PER_CYCLE: '2'
 
 jobs:
   monitor:
@@ -253,8 +255,10 @@ jobs:
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
           DHAN_PIN: ${{ secrets.DHAN_PIN }}
           DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
+          DHAN_ACCESS_TOKEN: ${{ env.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -262,6 +266,8 @@ jobs:
           BOT_RESEARCH_REFERENCE_CAPITAL: '1000'
           BOT_MODE: PAPER
           DHAN_LIVE_TRADING_ENABLED: 'false'
+          FUNDAMENTALS_REFRESH_SECONDS: '604800'
+          FUNDAMENTALS_REFRESH_PER_CYCLE: '2'
         run: python scripts/run_daily_cycle.py
 
       - name: Record monitor heartbeat
