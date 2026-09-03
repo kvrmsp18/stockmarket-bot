@@ -1,0 +1,18 @@
+{
+  "cycle_id": "e0da1b52615f401caec75468592a56c9",
+  "started_at": "2026-09-03T09:51:20.172438+00:00",
+  "mode": "PAPER",
+  "market_open": true,
+  "stocks_observed": 2639,
+  "quotes": 2639,
+  "deep_analysis_pool": 80,
+  "dynamic_pool": true,
+  "candidates": [],
+  "rejections": {},
+  "rejection_details": [],
+  "orders": [],
+  "errors": [],
+  "execution_gate": "LAST_SUCCESSFUL_MARKET_SNAPSHOT",
+  "source": "verified successful in-market cycle",
+  "note": "Candidate-level records will be refreshed by the next successful in-market cycle."
+}
