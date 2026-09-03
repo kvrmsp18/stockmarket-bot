@@ -59,24 +59,48 @@ jobs:
           set -euo pipefail
           git config user.name 'stockmarket-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add data/watchdog_heartbeat.json
-          if git diff --cached --quiet; then
-            echo 'Watchdog heartbeat unchanged.'
-            exit 0
-          fi
-          git commit -m 'Update independent watchdog heartbeat [skip ci]'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            git rebase origin/main || { git rebase --abort || true; git reset --hard origin/main; git checkout -- data/watchdog_heartbeat.json; git add data/watchdog_heartbeat.json; git commit -m 'Update independent watchdog heartbeat [skip ci]' || true; }
+            git rebase origin/main
+            git add data/watchdog_heartbeat.json
+            if git diff --cached --quiet; then
+              echo 'Watchdog heartbeat already matches persisted state.'
+              exit 0
+            fi
+            git commit -m 'Update independent watchdog heartbeat [skip ci]' || true
             if git push origin HEAD:main; then
               echo "Watchdog heartbeat persisted on attempt ${attempt}."
               exit 0
             fi
-            git rebase --abort || true
             git reset --soft origin/main
+            git restore --staged .
             git checkout -- data/watchdog_heartbeat.json || true
-            git add data/watchdog_heartbeat.json
-            git commit -m 'Update independent watchdog heartbeat [skip ci]' || true
+            python - <<'PY'
+            import json, os, socket, tempfile
+            from datetime import datetime
+            from pathlib import Path
+            from zoneinfo import ZoneInfo
+            path = Path('data/watchdog_heartbeat.json')
+            now = datetime.now(ZoneInfo('Asia/Kolkata'))
+            payload = {
+                'state': 'RUNNING',
+                'message': 'GitHub Actions heartbeat watchdog is active',
+                'updated_at': now.isoformat(),
+                'source': 'github-actions-heartbeat-watchdog',
+                'hostname': socket.gethostname(),
+                'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
+                'event': os.getenv('GITHUB_EVENT_NAME'),
+                'heartbeat_interval_seconds': 300,
+                'is_persistent_worker': False,
+                'paper_mode': True,
+                'live_order_submission': False,
+                'note': 'Independent watchdog heartbeat; it does not represent a successful market cycle.'
+            }
+            fd, tmp = tempfile.mkstemp(prefix='watchdog-', suffix='.tmp', dir=str(path.parent))
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, indent=2)
+            os.replace(tmp, path)
+            PY
             sleep 2
           done
           echo 'Unable to persist watchdog heartbeat after 5 attempts.'
