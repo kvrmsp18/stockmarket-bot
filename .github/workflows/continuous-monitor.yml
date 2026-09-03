@@ -100,6 +100,7 @@ jobs:
           DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
           DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
+          MARKET_OPEN: ${{ steps.market.outputs.market_open }}
         shell: bash
         run: |
           set -euo pipefail
@@ -196,8 +197,6 @@ jobs:
               print('DHAN_QUOTE_PREFLIGHT_SKIPPED: DHAN_SECURITY_IDS_JSON not configured')
           print('DHAN_AUTH_PREFLIGHT_PASSED')
           PY
-        env:
-          MARKET_OPEN: ${{ steps.market.outputs.market_open }}
 
       - name: Build complete NSE cash-equity universe
         if: steps.market.outputs.run_cycle == 'true'
