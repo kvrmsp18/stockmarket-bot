@@ -140,12 +140,14 @@ def _request(endpoint: str, symbol: str, timeout: int = 20) -> tuple[dict[str, A
     raise RuntimeError(f"TWELVEDATA_{endpoint.upper()}_FAILED: " + " | ".join(errors))
 
 
-def fetch_fundamentals(symbol: str) -> dict[str, Any]:
+def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[str, Any]:
     """Fetch source-backed financial data without Twelve Data's paid statistics endpoint.
 
     Statement ratios are calculated only from values returned by the provider.
     Relative strength and market trend are intentionally excluded because they
-    belong to the market/technical layer.
+    belong to the market/technical layer. ``current_price`` may be supplied by
+    the Dhan intraday quote so the cache can calculate a current P/E without
+    asking Twelve Data for a paid statistics endpoint.
     """
     symbol = str(symbol).strip().upper()
     if not symbol:
@@ -230,11 +232,21 @@ def fetch_fundamentals(symbol: str) -> dict[str, Any]:
         if value is not None:
             result[key] = float(value)
 
-    current_price = _walk(quote, ("price", "close", "last_price", "previous_close"))
+    provider_price = _walk(quote, ("price", "close", "last_price", "previous_close"))
+    effective_price = None
     if current_price is not None:
-        result["current_price"] = float(current_price)
+        try:
+            candidate = float(current_price)
+            if candidate > 0:
+                effective_price = candidate
+        except (TypeError, ValueError):
+            effective_price = None
+    if effective_price is None:
+        effective_price = provider_price
+    if effective_price is not None:
+        result["current_price"] = float(effective_price)
         if eps not in (None, 0):
-            result["pe"] = float(current_price) / float(eps)
+            result["pe"] = float(effective_price) / float(eps)
 
     # Predictability is derived only when at least three source periods exist.
     profit_series: list[float] = []
