@@ -33,8 +33,7 @@ def _norm_symbol(value: Any) -> str:
 def _find_rows(payload: Any) -> list[dict[str, Any]]:
     """Recursively find the first list of record-like dictionaries."""
     if isinstance(payload, list):
-        rows = [x for x in payload if isinstance(x, dict)]
-        return rows
+        return [x for x in payload if isinstance(x, dict)]
     if isinstance(payload, dict):
         for key in ("data", "records", "aaData", "rows", "results"):
             value = payload.get(key)
@@ -72,11 +71,12 @@ def _request_json(url: str, timeout: int = 20) -> Any:
 
 
 def fetch_oi_spurts(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> list[dict[str, Any]]:
-    """Fetch NSE's OI-spurt underlying feed with a short process cache.
+    """Fetch NSE OI-spurt underlying data with a short process cache.
 
-    The NSE page is the human-facing source. The collector uses the corresponding
-    public NSE data feed when reachable, and normalizes only source-returned fields.
-    No synthetic OI values are generated.
+    The human-facing source is NSE's Change in Open Interest / OI Spurts page.
+    The collector uses the corresponding NSE data feed when reachable and
+    normalizes only source-returned fields. No synthetic derivatives values are
+    generated.
     """
     now = time.time()
     if not force and _cache["rows"] and now - float(_cache["at"]) < ttl_seconds:
@@ -99,10 +99,17 @@ def fetch_oi_spurts(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SECONDS)
             "open_interest": _number(_pick(row, "openinterest", "oi")),
             "volume": _number(_pick(row, "volume", "vol")),
             "value": _number(_pick(row, "value", "totaltradedvalue")),
-            "timestamp": _pick(row, "timestamp", "time", "datetime"),
+            "futures_value_lakhs": _number(_pick(row, "futuresvalue", "futuresval", "futures_value", "futuresvalueinlakhs")),
+            "options_value_lakhs": _number(_pick(row, "optionsvalue", "optionsval", "options_value", "optionsvalueinlakhs", "optionvalue")),
+            "total_value_lakhs": _number(_pick(row, "totalvalue", "totalval", "total_value", "totalvalueinlakhs")),
+            "timestamp": _pick(row, "timestamp", "time", "datetime", "asof"),
             "source": "NSE OI Spurts",
         }
-        if any(item[k] is not None for k in ("oi_change_pct", "oi_change", "open_interest")):
+        if item["total_value_lakhs"] is None:
+            parts = [item.get("futures_value_lakhs"), item.get("options_value_lakhs")]
+            if all(isinstance(v, (int, float)) for v in parts):
+                item["total_value_lakhs"] = float(parts[0]) + float(parts[1])
+        if any(item[k] is not None for k in ("oi_change_pct", "oi_change", "open_interest", "futures_value_lakhs", "options_value_lakhs", "total_value_lakhs")):
             normalized.append(item)
 
     _cache["at"] = now
@@ -147,3 +154,50 @@ def oi_context(symbol: str, force: bool = False) -> dict[str, Any]:
 
     item.update({"status": "AVAILABLE", "signal": signal})
     return item
+
+
+def market_context(force: bool = False) -> dict[str, Any]:
+    """Aggregate the OI-spurt feed into a market-wide derivatives participation view.
+
+    This is a research context only. Aggregate derivatives value/activity does not
+    by itself establish market direction.
+    """
+    try:
+        rows = fetch_oi_spurts(force=force)
+    except Exception as exc:
+        return {"status": "DATA UNAVAILABLE", "source": PAGE_URL, "error": str(exc)}
+
+    def total(field: str) -> float:
+        return sum(float(r[field]) for r in rows if isinstance(r.get(field), (int, float)))
+
+    signal_counts = {name: 0 for name in ("LONG_BUILDUP", "SHORT_BUILDUP", "SHORT_COVERING", "LONG_UNWINDING", "UNKNOWN")}
+    for row in rows:
+        change = row.get("change_pct")
+        oi_change = row.get("oi_change_pct")
+        signal = "UNKNOWN"
+        if isinstance(change, (int, float)) and isinstance(oi_change, (int, float)):
+            if change > 0 and oi_change > 0:
+                signal = "LONG_BUILDUP"
+            elif change < 0 and oi_change > 0:
+                signal = "SHORT_BUILDUP"
+            elif change > 0 and oi_change < 0:
+                signal = "SHORT_COVERING"
+            elif change < 0 and oi_change < 0:
+                signal = "LONG_UNWINDING"
+        signal_counts[signal] += 1
+
+    value_rows = [r for r in rows if isinstance(r.get("total_value_lakhs"), (int, float))]
+    top_value = sorted(value_rows, key=lambda r: float(r["total_value_lakhs"]), reverse=True)[:10]
+    return {
+        "status": "AVAILABLE",
+        "source": PAGE_URL,
+        "symbols": len(rows),
+        "futures_value_lakhs": total("futures_value_lakhs"),
+        "options_value_lakhs": total("options_value_lakhs"),
+        "total_value_lakhs": total("total_value_lakhs"),
+        "signal_counts": signal_counts,
+        "top_value_symbols": [
+            {"symbol": r["symbol"], "total_value_lakhs": r["total_value_lakhs"], "signal": oi_context(r["symbol"]) .get("signal", "UNKNOWN")}
+            for r in top_value
+        ],
+    }
