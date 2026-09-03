@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 0a5667f8f5928a70fa3df65430d522d7f7892099
-Generated UTC: 2026-09-03T09:47:39.047886+00:00
+Commit SHA: 954ce7d71dc5dadd3057f0bfa1c429ba133917ab
+Generated UTC: 2026-09-03T10:09:59.021050+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1097 bytes
 .github/workflows/ci.yml	416 bytes
-.github/workflows/continuous-monitor.yml	14167 bytes
+.github/workflows/continuous-monitor.yml	13971 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	7579 bytes
 .github/workflows/monitor-scheduler-guard.yml	2360 bytes
@@ -43,13 +43,13 @@ dashboard/pages/04_Dhan_Official_SDK_Auth_Diagnostic.py	295 bytes
 dashboard/pages/05_Dhan_API_Key_Consent_Diagnostic.py	293 bytes
 dashboard/pages/06_Dhan_OAuth_Browser_Login_Diagnostic.py	297 bytes
 data/.gitkeep	1 bytes
-data/monitor_status.json	526 bytes
+data/monitor_status.json	558 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	350 bytes
-data/trading.db	12640256 bytes
-data/universe.json	306585 bytes
+data/scheduler_heartbeat.json	351 bytes
+data/trading.db	14508032 bytes
+data/universe.json	303993 bytes
 data/watchdog_heartbeat.json	488 bytes
-data/worker_heartbeat.json	428 bytes
+data/worker_heartbeat.json	461 bytes
 deploy/README.md	2755 bytes
 deploy/stockmarket-worker.service	697 bytes
 docker-compose.yml	805 bytes
@@ -258,7 +258,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 14167 bytes
+SIZE: 13971 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -375,28 +375,25 @@ jobs:
           from intraday_bot.brokers import DhanBroker
           from intraday_bot.config import settings
 
-          def fail(message: str) -> None:
-              path = Path('data/monitor_status.json')
-              path.parent.mkdir(parents=True, exist_ok=True)
+          PREFLIGHT_PATH = Path('data/preflight_status.json')
+
+          def write_status(message: str, passed: bool) -> None:
+              PREFLIGHT_PATH.parent.mkdir(parents=True, exist_ok=True)
               now = datetime.now(ZoneInfo('Asia/Kolkata')).isoformat()
               payload = {
-                  'cycle_id': 'PREFLIGHT-' + datetime.now(ZoneInfo('Asia/Kolkata')).strftime('%Y%m%dT%H%M%S%f'),
-                  'started_at': now,
-                  'ended_at': now,
+                  'status': 'PASSED' if passed else 'FAILED',
+                  'message': message,
+                  'updated_at': now,
+                  'source': 'github-actions-dhan-preflight',
+                  'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
                   'mode': 'PAPER',
                   'market_open': os.getenv('MARKET_OPEN') == 'true',
-                  'stocks_observed': 0,
-                  'quotes': 0,
-                  'deep_analysis_pool': 0,
-                  'dynamic_pool': True,
-                  'candidates': [],
-                  'rejections': {},
-                  'rejection_details': [],
-                  'orders': [],
-                  'errors': [message],
-                  'execution_gate': 'PREFLIGHT_FAILED',
+                  'live_order_submission': False,
               }
-              path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
+              PREFLIGHT_PATH.write_text(json.dumps(payload, indent=2), encoding='utf-8')
+
+          def fail(message: str) -> None:
+              write_status(message, False)
               raise SystemExit(message)
 
           print('Dhan credential source:', settings.dhan_market_data_credential_source)
@@ -457,6 +454,8 @@ jobs:
                   print('DHAN_QUOTE_PREFLIGHT_SKIPPED: no mapped security ID')
           else:
               print('DHAN_QUOTE_PREFLIGHT_SKIPPED: DHAN_SECURITY_IDS_JSON not configured')
+
+          write_status('Dhan authentication and market-feed preflight passed', True)
           print('DHAN_AUTH_PREFLIGHT_PASSED')
           PY
 
@@ -484,8 +483,6 @@ jobs:
           if not universe:
               raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: universe is empty')
 
-          # Dhan's public master can contain synthetic NSETEST rows that are
-          # valid master records but do not have live market-feed quotes.
           candidates = [
               item for item in universe
               if 'NSETEST' not in str(item.get('symbol', '')).upper()
@@ -1927,12 +1924,12 @@ SIZE: 1 bytes
 
 ====================================================================
 FILE: data/monitor_status.json
-SIZE: 526 bytes
+SIZE: 558 bytes
 ====================================================================
 {
-  "cycle_id": "PREFLIGHT-20260903T150701496805",
-  "started_at": "2026-09-03T15:07:01.496787+05:30",
-  "ended_at": "2026-09-03T15:07:01.496787+05:30",
+  "cycle_id": "PREFLIGHT-20260903T152300144573",
+  "started_at": "2026-09-03T15:23:00.144556+05:30",
+  "ended_at": "2026-09-03T15:23:00.144556+05:30",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 0,
@@ -1944,7 +1941,7 @@ SIZE: 526 bytes
   "rejection_details": [],
   "orders": [],
   "errors": [
-    "DHAN_PREFLIGHT_ERROR: automatic token generation failed: DHAN_AUTO_AUTH_FAILED: Invalid TOTP"
+    "DHAN_PREFLIGHT_ERROR: automatic token generation failed: DHAN_AUTO_AUTH_FAILED: Token can be generated once every 2 minutes."
   ],
   "execution_gate": "PREFLIGHT_FAILED"
 }
@@ -1958,16 +1955,16 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 350 bytes
+SIZE: 351 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-03T15:11:44.511912+05:30",
+  "updated_at": "2026-09-03T15:31:01.806563+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33740249701",
+  "workflow_run_id": "33742001683",
   "event": "schedule",
-  "market_open": true,
+  "market_open": false,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
   "live_order_submission": false
@@ -1975,129 +1972,15 @@ SIZE: 350 bytes
 
 ====================================================================
 FILE: data/trading.db
-SIZE: 12640256 bytes
+SIZE: 14508032 bytes
 ====================================================================
 [BINARY/GENERATED FILE — CONTENT NOT EMBEDDED]
 
 ====================================================================
 FILE: data/universe.json
-SIZE: 306585 bytes
+SIZE: 303993 bytes
 ====================================================================
 [
-  {
-    "symbol": "011NSETEST",
-    "security_id": "14747",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "021NSETEST",
-    "security_id": "14751",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "031NSETEST",
-    "security_id": "14753",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "041NSETEST",
-    "security_id": "14755",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "051NSETEST",
-    "security_id": "14758",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "061NSETEST",
-    "security_id": "14762",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "071NSETEST",
-    "security_id": "14764",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "081NSETEST",
-    "security_id": "14767",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "091NSETEST",
-    "security_id": "14769",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "101NSETEST",
-    "security_id": "14772",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "111NSETEST",
-    "security_id": "14774",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "11NSETEST",
-    "security_id": "12841",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "121NSETEST",
-    "security_id": "14777",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "131NSETEST",
-    "security_id": "14778",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "141NSETEST",
-    "security_id": "14781",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "151NSETEST",
-    "security_id": "14782",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "161NSETEST",
-    "security_id": "14784",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "171NSETEST",
-    "security_id": "23446",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "181NSETEST",
-    "security_id": "23447",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
   {
     "symbol": "20MICRONS",
     "security_id": "16921",
@@ -6589,12 +6472,6 @@ SIZE: 306585 bytes
   {
     "symbol": "FUSION",
     "security_id": "11932",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "G1NSETEST",
-    "security_id": "12842",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -11731,12 +11608,6 @@ SIZE: 306585 bytes
   {
     "symbol": "MWL",
     "security_id": "759169",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "N1NSETEST",
-    "security_id": "12848",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -17093,12 +16964,6 @@ SIZE: 306585 bytes
     "series": "EQ"
   },
   {
-    "symbol": "V1NSETEST",
-    "security_id": "12863",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "V2RETAIL",
     "security_id": "14766",
     "exchange_segment": "NSE_EQ",
@@ -17959,10 +17824,10 @@ SIZE: 488 bytes
 {
   "state": "RUNNING",
   "message": "GitHub Actions heartbeat watchdog is active",
-  "updated_at": "2026-09-03T15:10:01+05:30",
+  "updated_at": "2026-09-03T15:30:31+05:30",
   "source": "github-actions-heartbeat-watchdog",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33740097119",
+  "workflow_run_id": "33741953476",
   "event": "schedule",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
@@ -17973,20 +17838,20 @@ SIZE: 488 bytes
 
 ====================================================================
 FILE: data/worker_heartbeat.json
-SIZE: 428 bytes
+SIZE: 461 bytes
 ====================================================================
 {
-  "state": "DEGRADED",
-  "message": "Market-cycle invocation failed; inspect Diagnostics",
-  "updated_at": "2026-09-03T15:12:15.988733+05:30",
+  "state": "HEARTBEAT_ONLY",
+  "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
+  "updated_at": "2026-09-03T15:31:01.928774+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33740249701",
+  "workflow_run_id": "33742001683",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
-  "market_open": true,
-  "market_cycle": true,
-  "cycle_success": false,
+  "market_open": false,
+  "market_cycle": false,
+  "cycle_success": null,
   "scheduler_based_monitor": true
 }
 
