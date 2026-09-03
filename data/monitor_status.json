@@ -1,9 +1,9 @@
 {
-  "cycle_id": "PREFLIGHT-20260903T152300144573",
-  "started_at": "2026-09-03T15:23:00.144556+05:30",
-  "ended_at": "2026-09-03T15:23:00.144556+05:30",
+  "cycle_id": "SYSTEM-CLOSED-20260903",
+  "started_at": "2026-09-03T16:48:00+05:30",
+  "ended_at": "2026-09-03T16:48:00+05:30",
   "mode": "PAPER",
-  "market_open": true,
+  "market_open": false,
   "stocks_observed": 0,
   "quotes": 0,
   "deep_analysis_pool": 0,
@@ -12,8 +12,7 @@
   "rejections": {},
   "rejection_details": [],
   "orders": [],
-  "errors": [
-    "DHAN_PREFLIGHT_ERROR: automatic token generation failed: DHAN_AUTO_AUTH_FAILED: Token can be generated once every 2 minutes."
-  ],
-  "execution_gate": "PREFLIGHT_FAILED"
+  "errors": [],
+  "execution_gate": "MARKET_CLOSED",
+  "message": "NSE market is closed. Previous in-market preflight failures are retained in workflow logs, not presented as the current dashboard state."
 }
