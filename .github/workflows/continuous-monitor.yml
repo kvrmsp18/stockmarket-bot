@@ -151,7 +151,7 @@ jobs:
 
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env_file:
               env_file.write('DHAN_ACCESS_TOKEN=' + token + '\n')
-          print('Dhan access token prepared for reuse by the cycle.')
+          print('Dhan access token prepared for reuse by subsequent monitor steps.')
 
           try:
               health = DhanBroker().health()
@@ -214,9 +214,12 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
           from intraday_bot.brokers import DhanBroker
 
+          if not os.getenv('DHAN_ACCESS_TOKEN'):
+              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: generated Dhan Access Token was not propagated to verification step')
           universe = json.loads(Path('data/universe.json').read_text(encoding='utf-8'))
           if not universe:
               raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: universe is empty')
@@ -231,6 +234,7 @@ jobs:
           sample = candidates[:10]
           print('Fresh universe symbols:', len(universe))
           print('Fresh universe verification sample:', ', '.join(str(x.get('symbol')) for x in sample))
+          print('Dhan generated access token is available to verification step.')
           try:
               quotes = DhanBroker().bulk_quotes(sample)
           except Exception as exc:
@@ -280,7 +284,7 @@ jobs:
               message = 'Latest complete paper-trading market cycle succeeded'
           elif market_open and cycle_ran:
               state = 'DEGRADED'
-              message = 'Market-cycle invocation failed; inspect Diagnostics'
+              message = 'Market-cycle invocation failed; inspect preflight_status or Diagnostics'
           else:
               state = 'HEARTBEAT_ONLY'
               message = '24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled'
