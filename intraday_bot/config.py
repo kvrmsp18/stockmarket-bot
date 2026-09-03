@@ -94,25 +94,19 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Return a real Dhan Access Token, never an API Key."""
-        if self.dhan_access_token:
-            return self.dhan_access_token
-        if self.dhan_client_id and self.dhan_pin and self.dhan_totp_secret:
-            from .dhan_auth import get_access_token
-            token, _ = get_access_token(
-                self.dhan_client_id,
-                self.dhan_pin,
-                self.dhan_totp_secret,
-            )
-            return token
-        return ""
+        """Return the configured Dhan API credential for the active paper path.
+
+        The current paper deployment intentionally uses DHAN_API_KEY, the
+        longer-valid credential configured for the repository. The short-lived
+        DHAN_ACCESS_TOKEN and PIN/TOTP auto-generation path are not selected by
+        the active market-data configuration.
+        """
+        return self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        if self.dhan_access_token:
-            return "DHAN_ACCESS_TOKEN"
-        if self.dhan_client_id and self.dhan_pin and self.dhan_totp_secret:
-            return "DHAN_PIN_TOTP"
+        if self.dhan_api_key:
+            return "DHAN_API_KEY"
         return "NONE"
 
     @property
