@@ -29,6 +29,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The guard intentionally triggers on this workflow's own push so a
+          # repaired monitor workflow can be validated immediately.
           workflow='.github/workflows/continuous-monitor.yml'
           now_epoch="$(date +%s)"
           latest="$(gh run list --repo "$REPO" --workflow "$workflow" --limit 1 --json status,conclusion,createdAt,databaseId --jq '.[0] // empty')"
@@ -62,6 +64,7 @@ jobs:
           if [ "$age" -lt 390 ]; then
             echo 'A recent successful monitor run exists; no dispatch needed.'
             exit 0
+
           fi
 
           echo 'Monitor is stale; dispatching a replacement run.'
