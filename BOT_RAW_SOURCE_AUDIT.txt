@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 0e79e056038193ac0b857972b6de58cfa0e9957c
-Generated UTC: 2026-09-03T06:02:26.047390+00:00
+Commit SHA: 7763c3dce6c919dbd9d6a95f19161f0b03f4602b
+Generated UTC: 2026-09-03T06:11:39.264561+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1097 bytes
 .github/workflows/ci.yml	363 bytes
-.github/workflows/continuous-monitor.yml	13926 bytes
+.github/workflows/continuous-monitor.yml	13673 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	5380 bytes
 .github/workflows/watchdog-heartbeat.yml	2785 bytes
@@ -254,22 +254,13 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 13926 bytes
+SIZE: 13673 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
 on:
   schedule:
     - cron: '*/5 * * * *'
-  push:
-    branches: [main]
-    paths:
-      - 'app.py'
-      - 'intraday_bot/**'
-      - 'scripts/**'
-      - 'config/**'
-      - '.github/workflows/continuous-monitor.yml'
-      - 'requirements.txt'
   workflow_dispatch: {}
 
 concurrency:
@@ -485,7 +476,6 @@ jobs:
           import json
           from pathlib import Path
           from intraday_bot.brokers import DhanBroker
-          from intraday_bot.config import settings
 
           universe = json.loads(Path('data/universe.json').read_text(encoding='utf-8'))
           if not universe:
