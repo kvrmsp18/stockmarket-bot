@@ -77,7 +77,6 @@ def _walk(obj: Any, aliases: tuple[str, ...]) -> float | None:
 
 
 def _records(payload: Any) -> list[dict[str, Any]]:
-    """Find tabular financial records recursively."""
     if isinstance(payload, list):
         return [x for x in payload if isinstance(x, dict)]
     if isinstance(payload, dict):
@@ -140,32 +139,164 @@ def _request(endpoint: str, symbol: str, timeout: int = 20) -> tuple[dict[str, A
     raise RuntimeError(f"TWELVEDATA_{endpoint.upper()}_FAILED: " + " | ".join(errors))
 
 
-def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[str, Any]:
-    """Fetch source-backed financial data without Twelve Data's paid statistics endpoint.
+def _series_value(df: Any, labels: tuple[str, ...]) -> tuple[float | None, float | None, list[float]]:
+    if df is None or getattr(df, "empty", True):
+        return None, None, []
+    normalized = {_norm_key(label): label for label in labels}
+    row_name = None
+    for idx in getattr(df, "index", []):
+        if _norm_key(idx) in normalized:
+            row_name = idx
+            break
+    if row_name is None:
+        return None, None, []
+    row = df.loc[row_name]
+    values: list[float] = []
+    for value in row.tolist():
+        n = _number(value)
+        if n is not None:
+            values.append(n)
+    latest = values[0] if values else None
+    previous = values[1] if len(values) > 1 else None
+    return latest, previous, values
 
-    Statement ratios are calculated only from values returned by the provider.
-    Relative strength and market trend are intentionally excluded because they
-    belong to the market/technical layer. ``current_price`` may be supplied by
-    the Dhan intraday quote so the cache can calculate a current P/E without
-    asking Twelve Data for a paid statistics endpoint.
-    """
-    symbol = str(symbol).strip().upper()
-    if not symbol:
-        raise ValueError("symbol is required")
 
+def _yahoo_fetch(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+    try:
+        import yfinance as yf
+    except Exception as exc:
+        raise RuntimeError(f"YAHOO_FINANCE_UNAVAILABLE: {exc}") from exc
+
+    ticker_symbol = f"{symbol}.NS"
+    ticker = yf.Ticker(ticker_symbol)
+    errors: list[str] = []
+    info: dict[str, Any] = {}
+    financials = balance = cashflow = None
+
+    try:
+        info = ticker.info or {}
+    except Exception as exc:
+        errors.append(f"info: {exc}")
+    try:
+        financials = ticker.financials
+    except Exception as exc:
+        errors.append(f"financials: {exc}")
+    try:
+        balance = ticker.balance_sheet
+    except Exception as exc:
+        errors.append(f"balance_sheet: {exc}")
+    try:
+        cashflow = ticker.cashflow
+    except Exception as exc:
+        errors.append(f"cashflow: {exc}")
+
+    result: dict[str, Any] = {
+        "symbol": symbol,
+        "source": "Yahoo Finance",
+        "provider": "yahoo_finance",
+        "source_status": "AVAILABLE" if (info or financials is not None or balance is not None or cashflow is not None) else "DATA UNAVAILABLE",
+        "source_symbol": ticker_symbol,
+        "endpoint_errors": errors,
+    }
+
+    for key, aliases in {
+        "company_name": ("longName", "shortName"),
+        "sector": ("sector",),
+        "industry": ("industry",),
+    }.items():
+        value = _text(info, aliases)
+        if value:
+            result[key] = value
+
+    eps_info = _number(info.get("trailingEps")) if isinstance(info, dict) else None
+    pe_info = _number(info.get("trailingPE")) if isinstance(info, dict) else None
+    roe_info = _number(info.get("returnOnEquity")) if isinstance(info, dict) else None
+    de_info = _number(info.get("debtToEquity")) if isinstance(info, dict) else None
+    if eps_info is not None:
+        result["eps"] = eps_info
+    if pe_info is not None and pe_info > 0:
+        result["pe"] = pe_info
+    if roe_info is not None:
+        result["roe"] = roe_info * 100.0 if abs(roe_info) <= 2 else roe_info
+    if de_info is not None:
+        result["debt_to_equity"] = de_info / 100.0 if de_info > 10 else de_info
+
+    net_income, prev_net_income, income_series = _series_value(financials, ("Net Income",))
+    eps_latest_stmt, eps_prev_stmt, _ = _series_value(financials, ("Diluted EPS", "Basic EPS"))
+    ebit, _, _ = _series_value(financials, ("EBIT", "Operating Income", "Operating Income Or Loss"))
+    equity, prev_equity, _ = _series_value(balance, ("Stockholders Equity", "Common Stock Equity", "Total Equity Gross Minority Interest"))
+    debt, _, _ = _series_value(balance, ("Total Debt", "Long Term Debt", "Current Debt And Capital Lease Obligation"))
+    cash, _, _ = _series_value(balance, ("Cash Cash Equivalents And Short Term Investments", "Cash And Cash Equivalents"))
+    operating_cash, _, _ = _series_value(cashflow, ("Operating Cash Flow", "Total Cash From Operating Activities"))
+
+    if result.get("eps") is None and eps_latest_stmt is not None:
+        result["eps"] = eps_latest_stmt
+    if result.get("profit") is None and net_income is not None:
+        result["profit"] = net_income
+    if net_income is not None and prev_net_income not in (None, 0):
+        result["profit_growth"] = (net_income / prev_net_income - 1.0) * 100.0
+    if result.get("eps") is not None and eps_prev_stmt not in (None, 0):
+        result["eps_growth"] = (float(result["eps"]) / eps_prev_stmt - 1.0) * 100.0
+    if result.get("debt_to_equity") is None and debt is not None and equity not in (None, 0):
+        result["debt_to_equity"] = debt / equity
+    if result.get("roe") is None and net_income is not None and equity not in (None, 0):
+        base = ((equity + prev_equity) / 2.0) if prev_equity not in (None, 0) else equity
+        result["roe"] = net_income / base * 100.0
+    capital = None
+    if equity is not None:
+        capital = equity + (debt or 0.0) - (cash or 0.0)
+        result["capital"] = capital
+    if ebit is not None and capital not in (None, 0):
+        result["roce"] = ebit / capital * 100.0
+    if operating_cash is not None and net_income not in (None, 0):
+        result["earnings_quality"] = operating_cash / net_income
+
+    price = None
+    if current_price is not None:
+        try:
+            p = float(current_price)
+            if p > 0:
+                price = p
+        except (TypeError, ValueError):
+            price = None
+    if price is None:
+        price = _number(info.get("currentPrice")) if isinstance(info, dict) else None
+    if price is not None:
+        result["current_price"] = price
+        if result.get("eps") not in (None, 0) and not result.get("pe"):
+            result["pe"] = price / float(result["eps"])
+
+    if len(income_series) >= 3 and all(v > 0 for v in income_series):
+        growths = []
+        for idx in range(len(income_series) - 1):
+            previous = income_series[idx + 1]
+            if previous:
+                growths.append((income_series[idx] / previous) - 1.0)
+        if growths:
+            mean = sum(growths) / len(growths)
+            variance = sum((g - mean) ** 2 for g in growths) / len(growths)
+            result["predictability"] = max(0.0, min(1.0, 1.0 - variance ** 0.5))
+
+    required = (
+        "profit_growth", "eps_growth", "roce", "roe", "debt_to_equity",
+        "predictability", "earnings_quality", "pe"
+    )
+    result["missing_provider_fields"] = [key for key in required if key not in result]
+    return result
+
+
+def _twelve_fetch(symbol: str, current_price: float | None = None) -> dict[str, Any]:
     payloads: dict[str, dict[str, Any]] = {}
-    sources: dict[str, str] = {}
-    endpoint_errors: dict[str, str] = {}
+    errors: dict[str, str] = {}
     for endpoint in ("income_statement", "balance_sheet", "cash_flow", "earnings", "profile", "quote"):
         try:
             payload, used_symbol = _request(endpoint, symbol)
             payloads[endpoint] = payload
-            sources[endpoint] = used_symbol
         except Exception as exc:
-            endpoint_errors[endpoint] = str(exc)
+            errors[endpoint] = str(exc)
 
     if not payloads:
-        raise RuntimeError("TWELVEDATA_FUNDAMENTALS_FAILED: " + " | ".join(endpoint_errors.values()))
+        raise RuntimeError("TWELVEDATA_FUNDAMENTALS_FAILED: " + " | ".join(errors.values()))
 
     income = payloads.get("income_statement", {})
     balance = payloads.get("balance_sheet", {})
@@ -173,7 +304,6 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
     earnings = payloads.get("earnings", {})
     profile = payloads.get("profile", {})
     quote = payloads.get("quote", {})
-
     income_rows = _sort_records(_records(income))
     balance_rows = _sort_records(_records(balance))
     cash_rows = _sort_records(_records(cashflow))
@@ -181,13 +311,12 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
 
     result: dict[str, Any] = {
         "symbol": symbol,
-        "source": "Twelve Data financial statements/earnings/profile/quote",
+        "source": "Twelve Data",
+        "provider": "twelve_data",
         "source_status": "AVAILABLE",
         "source_endpoints": sorted(payloads),
-        "source_symbols": sources,
-        "endpoint_errors": endpoint_errors,
+        "endpoint_errors": errors,
     }
-
     profile_name = _text(profile, ("name", "company_name", "symbol_name"))
     profile_sector = _text(profile, ("sector", "sector_name"))
     profile_industry = _text(profile, ("industry", "industry_name"))
@@ -204,52 +333,36 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
     previous_balance = balance_rows[1] if len(balance_rows) > 1 else {}
     latest_cash = cash_rows[0] if cash_rows else {}
     latest_earnings = earning_rows[0] if earning_rows else {}
-
     net_income = _walk(latest_income, ("net_income", "net_income_common_stockholders", "net_income_attributable_to_common_shareholders"))
     previous_net_income = _walk(previous_income, ("net_income", "net_income_common_stockholders", "net_income_attributable_to_common_shareholders"))
     eps = _walk(latest_income, ("diluted_eps", "basic_eps", "eps")) or _walk(latest_earnings, ("eps", "diluted_eps", "eps_actual"))
     previous_eps = _walk(previous_income, ("diluted_eps", "basic_eps", "eps")) or _walk(earning_rows[1] if len(earning_rows) > 1 else {}, ("eps", "diluted_eps", "eps_actual"))
-
     equity = _walk(latest_balance, ("total_equity", "total_shareholders_equity", "stockholders_equity", "shareholders_equity"))
     previous_equity = _walk(previous_balance, ("total_equity", "total_shareholders_equity", "stockholders_equity", "shareholders_equity"))
     debt = _walk(latest_balance, ("total_debt", "long_term_debt", "short_term_debt", "total_borrowings"))
     cash = _walk(latest_balance, ("cash_and_cash_equivalents", "cash_and_short_term_investments", "cash"))
     ebit = _walk(latest_income, ("ebit", "operating_income", "operating_profit"))
     operating_cash = _walk(latest_cash, ("operating_cash_flow", "cash_flow_from_operating_activities", "net_cash_provided_by_operating_activities"))
-
-    fields: dict[str, float | None] = {
+    for key, value in {
         "eps": eps,
         "profit": net_income,
         "capital": (equity or 0.0) + (debt or 0.0) - (cash or 0.0) if equity is not None else None,
         "profit_growth": _growth(net_income, previous_net_income),
         "eps_growth": _growth(eps, previous_eps),
         "debt_to_equity": (debt / equity) if debt is not None and equity not in (None, 0) else None,
-        "roe": (net_income / ((equity + previous_equity) / 2) * 100.0) if net_income is not None and equity is not None and previous_equity not in (None, 0) else ((net_income / equity * 100.0) if net_income is not None and equity not in (None, 0) else None),
+        "roe": (net_income / ((equity + previous_equity) / 2.0) * 100.0) if net_income is not None and equity is not None and previous_equity not in (None, 0) else ((net_income / equity * 100.0) if net_income is not None and equity not in (None, 0) else None),
         "roce": (ebit / ((equity or 0.0) + (debt or 0.0) - (cash or 0.0)) * 100.0) if ebit is not None and ((equity or 0.0) + (debt or 0.0) - (cash or 0.0)) else None,
         "earnings_quality": (operating_cash / net_income) if operating_cash is not None and net_income not in (None, 0) else None,
-    }
-    for key, value in fields.items():
+    }.items():
         if value is not None:
             result[key] = float(value)
-
     provider_price = _walk(quote, ("price", "close", "last_price", "previous_close"))
-    effective_price = None
-    if current_price is not None:
-        try:
-            candidate = float(current_price)
-            if candidate > 0:
-                effective_price = candidate
-        except (TypeError, ValueError):
-            effective_price = None
-    if effective_price is None:
-        effective_price = provider_price
+    effective_price = _number(current_price) if current_price is not None else provider_price
     if effective_price is not None:
         result["current_price"] = float(effective_price)
         if eps not in (None, 0):
             result["pe"] = float(effective_price) / float(eps)
-
-    # Predictability is derived only when at least three source periods exist.
-    profit_series: list[float] = []
+    profit_series = []
     for row in income_rows[:5]:
         value = _walk(row, ("net_income", "net_income_common_stockholders", "net_income_attributable_to_common_shareholders"))
         if value is not None:
@@ -264,22 +377,35 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
             mean = sum(growths) / len(growths)
             variance = sum((g - mean) ** 2 for g in growths) / len(growths)
             result["predictability"] = max(0.0, min(1.0, 1.0 - variance ** 0.5))
-
-    required = (
-        "profit_growth", "eps_growth", "roce", "roe", "debt_to_equity",
-        "predictability", "earnings_quality", "pe"
-    )
-    result["missing_provider_fields"] = [key for key in required if key not in result]
-
-    # Raw responses are retained for auditability only; callers should use
-    # normalized source fields above when building research scores.
-    result["raw_income_statement"] = income
-    result["raw_balance_sheet"] = balance
-    result["raw_cash_flow"] = cashflow
-    result["raw_earnings"] = earnings
-    result["raw_profile"] = profile
-    result["raw_quote"] = quote
+    result["missing_provider_fields"] = [k for k in ("profit_growth", "eps_growth", "roce", "roe", "debt_to_equity", "predictability", "earnings_quality", "pe") if k not in result]
     return result
+
+
+def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+    """Return source-backed fundamentals using Twelve Data, then Yahoo Finance.
+
+    The provider is recorded in the returned payload. No value is invented:
+    unavailable fields remain absent and are surfaced through
+    ``missing_provider_fields``.
+    """
+    symbol = str(symbol).strip().upper()
+    if not symbol:
+        raise ValueError("symbol is required")
+
+    twelve_error = None
+    try:
+        result = _twelve_fetch(symbol, current_price=current_price)
+        return result
+    except Exception as exc:
+        twelve_error = str(exc)
+
+    try:
+        result = _yahoo_fetch(symbol, current_price=current_price)
+        result["fallback_reason"] = twelve_error
+        result["source_status"] = "AVAILABLE" if not result.get("missing_provider_fields") else "PARTIAL"
+        return result
+    except Exception as yahoo_exc:
+        raise RuntimeError(f"FUNDAMENTALS_ALL_PROVIDERS_FAILED: Twelve Data={twelve_error}; Yahoo Finance={yahoo_exc}") from yahoo_exc
 
 
 def _growth(latest: float | None, previous: float | None) -> float | None:
