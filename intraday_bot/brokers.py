@@ -5,7 +5,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -76,11 +76,7 @@ class PaperTradingBroker(BrokerInterface):
 
 
 class DhanBroker(BrokerInterface):
-    """Dhan adapter for the configured long-valid credential.
-
-    DHAN_API_KEY is preferred for the current paper-validation phase. The
-    short-lived DHAN_ACCESS_TOKEN is an optional compatibility fallback only.
-    """
+    """Dhan adapter for the configured market-data credential."""
 
     _rate_lock = threading.Lock()
     _last_quote_call = 0.0
@@ -96,10 +92,6 @@ class DhanBroker(BrokerInterface):
         self.credential_source = settings.dhan_market_data_credential_source
         self.base = settings.dhan_base_url.rstrip("/")
         self.session = requests.Session()
-        # Dhan market APIs use access-token/client-id headers. Sending the
-        # configured API credential in api-key as well is harmless for servers
-        # that ignore unknown headers and supports deployments where the value
-        # is explicitly treated as an API key.
         headers = {
             "access-token": self.token,
             "client-id": self.client_id,
@@ -281,15 +273,9 @@ class DhanBroker(BrokerInterface):
                     if rows:
                         out.update(rows)
                         continue
-                    # A successful HTTP response with no usable rows is still
-                    # a market-data failure; try the lighter LTP endpoint.
                     ltp_rows = self._ltp_batch(exchange_segment, batch)
                     out.update(ltp_rows)
                 except RuntimeError as quote_error:
-                    # Quote and LTP expose the same real-time price universe,
-                    # but Dhan deployments can differ in endpoint permissions.
-                    # Do not fabricate prices: use LTP only when it returns
-                    # actual rows, otherwise surface both errors to Diagnostics.
                     try:
                         ltp_rows = self._ltp_batch(exchange_segment, batch)
                     except Exception as ltp_error:
@@ -303,16 +289,31 @@ class DhanBroker(BrokerInterface):
                     out.update(ltp_rows)
         return out
 
+    @staticmethod
+    def _history_start_date(today: datetime) -> str:
+        """Return a prior weekday far enough back to warm intraday indicators."""
+        cursor = today.date() - timedelta(days=7)
+        while cursor.weekday() >= 5:
+            cursor -= timedelta(days=1)
+        return cursor.isoformat()
+
     def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5) -> pd.DataFrame:
-        """Fetch today's Dhan intraday candles; fromDate/toDate are mandatory."""
+        """Fetch a warm intraday history window ending today.
+
+        The technical engine needs at least 60 five-minute bars. Asking Dhan
+        for today's candles alone makes early-session analysis impossible, so
+        the request includes the preceding weekday window as well. The local
+        runtime still uses only the latest completed/current bar for decisions.
+        """
         now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
         today = now_ist.date().isoformat()
+        from_date = self._history_start_date(now_ist)
         payload = {
             "securityId": str(self._security_id(security_id)),
             "exchangeSegment": str(exchange_segment).strip().upper(),
             "instrument": "EQUITY",
             "interval": str(int(interval)),
-            "fromDate": today,
+            "fromDate": from_date,
             "toDate": today,
         }
         data = self._request("POST", "/v2/charts/intraday", category="data", json=payload)
