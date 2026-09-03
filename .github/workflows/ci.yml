@@ -3,6 +3,9 @@ name: Platform CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - data/**
+      - reports/**
   pull_request:
     branches: [main]
 
