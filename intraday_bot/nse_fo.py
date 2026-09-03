@@ -94,7 +94,7 @@ def fetch_oi_spurts(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SECONDS)
             "symbol": symbol,
             "ltp": _number(_pick(row, "ltp", "lastprice", "lasttradedprice")),
             "change_pct": _number(_pick(row, "pchange", "percentchange", "changepercent")),
-            "oi_change_pct": _number(_pick(row, "pchangeinopeninterest", "percentchangeinopeninterest", "oichangepct", "changeinoipercent")),
+            "oi_change_pct": _number(_pick(row, "pchangeinopeninterest", "pchangeinoi", "percentchangeinopeninterest", "oichangepct", "changeinoipercent")),
             "oi_change": _number(_pick(row, "changeinopeninterest", "changeinoi")),
             "open_interest": _number(_pick(row, "openinterest", "oi")),
             "volume": _number(_pick(row, "volume", "vol")),
@@ -197,7 +197,7 @@ def market_context(force: bool = False) -> dict[str, Any]:
         "total_value_lakhs": total("total_value_lakhs"),
         "signal_counts": signal_counts,
         "top_value_symbols": [
-            {"symbol": r["symbol"], "total_value_lakhs": r["total_value_lakhs"], "signal": oi_context(r["symbol"]) .get("signal", "UNKNOWN")}
+            {"symbol": r["symbol"], "total_value_lakhs": r["total_value_lakhs"], "signal": oi_context(r["symbol"]).get("signal", "UNKNOWN")}
             for r in top_value
         ],
     }
