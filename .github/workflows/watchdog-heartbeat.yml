@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
 
       - name: Write watchdog heartbeat
         shell: bash
@@ -59,28 +61,19 @@ jobs:
           set -euo pipefail
           git config user.name 'stockmarket-bot'
           git config user.email 'actions@users.noreply.github.com'
+
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            git rebase origin/main
-            git add data/watchdog_heartbeat.json
-            if git diff --cached --quiet; then
-              echo 'Watchdog heartbeat already matches persisted state.'
-              exit 0
-            fi
-            git commit -m 'Update independent watchdog heartbeat [skip ci]' || true
-            if git push origin HEAD:main; then
-              echo "Watchdog heartbeat persisted on attempt ${attempt}."
-              exit 0
-            fi
-            git reset --soft origin/main
-            git restore --staged .
-            git checkout -- data/watchdog_heartbeat.json || true
+            git reset --hard origin/main
+
             python - <<'PY'
             import json, os, socket, tempfile
             from datetime import datetime
             from pathlib import Path
             from zoneinfo import ZoneInfo
+
             path = Path('data/watchdog_heartbeat.json')
+            path.parent.mkdir(parents=True, exist_ok=True)
             now = datetime.now(ZoneInfo('Asia/Kolkata'))
             payload = {
                 'state': 'RUNNING',
@@ -101,7 +94,22 @@ jobs:
                 json.dump(payload, f, indent=2)
             os.replace(tmp, path)
             PY
+
+            git add data/watchdog_heartbeat.json
+            if git diff --cached --quiet; then
+              echo 'Watchdog heartbeat unchanged.'
+              exit 0
+            fi
+
+            git commit -m 'Update independent watchdog heartbeat [skip ci]'
+            if git push origin HEAD:main; then
+              echo "Watchdog heartbeat persisted on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "Push race on attempt ${attempt}; retrying."
             sleep 2
           done
+
           echo 'Unable to persist watchdog heartbeat after 5 attempts.'
           exit 1
