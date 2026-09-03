@@ -3,6 +3,10 @@ name: Monitor Scheduler Guard
 on:
   schedule:
     - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/monitor-scheduler-guard.yml'
   workflow_dispatch: {}
 
 concurrency:
