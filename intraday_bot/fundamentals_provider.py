@@ -64,7 +64,12 @@ def _request(endpoint: str, symbol: str, timeout: int = 20) -> dict[str, Any]:
     if not api_key:
         raise RuntimeError("TWELVEDATA_UNAVAILABLE: TWELVEDATA_API_KEY is not configured")
     url = f"{BASE_URL}/{endpoint}"
-    response = requests.get(url, params={"symbol": symbol, "apikey": api_key}, timeout=timeout)
+    provider_symbol = symbol if ":" in symbol else f"NSE:{symbol}"
+    response = requests.get(
+        url,
+        params={"symbol": provider_symbol, "apikey": api_key},
+        timeout=timeout,
+    )
     try:
         payload = response.json()
     except ValueError as exc:
@@ -80,17 +85,17 @@ def _request(endpoint: str, symbol: str, timeout: int = 20) -> dict[str, Any]:
 
 
 def fetch_fundamentals(symbol: str) -> dict[str, Any]:
-    """Fetch only source-supplied financial values; never fabricate missing metrics.
-
-    The provider response is normalized to the exact fields consumed by
-    intraday_bot.research. Metrics absent from the provider remain absent.
-    """
+    """Fetch source-supplied financial values; never fabricate missing metrics."""
     symbol = str(symbol).strip().upper()
     if not symbol:
         raise ValueError("symbol is required")
 
     statistics = _request("statistics", symbol)
-    result: dict[str, Any] = {"symbol": symbol, "source": "Twelve Data", "source_status": "AVAILABLE"}
+    result: dict[str, Any] = {
+        "symbol": symbol,
+        "source": "Twelve Data",
+        "source_status": "AVAILABLE",
+    }
 
     mapping: dict[str, tuple[str, ...]] = {
         "pe": ("pe_ratio", "price_to_earnings", "trailing_pe", "forward_pe", "pe"),
@@ -107,18 +112,21 @@ def fetch_fundamentals(symbol: str) -> dict[str, Any]:
         if value is not None:
             result[output_key] = value
 
-    sector = _first(statistics, "sector_weight_pct", "sector_weight")
-    company = _first(statistics, "company_weight_pct", "company_weight")
+    # SCRAP portfolio-concentration fields are retained only when an explicit
+    # percentage field exists. We do not guess whether a generic weight is a
+    # fraction or a percentage.
+    sector = _first(statistics, "sector_weight_pct")
+    company = _first(statistics, "company_weight_pct")
     if sector is not None:
         result["sector_weight_pct"] = sector
     if company is not None:
         result["company_weight_pct"] = company
 
-    # Relative strength and market trend are intentionally NOT fabricated from
-    # fundamental statistics. They are market/technical inputs and will be
-    # populated by the market-data layer once an index benchmark is available.
+    # Relative strength and market trend are deliberately absent here. They
+    # are market/benchmark inputs, not company-fundamental values.
     result["missing_provider_fields"] = [
-        key for key in (
+        key
+        for key in (
             "profit_growth", "eps_growth", "roce", "roe", "debt_to_equity",
             "predictability", "earnings_quality", "pe"
         )
