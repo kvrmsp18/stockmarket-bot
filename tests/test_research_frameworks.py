@@ -17,6 +17,50 @@ def test_scrap_thresholds_are_strict():
     assert scrap_analysis("X", {"red_flags": ["fraud"]}).rejection_reason == "RED_FLAG"
 
 
+def test_source_scoring_is_nonzero_for_valid_data():
+    data = {
+        "profit_growth": 12.97,
+        "eps_growth": 22.81,
+        "roce": 8.70,
+        "roe": 11.62,
+        "debt_to_equity": 0.30,
+        "earnings_quality": 2.22,
+        "pe": 28.41,
+    }
+    score = research.fundamental_score(data)
+    assert score > 0
+    assert score <= 10
+    assert research.valuation_score(data) > 0
+
+
+def test_frameworks_distinguish_neutral_from_negative():
+    result = framework_analysis({
+        "profit_growth": 5.0,
+        "eps_growth": 5.0,
+        "roce": 8.0,
+        "roe": 8.0,
+        "predictability": 0.6,
+        "earnings_quality": 0.3,
+        "debt_to_equity": 2.0,
+        "pe": 25.0,
+    })
+    buffett = result["frameworks"]["Buffett"]
+    assert "roce" in buffett["neutral_factors"]
+    assert "pe" in buffett["neutral_factors"]
+    assert "debt_to_equity" in buffett["neutral_factors"]
+    assert "earnings_quality" in buffett["neutral_factors"]
+    assert "predictability" in buffett["neutral_factors"]
+    assert "missing_data" in buffett
+    assert result["status"] == "AVAILABLE"
+
+
+def test_negative_growth_remains_negative():
+    result = framework_analysis({"profit_growth": -6.4, "eps_growth": -24.5})
+    for name in ("Buffett", "Rakesh Jhunjhunwala", "Peter Lynch", "100 Baggers", "CANSLIM"):
+        assert "profit_growth" in result["frameworks"][name]["negative_factors"]
+    assert result["frameworks"]["Rakesh Jhunjhunwala"]["score"] < 5
+
+
 def test_source_formulas_remain_separate(monkeypatch):
     monkeypatch.setattr(
         research,
