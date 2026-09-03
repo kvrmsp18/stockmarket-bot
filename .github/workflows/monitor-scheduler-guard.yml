@@ -53,14 +53,14 @@ jobs:
             exit 0
           fi
 
-          if [ "$conclusion" = 'failure' ] && [ "$age" -ge 60 ]; then
+          if [ "$conclusion" = 'failure' ]; then
             echo 'Latest monitor run failed; dispatching a replacement run.'
             gh workflow run "$workflow" --repo "$REPO" --ref main
             exit 0
           fi
 
           if [ "$age" -lt 390 ]; then
-            echo 'A recent monitor run exists; no dispatch needed.'
+            echo 'A recent successful monitor run exists; no dispatch needed.'
             exit 0
           fi
 
