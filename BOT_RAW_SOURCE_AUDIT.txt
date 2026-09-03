@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 954ce7d71dc5dadd3057f0bfa1c429ba133917ab
-Generated UTC: 2026-09-03T10:09:59.021050+00:00
+Commit SHA: 3c5918b9102700d82db4fd70cda0a9abaa5c13cf
+Generated UTC: 2026-09-03T10:16:28.396730+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -16,7 +16,7 @@ FILE INVENTORY
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1097 bytes
 .github/workflows/ci.yml	416 bytes
-.github/workflows/continuous-monitor.yml	13971 bytes
+.github/workflows/continuous-monitor.yml	14288 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	7579 bytes
 .github/workflows/monitor-scheduler-guard.yml	2360 bytes
@@ -258,7 +258,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 13971 bytes
+SIZE: 14288 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -413,7 +413,7 @@ jobs:
 
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env_file:
               env_file.write('DHAN_ACCESS_TOKEN=' + token + '\n')
-          print('Dhan access token prepared for reuse by the cycle.')
+          print('Dhan access token prepared for reuse by subsequent monitor steps.')
 
           try:
               health = DhanBroker().health()
@@ -476,9 +476,12 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
           from intraday_bot.brokers import DhanBroker
 
+          if not os.getenv('DHAN_ACCESS_TOKEN'):
+              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: generated Dhan Access Token was not propagated to verification step')
           universe = json.loads(Path('data/universe.json').read_text(encoding='utf-8'))
           if not universe:
               raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: universe is empty')
@@ -493,6 +496,7 @@ jobs:
           sample = candidates[:10]
           print('Fresh universe symbols:', len(universe))
           print('Fresh universe verification sample:', ', '.join(str(x.get('symbol')) for x in sample))
+          print('Dhan generated access token is available to verification step.')
           try:
               quotes = DhanBroker().bulk_quotes(sample)
           except Exception as exc:
@@ -542,7 +546,7 @@ jobs:
               message = 'Latest complete paper-trading market cycle succeeded'
           elif market_open and cycle_ran:
               state = 'DEGRADED'
-              message = 'Market-cycle invocation failed; inspect Diagnostics'
+              message = 'Market-cycle invocation failed; inspect preflight_status or Diagnostics'
           else:
               state = 'HEARTBEAT_ONLY'
               message = '24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled'
