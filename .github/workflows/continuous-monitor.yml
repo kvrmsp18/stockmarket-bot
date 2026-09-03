@@ -113,28 +113,25 @@ jobs:
           from intraday_bot.brokers import DhanBroker
           from intraday_bot.config import settings
 
-          def fail(message: str) -> None:
-              path = Path('data/monitor_status.json')
-              path.parent.mkdir(parents=True, exist_ok=True)
+          PREFLIGHT_PATH = Path('data/preflight_status.json')
+
+          def write_status(message: str, passed: bool) -> None:
+              PREFLIGHT_PATH.parent.mkdir(parents=True, exist_ok=True)
               now = datetime.now(ZoneInfo('Asia/Kolkata')).isoformat()
               payload = {
-                  'cycle_id': 'PREFLIGHT-' + datetime.now(ZoneInfo('Asia/Kolkata')).strftime('%Y%m%dT%H%M%S%f'),
-                  'started_at': now,
-                  'ended_at': now,
+                  'status': 'PASSED' if passed else 'FAILED',
+                  'message': message,
+                  'updated_at': now,
+                  'source': 'github-actions-dhan-preflight',
+                  'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
                   'mode': 'PAPER',
                   'market_open': os.getenv('MARKET_OPEN') == 'true',
-                  'stocks_observed': 0,
-                  'quotes': 0,
-                  'deep_analysis_pool': 0,
-                  'dynamic_pool': True,
-                  'candidates': [],
-                  'rejections': {},
-                  'rejection_details': [],
-                  'orders': [],
-                  'errors': [message],
-                  'execution_gate': 'PREFLIGHT_FAILED',
+                  'live_order_submission': False,
               }
-              path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
+              PREFLIGHT_PATH.write_text(json.dumps(payload, indent=2), encoding='utf-8')
+
+          def fail(message: str) -> None:
+              write_status(message, False)
               raise SystemExit(message)
 
           print('Dhan credential source:', settings.dhan_market_data_credential_source)
@@ -195,6 +192,8 @@ jobs:
                   print('DHAN_QUOTE_PREFLIGHT_SKIPPED: no mapped security ID')
           else:
               print('DHAN_QUOTE_PREFLIGHT_SKIPPED: DHAN_SECURITY_IDS_JSON not configured')
+
+          write_status('Dhan authentication and market-feed preflight passed', True)
           print('DHAN_AUTH_PREFLIGHT_PASSED')
           PY
 
@@ -222,8 +221,6 @@ jobs:
           if not universe:
               raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: universe is empty')
 
-          # Dhan's public master can contain synthetic NSETEST rows that are
-          # valid master records but do not have live market-feed quotes.
           candidates = [
               item for item in universe
               if 'NSETEST' not in str(item.get('symbol', '')).upper()
