@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 7763c3dce6c919dbd9d6a95f19161f0b03f4602b
-Generated UTC: 2026-09-03T06:11:39.264561+00:00
+Commit SHA: b9f8e715dc764d3613705a09942ba607ff8d2151
+Generated UTC: 2026-09-03T06:22:55.187288+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -18,7 +18,7 @@ FILE INVENTORY
 .github/workflows/ci.yml	363 bytes
 .github/workflows/continuous-monitor.yml	13673 bytes
 .github/workflows/eod-close.yml	1751 bytes
-.github/workflows/export-source-audit.yml	5380 bytes
+.github/workflows/export-source-audit.yml	5415 bytes
 .github/workflows/watchdog-heartbeat.yml	2785 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
@@ -47,7 +47,7 @@ data/paper_trading_journal.jsonl	814 bytes
 data/scheduler_heartbeat.json	351 bytes
 data/trading.db	12640256 bytes
 data/universe.json	307971 bytes
-data/watchdog_heartbeat.json	495 bytes
+data/watchdog_heartbeat.json	488 bytes
 data/worker_heartbeat.json	461 bytes
 deploy/README.md	2755 bytes
 deploy/stockmarket-worker.service	697 bytes
@@ -651,7 +651,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/export-source-audit.yml
-SIZE: 5380 bytes
+SIZE: 5415 bytes
 ====================================================================
 name: Export Source Audit
 
@@ -660,6 +660,8 @@ on:
     branches: [main]
     paths-ignore:
       - BOT_RAW_SOURCE_AUDIT.txt
+      - data/**
+      - reports/**
   workflow_dispatch:
 
 permissions:
@@ -17885,15 +17887,15 @@ SIZE: 307971 bytes
 
 ====================================================================
 FILE: data/watchdog_heartbeat.json
-SIZE: 495 bytes
+SIZE: 488 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "GitHub Actions heartbeat watchdog is active",
-  "updated_at": "2026-09-03T11:11:03.750469+05:30",
+  "updated_at": "2026-09-03T11:49:37+05:30",
   "source": "github-actions-heartbeat-watchdog",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33719886923",
+  "workflow_run_id": "33722694957",
   "event": "schedule",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
