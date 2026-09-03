@@ -1,0 +1,175 @@
+name: Export Source Audit
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - BOT_RAW_SOURCE_AUDIT.txt
+      - data/**
+      - reports/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt --quiet
+
+      - name: Validate source runtime and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile app.py intraday_bot/*.py scripts/*.py
+          PYTHONPATH=. pytest -q
+
+      - name: Generate complete source audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import subprocess
+
+          root = Path('.')
+          sha = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
+          now = datetime.now(timezone.utc).isoformat()
+          excluded_dirs = {'.git', '.venv', 'venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', 'node_modules'}
+          excluded_names = {'BOT_RAW_SOURCE_AUDIT.txt'}
+          binary_ext = {'.png','.jpg','.jpeg','.gif','.webp','.ico','.pdf','.zip','.gz','.tar','.db','.sqlite','.sqlite3','.parquet','.feather','.xlsx','.xls'}
+          max_bytes = 2_000_000
+          files = []
+          for p in sorted(root.rglob('*')):
+              if not p.is_file():
+                  continue
+              rel = p.relative_to(root)
+              if any(part in excluded_dirs for part in rel.parts) or p.name in excluded_names:
+                  continue
+              try:
+                  size = p.stat().st_size
+              except OSError:
+                  continue
+              files.append((rel, size))
+          if not files:
+              raise SystemExit('AUDIT_GENERATION_FAILED: repository file inventory is empty')
+          out = [
+              '====================================================================',
+              'BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT',
+              '====================================================================',
+              'Repository: kvrmsp18/stockmarket-bot',
+              'Branch: main',
+              f'Commit SHA: {sha}',
+              f'Generated UTC: {now}',
+              '',
+              'This file is generated automatically from a fresh checkout of main.',
+              'Secrets are not read or exported. Binary files and large files are listed',
+              'but their raw bytes are not embedded.',
+              '',
+              '====================================================================',
+              'FILE INVENTORY',
+              '====================================================================',
+          ]
+          for rel, size in files:
+              out.append(f'{rel.as_posix()}\t{size} bytes')
+          for rel, size in files:
+              path = root / rel
+              out += ['', '====================================================================', f'FILE: {rel.as_posix()}', f'SIZE: {size} bytes', '====================================================================']
+              if rel.suffix.lower() in binary_ext:
+                  out.append('[BINARY/GENERATED FILE — CONTENT NOT EMBEDDED]')
+                  continue
+              if size > max_bytes:
+                  out.append('[LARGE FILE > 2 MB — CONTENT NOT EMBEDDED]')
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  out.append('[NON-UTF8 FILE — CONTENT NOT EMBEDDED]')
+                  continue
+              except OSError as exc:
+                  out.append(f'[READ ERROR — CONTENT NOT EMBEDDED: {exc}]')
+                  continue
+              out.append(text.rstrip('\n'))
+          audit = '\n'.join(out) + '\n'
+          if len(audit.strip()) < 500:
+              raise SystemExit(f'AUDIT_GENERATION_FAILED: generated audit is unexpectedly small ({len(audit)} bytes)')
+          if 'FILE INVENTORY' not in audit or 'FILE: ' not in audit:
+              raise SystemExit('AUDIT_GENERATION_FAILED: required audit sections are missing')
+          Path('BOT_RAW_SOURCE_AUDIT.txt').write_text(audit, encoding='utf-8')
+          print(f'Generated audit: {len(audit)} bytes across {len(files)} files')
+          PY
+
+      - name: Validate generated audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s BOT_RAW_SOURCE_AUDIT.txt
+          test "$(wc -c < BOT_RAW_SOURCE_AUDIT.txt)" -ge 500
+          grep -q '^FILE INVENTORY$' BOT_RAW_SOURCE_AUDIT.txt
+          grep -q '^FILE: ' BOT_RAW_SOURCE_AUDIT.txt
+          echo "Audit validation passed: $(wc -c < BOT_RAW_SOURCE_AUDIT.txt) bytes"
+
+      - name: Persist audit through GitHub Contents API
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          path='BOT_RAW_SOURCE_AUDIT.txt'
+
+          # Do not put the ~850 KB base64 payload in a command-line argument.
+          # GitHub runners have an argv limit, so build a JSON request body on disk
+          # and pass it to gh with --input.
+          python - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+          content = base64.b64encode(Path('BOT_RAW_SOURCE_AUDIT.txt').read_bytes()).decode('ascii')
+          Path('/tmp/audit-content.b64').write_text(content, encoding='ascii')
+          PY
+
+          for attempt in 1 2 3 4 5; do
+            sha="$(gh api "repos/$REPO/contents/$path" --jq '.sha' 2>/dev/null || true)"
+
+            python - "$sha" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          sha = sys.argv[1]
+          content = Path('/tmp/audit-content.b64').read_text(encoding='ascii')
+          payload = {
+              'message': 'chore: refresh complete raw source audit',
+              'content': content,
+          }
+          if sha:
+              payload['sha'] = sha
+          Path('/tmp/audit-payload.json').write_text(json.dumps(payload), encoding='utf-8')
+          PY
+
+            if gh api --method PUT "repos/$REPO/contents/$path" --input /tmp/audit-payload.json >/dev/null; then
+              echo "Audit persisted successfully on attempt $attempt"
+              exit 0
+            fi
+
+            echo "Audit persistence attempt $attempt failed; retrying..."
+            sleep $((attempt * 2))
+          done
+
+          echo 'Unable to persist complete source audit after 5 attempts.'
+          exit 1
