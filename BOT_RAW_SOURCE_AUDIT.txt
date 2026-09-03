@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 6322b705b826e2991fc728e5e54dd7b4f4dafa19
-Generated UTC: 2026-09-03T04:05:04.681892+00:00
+Commit SHA: 66d5d6c1738aac185ece28b20e3df2948252b977
+Generated UTC: 2026-09-03T05:18:36.728868+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -19,7 +19,7 @@ FILE INVENTORY
 .github/workflows/continuous-monitor.yml	13926 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	5380 bytes
-.github/workflows/watchdog-heartbeat.yml	4037 bytes
+.github/workflows/watchdog-heartbeat.yml	2869 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
 .streamlit/secrets.toml.example	541 bytes
@@ -791,7 +791,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/watchdog-heartbeat.yml
-SIZE: 4037 bytes
+SIZE: 2869 bytes
 ====================================================================
 name: Heartbeat Watchdog
 
@@ -821,34 +821,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import json, os, socket, tempfile
-          from datetime import datetime
-          from pathlib import Path
-          from zoneinfo import ZoneInfo
-
-          path = Path('data/watchdog_heartbeat.json')
-          path.parent.mkdir(parents=True, exist_ok=True)
-          now = datetime.now(ZoneInfo('Asia/Kolkata'))
-          payload = {
-              'state': 'RUNNING',
-              'message': 'GitHub Actions heartbeat watchdog is active',
-              'updated_at': now.isoformat(),
-              'source': 'github-actions-heartbeat-watchdog',
-              'hostname': socket.gethostname(),
-              'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
-              'event': os.getenv('GITHUB_EVENT_NAME'),
-              'heartbeat_interval_seconds': 300,
-              'is_persistent_worker': False,
-              'paper_mode': True,
-              'live_order_submission': False,
-              'note': 'Independent watchdog heartbeat; it does not represent a successful market cycle.'
-          }
-          fd, tmp = tempfile.mkstemp(prefix='watchdog-', suffix='.tmp', dir=str(path.parent))
-          with os.fdopen(fd, 'w', encoding='utf-8') as f:
-              json.dump(payload, f, indent=2)
-          os.replace(tmp, path)
-          PY
+          python -c 'import json,os,socket; from datetime import datetime; from pathlib import Path; from zoneinfo import ZoneInfo; p=Path("data/watchdog_heartbeat.json"); p.parent.mkdir(parents=True,exist_ok=True); n=datetime.now(ZoneInfo("Asia/Kolkata")); payload={"state":"RUNNING","message":"GitHub Actions heartbeat watchdog is active","updated_at":n.isoformat(),"source":"github-actions-heartbeat-watchdog","hostname":socket.gethostname(),"workflow_run_id":os.getenv("GITHUB_RUN_ID"),"event":os.getenv("GITHUB_EVENT_NAME"),"heartbeat_interval_seconds":300,"is_persistent_worker":False,"paper_mode":True,"live_order_submission":False,"note":"Independent watchdog heartbeat; it does not represent a successful market cycle."}; p.write_text(json.dumps(payload,indent=2),encoding="utf-8")'
 
       - name: Persist watchdog heartbeat
         shell: bash
@@ -856,56 +829,19 @@ jobs:
           set -euo pipefail
           git config user.name 'stockmarket-bot'
           git config user.email 'actions@users.noreply.github.com'
-
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-
-            python - <<'PY'
-            import json, os, socket, tempfile
-            from datetime import datetime
-            from pathlib import Path
-            from zoneinfo import ZoneInfo
-
-            path = Path('data/watchdog_heartbeat.json')
-            path.parent.mkdir(parents=True, exist_ok=True)
-            now = datetime.now(ZoneInfo('Asia/Kolkata'))
-            payload = {
-                'state': 'RUNNING',
-                'message': 'GitHub Actions heartbeat watchdog is active',
-                'updated_at': now.isoformat(),
-                'source': 'github-actions-heartbeat-watchdog',
-                'hostname': socket.gethostname(),
-                'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
-                'event': os.getenv('GITHUB_EVENT_NAME'),
-                'heartbeat_interval_seconds': 300,
-                'is_persistent_worker': False,
-                'paper_mode': True,
-                'live_order_submission': False,
-                'note': 'Independent watchdog heartbeat; it does not represent a successful market cycle.'
-            }
-            fd, tmp = tempfile.mkstemp(prefix='watchdog-', suffix='.tmp', dir=str(path.parent))
-            with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                json.dump(payload, f, indent=2)
-            os.replace(tmp, path)
-            PY
-
+            python -c 'import json,os,socket; from datetime import datetime; from pathlib import Path; from zoneinfo import ZoneInfo; p=Path("data/watchdog_heartbeat.json"); p.parent.mkdir(parents=True,exist_ok=True); n=datetime.now(ZoneInfo("Asia/Kolkata")); payload={"state":"RUNNING","message":"GitHub Actions heartbeat watchdog is active","updated_at":n.isoformat(),"source":"github-actions-heartbeat-watchdog","hostname":socket.gethostname(),"workflow_run_id":os.getenv("GITHUB_RUN_ID"),"event":os.getenv("GITHUB_EVENT_NAME"),"heartbeat_interval_seconds":300,"is_persistent_worker":False,"paper_mode":True,"live_order_submission":False,"note":"Independent watchdog heartbeat; it does not represent a successful market cycle."}; p.write_text(json.dumps(payload,indent=2),encoding="utf-8")'
             git add data/watchdog_heartbeat.json
-            if git diff --cached --quiet; then
-              echo 'Watchdog heartbeat unchanged.'
-              exit 0
-            fi
-
-            git commit -m 'Update independent watchdog heartbeat [skip ci]'
+            git commit -m 'Update independent watchdog heartbeat [skip ci]' || true
             if git push origin HEAD:main; then
               echo "Watchdog heartbeat persisted on attempt ${attempt}."
               exit 0
             fi
-
             echo "Push race on attempt ${attempt}; retrying."
             sleep 2
           done
-
           echo 'Unable to persist watchdog heartbeat after 5 attempts.'
           exit 1
 
