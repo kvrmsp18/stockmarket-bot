@@ -209,7 +209,7 @@ jobs:
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
           DHAN_PIN: ${{ secrets.DHAN_PIN }}
           DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
         shell: bash
         run: |
           set -euo pipefail
@@ -221,12 +221,23 @@ jobs:
           universe = json.loads(Path('data/universe.json').read_text(encoding='utf-8'))
           if not universe:
               raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: universe is empty')
-          sample = universe[:10]
+
+          # Dhan's public master can contain synthetic NSETEST rows that are
+          # valid master records but do not have live market-feed quotes.
+          candidates = [
+              item for item in universe
+              if 'NSETEST' not in str(item.get('symbol', '')).upper()
+          ]
+          if not candidates:
+              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: no real equity symbols remain after filtering synthetic rows')
+
+          sample = candidates[:10]
+          print('Fresh universe symbols:', len(universe))
+          print('Fresh universe verification sample:', ', '.join(str(x.get('symbol')) for x in sample))
           try:
               quotes = DhanBroker().bulk_quotes(sample)
           except Exception as exc:
               raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: ' + str(exc))
-          print('Fresh universe symbols:', len(universe))
           print('Fresh universe quote sample:', len(quotes))
           if not quotes:
               raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: fresh universe returned zero quotes')
@@ -241,7 +252,6 @@ jobs:
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
           DHAN_PIN: ${{ secrets.DHAN_PIN }}
           DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
