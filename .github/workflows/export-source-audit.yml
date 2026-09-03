@@ -118,31 +118,60 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          encoded="$(base64 -w0 BOT_RAW_SOURCE_AUDIT.txt)"
-          path='BOT_RAW_SOURCE_AUDIT.txt'
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
 
-          for attempt in 1 2 3 4 5; do
-            sha="$(gh api "repos/$REPO/contents/$path" --jq '.sha' 2>/dev/null || true)"
-            if [ -z "$sha" ]; then
-              echo 'Audit file does not exist yet; creating it.'
-              if gh api --method PUT "repos/$REPO/contents/$path" \
-                -f message='chore: refresh complete raw source audit' \
-                -f content="$encoded" >/dev/null; then
-                echo "Audit persisted successfully on attempt $attempt"
-                exit 0
-              fi
-            else
-              if gh api --method PUT "repos/$REPO/contents/$path" \
-                -f message='chore: refresh complete raw source audit' \
-                -f content="$encoded" \
-                -f sha="$sha" >/dev/null; then
-                echo "Audit persisted successfully on attempt $attempt"
-                exit 0
-              fi
-            fi
-            echo "Audit persistence attempt $attempt failed; retrying..."
-            sleep $((attempt * 2))
-          done
+          repo = os.environ['REPO']
+          token = os.environ['GH_TOKEN']
+          path = 'BOT_RAW_SOURCE_AUDIT.txt'
+          api_url = f'https://api.github.com/repos/{repo}/contents/{path}'
+          content = base64.b64encode(open(path, 'rb').read()).decode('ascii')
 
-          echo 'Unable to persist complete source audit after 5 attempts.'
-          exit 1
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'Content-Type': 'application/json',
+              'User-Agent': 'stockmarket-bot-source-audit',
+          }
+
+          for attempt in range(1, 6):
+              current_sha = None
+              try:
+                  request = urllib.request.Request(api_url, headers=headers, method='GET')
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      current = json.load(response)
+                  current_sha = current.get('sha')
+              except urllib.error.HTTPError as exc:
+                  if exc.code != 404:
+                      raise
+
+              payload = {
+                  'message': 'chore: refresh complete raw source audit',
+                  'content': content,
+              }
+              if current_sha:
+                  payload['sha'] = current_sha
+
+              body = json.dumps(payload).encode('utf-8')
+              request = urllib.request.Request(api_url, data=body, headers=headers, method='PUT')
+              try:
+                  with urllib.request.urlopen(request, timeout=60) as response:
+                      result = json.load(response)
+                  commit_sha = result.get('commit', {}).get('sha', '') if isinstance(result, dict) else ''
+                  print(f'Audit persisted successfully on attempt {attempt}. Commit={commit_sha[:12]}')
+                  break
+              except urllib.error.HTTPError as exc:
+                  detail = exc.read().decode('utf-8', errors='replace')[:500]
+                  print(f'Audit persistence attempt {attempt} failed with HTTP {exc.code}: {detail}')
+                  if attempt == 5:
+                      raise
+                  time.sleep(attempt * 2)
+          else:
+              raise SystemExit('Unable to persist complete source audit after 5 attempts.')
+          PY
