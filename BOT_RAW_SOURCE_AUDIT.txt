@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 14b05990d2b455ac764b7d4158350c9fd936e7f2
-Generated UTC: 2026-09-03T09:47:10.342910+00:00
+Commit SHA: 0a5667f8f5928a70fa3df65430d522d7f7892099
+Generated UTC: 2026-09-03T09:47:39.047886+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -91,7 +91,7 @@ reports/weekly/.gitkeep	1 bytes
 requirements.txt	142 bytes
 scripts/__init__.py	0 bytes
 scripts/eod_report.py	3477 bytes
-scripts/load_universe.py	2067 bytes
+scripts/load_universe.py	2260 bytes
 scripts/run_daily_cycle.py	3428 bytes
 scripts/run_eod_close.py	3034 bytes
 scripts/worker.py	6600 bytes
@@ -21523,7 +21523,7 @@ if __name__ == "__main__":
 
 ====================================================================
 FILE: scripts/load_universe.py
-SIZE: 2067 bytes
+SIZE: 2260 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -21553,6 +21553,9 @@ for row in reader:
     # Complete NSE cash equity only. If Dhan exposes series, EQ is required.
     if exchange!="NSE" or segment!="E" or instrument!="EQUITY" or not symbol or not sid: continue
     if series_key and series not in {"EQ",""}: continue
+    # Dhan's public scrip master can include synthetic NSETEST rows. They are
+    # master-data records, not tradeable NSE cash-equity symbols with quotes.
+    if "NSETEST" in symbol: continue
     if symbol in seen: continue
     seen.add(symbol); universe.append({"symbol":symbol,"security_id":sid,"exchange_segment":"NSE_EQ","series":series or "EQ"})
 universe.sort(key=lambda x:x["symbol"])
