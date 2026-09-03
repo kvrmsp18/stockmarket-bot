@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 56fc511ef3c9122c2c8324ea2d8e20448f4bf5ad
-Generated UTC: 2026-09-03T19:06:22.657278+00:00
+Commit SHA: 8c42bd6dea33b6a8c525c9d4871323cfd3202e7e
+Generated UTC: 2026-09-03T19:17:40.723305+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -22,7 +22,7 @@ FILE INVENTORY
 .streamlit/config.toml	199 bytes
 .streamlit/secrets.toml.example	541 bytes
 Dockerfile	229 bytes
-README.md	6619 bytes
+README.md	11801 bytes
 SOURCE_RULES.md	9145 bytes
 app.py	19511 bytes
 config/risk.yaml	244 bytes
@@ -906,98 +906,185 @@ CMD ["/app/start.sh"]
 
 ====================================================================
 FILE: README.md
-SIZE: 6619 bytes
+SIZE: 11801 bytes
 ====================================================================
-# NSE/BSE Intraday AI Trading Desk — New Build
+# NSE/BSE Intraday AI Trading Desk — Paper Trading Build
 
-This repository implements the production-oriented paper-trading architecture based on the supplied 128-section specification. Source-derived rules are traced in `SOURCE_RULES.md`.
+This repository implements the production-oriented **paper-trading** architecture for the NSE/BSE intraday research and monitoring desk. Source-derived rules are traced in `SOURCE_RULES.md`.
+
+> **Current status:** paper trading only. Live trading is disabled. The system is being validated through GitHub Actions, Dhan market data, source-backed fundamentals, NSE derivatives/pre-open context, deterministic technical/risk gates, and optional AI advisory.
 
 ## Non-negotiable safety defaults
 
 - **PAPER TRADING = ON**
 - **LIVE TRADING = OFF**
 - No arbitrary stock-price cap.
-- Minimum configured risk/reward defaults to **1:3**.
-- Trend Score is transparent and uses source defaults **>7 = BULLISH, <4 = BEARISH**.
+- Minimum configured risk/reward default is **1:3**.
+- Trend Score is transparent: **>7 = BULLISH, <4 = BEARISH**.
 - SCRAP preserves **SECTORS >15%, COMPANIES >25%, RED FLAGS → REJECTION**.
-- Missing data is `DATA_UNAVAILABLE`, not silently negative.
-- AI is advisory only and cannot override deterministic risk, funds, data, execution or reconciliation gates.
-- Paper sizing uses the configured virtual reference capital (**₹1,000**).
-- Paper-validation risk limits are scaled to the ₹1,000 virtual account: **₹20 daily loss limit** and **₹800 maximum single-position exposure**, unless explicitly overridden through secrets.
+- Missing/failed external data is represented as **`DATA UNAVAILABLE`** rather than silently converted into a negative score.
+- AI is advisory only and cannot override deterministic data, risk, funds, execution, or reconciliation gates.
+- Paper sizing uses the configured virtual reference capital of **₹1,000**.
+- Paper-validation risk limits are scaled to the ₹1,000 virtual account: **₹20 daily loss limit** and **₹800 maximum single-position exposure**, unless explicitly overridden through configuration/secrets.
 - Maximum **2 filled simulated entries per IST trading day**.
+- The broker adapter contains a live-order path, but the active configuration keeps live trading disabled.
 
-## Dhan authentication for the current paper phase
+## Dhan authentication
 
-The Bot uses the user's longer-valid Dhan credential stored in the `DHAN_API_KEY` GitHub/Streamlit secret together with `DHAN_CLIENT_ID`. `DHAN_ACCESS_TOKEN` is the short-lived 24-hour credential and is intentionally **not used anywhere in the active paper path**.
+The active Dhan integration uses a **Dhan Access Token** for authenticated market-data/API requests. The repository configuration supports:
 
-For the Dhan REST endpoints used by this Bot, the credential value is sent through Dhan's `access-token` authentication header. Therefore, the value placed in `DHAN_API_KEY` must be the Dhan credential that Dhan accepts for that header. A generic API key/secret pair cannot be silently converted into an access token by the Bot.
+- `DHAN_CLIENT_ID`
+- `DHAN_API_KEY`
+- `DHAN_API_SECRET`
+- `DHAN_PIN`
+- `DHAN_TOTP_SECRET`
+- `DHAN_ACCESS_TOKEN`
+- `DHAN_SECURITY_IDS_JSON`
 
-The previous GitHub Actions failure was **HTTP 401 / error `DH-901`**: `Client ID or user generated access token is invalid or expired.` That run was using `DHAN_ACCESS_TOKEN` because the code gave that secret precedence over `DHAN_API_KEY`. The active configuration has now been changed so `DHAN_API_KEY` is the sole Dhan credential source and the workflow no longer injects `DHAN_ACCESS_TOKEN`.
+`DHAN_ACCESS_TOKEN` is preferred when supplied. When it is not supplied, the current paper runtime can fall back to the Dhan PIN + TOTP token-generation path. The API Key + API Secret are retained for the Dhan consent/OAuth authentication path, but an API key/secret pair is **not itself** the bearer credential used on the authenticated market-data endpoints.
 
-The Dhan preflight validates account authentication and, when `DHAN_SECURITY_IDS_JSON` contains a mapped security ID, validates the actual market-feed path before the expensive cycle. The market-feed adapter also has an LTP fallback when the quote endpoint itself is unavailable. Credentials remain in GitHub Actions/Streamlit secrets and are never committed to source.
+The GitHub Actions preflight validates the Dhan credential before the expensive analysis cycle and can validate a mapped market-feed security ID when `DHAN_SECURITY_IDS_JSON` is available. The workflow also avoids unnecessarily regenerating the same short-lived token within a runner. Credentials are stored only in GitHub/Streamlit secrets and are never committed to source.
 
-## Architecture
+## Market-data and research pipeline
 
 ```text
-Complete NSE/BSE cash-equity universe
+Complete NSE cash-equity universe
         ↓
-Bulk market observation (fast)
+Dhan bulk market observation
         ↓
-Bounded high-information rotating shortlist
+Data-quality / authentication gate
         ↓
-5-minute candles / technicals
+Full-universe ranking
         ↓
-SCRAP + fundamentals + valuation + conviction
+Dynamic rotating deep-analysis pool
         ↓
-Optional AI advisory on top shortlist
+5-minute candles / technical structure
         ↓
-Transparent ranking
+SCRAP + fundamentals + valuation
+        ↓
+Buffett + Jhunjhunwala + Lynch + 100 Baggers + CANSLIM research
+        ↓
+NSE pre-open / breadth context
+        ↓
+NSE derivatives / OI-spurt context
+        ↓
+Event & news risk confirmation layer
+        ↓
+Optional AI advisory / consensus
+        ↓
+Transparent score + setup validation
         ↓
 Entry / Stop / Target / R:R
         ↓
-Quantity: risk ∧ funds ∧ position ∧ liquidity ∧ broker
+Deterministic risk / funds / liquidity / portfolio gates
         ↓
-Portfolio deployment / daily-loss / sector / duplicate gates
-        ↓
-Paper execution / guarded Live adapter
+Paper execution
         ↓
 Position monitoring / STOP / TARGET / EOD square-off
         ↓
-P&L / journal / reconciliation / reports / Telegram
+P&L / journal / reconciliation / reporting / Telegram
 ```
 
-The complete universe is observed using a bulk quote stage. Expensive per-symbol candle/research work is bounded to the highest-information rotating shortlist so a scheduled cycle remains within the workflow budget.
+### Full-universe observation, bounded deep analysis
 
-## Runtime entry point
+The monitor observes the complete configured NSE cash-equity universe through a bulk quote stage. Expensive historical candles and research are then limited to a **dynamic rotating shortlist** selected from the full quoted universe. This avoids maintaining a permanent hard-coded stock whitelist while keeping each five-minute scheduled cycle within a practical execution budget.
 
-`intraday_bot/runtime.py` is the **only active runtime implementation**. `scripts/run_daily_cycle.py` invokes its `run_cycle()` function. The obsolete parallel `runtime_v2.py` implementation has been removed so future fixes cannot accidentally be made to an inactive engine.
+### NSE pre-open context
+
+`intraday_bot/nse_preopen.py` is designed to consume NSE pre-open market data and normalize opening evidence such as indicative price, previous close, percentage change, and breadth. It classifies the opening environment as bullish, bearish, or mixed when the source data supports that classification.
+
+Pre-open information is **context only**. It is not a standalone trade trigger.
+
+### NSE derivatives / OI context
+
+`intraday_bot/nse_fo.py` consumes NSE OI-spurt/derivatives context when the source feed is reachable. It normalizes source-returned OI, volume and derivatives-value fields and can classify price/OI combinations such as:
+
+- `LONG_BUILDUP`
+- `SHORT_BUILDUP`
+- `SHORT_COVERING`
+- `LONG_UNWINDING`
+- `UNKNOWN`
+
+OI context is a secondary confirmation/research layer and does **not** independently create a trade.
+
+### Fundamentals and valuation
+
+The research layer uses the persisted fundamentals cache and source-backed provider pipeline. Missing fundamentals remain `DATA UNAVAILABLE`. The design supports Twelve Data where the configured plan/endpoints provide the required information and a Yahoo Finance/yfinance fallback where appropriate.
+
+Fundamental and valuation evidence is research context, not a substitute for the intraday technical setup. Financial-sector companies also require sector-aware interpretation because generic industrial ratios such as ROCE/debt-to-equity can be misleading for banks and other financial-services businesses.
+
+### Framework research
+
+The research engine incorporates evidence from the requested long-term investing frameworks:
+
+- **Warren Buffett** — quality, economics, durability and valuation evidence.
+- **Rakesh Jhunjhunwala** — growth, operating leverage, management/business conviction and scalable opportunity.
+- **Peter Lynch** — growth relative to valuation and business-category characteristics.
+- **100 Baggers** — long-duration compounding characteristics and business quality.
+- **CANSLIM / William O'Neil** — growth, earnings/momentum and market-leadership evidence.
+
+These frameworks are used as **research/conviction inputs**, not as standalone intraday entry signals.
+
+### Event & News Risk layer
+
+The intended event/news layer is a **secondary confirmation and risk-control component**. News is not allowed to override deterministic technical/risk rules or manufacture a trade when market data is missing. High-impact event/news conditions should increase caution or reject an otherwise marginal setup rather than become an independent buy/sell trigger.
+
+## Runtime implementation
+
+`intraday_bot/runtime.py` is the active end-to-end runtime implementation. `scripts/run_daily_cycle.py` invokes its `run_cycle()` entry point.
+
+The runtime performs, in order, universe loading, quote collection, ranking, bounded deep analysis, technical setup validation, deterministic risk checks, paper execution/position management, state persistence and reporting. It also records rejected signals rather than silently discarding them.
+
+## GitHub Actions runtime
+
+The free paper deployment uses GitHub Actions as the scheduler/heartbeat. The active runtime workflows are:
+
+- `.github/workflows/continuous-monitor.yml` — scheduled monitor/heartbeat and intraday paper cycle.
+- `.github/workflows/eod-close.yml` — end-of-day paper-position close/reporting.
+- `.github/workflows/export-source-audit.yml` — source validation/audit workflow used to verify the repository and persist a current raw-source audit.
+
+The monitor is scheduled on a five-minute cadence across the week. During the NSE market window it runs the market-data and paper-trading cycle. Outside the market window it records heartbeat state and reports `HEARTBEAT_ONLY`; it does not invent market data or trades.
+
+GitHub Actions scheduling is a **best-effort scheduler**, not a guaranteed real-time process. A true persistent worker remains the production option for later live deployment.
+
+## Validation status
+
+The source-audit workflow currently validates Python compilation and the repository test suite. The latest successful audit run validated:
+
+- `python -m py_compile app.py intraday_bot/*.py scripts/*.py`
+- `PYTHONPATH=. pytest -q`
+- **52 tests passed**
+- Complete source-audit generation and GitHub Contents API persistence succeeded.
+
+This validates the codebase at the audited commit; it does **not** claim that external market-data services are permanently available or that GitHub Actions provides guaranteed five-minute execution.
 
 ## Repository layout
 
-- `intraday_bot/config.py` — configuration and safety defaults
+- `intraday_bot/config.py` — configuration, credentials and safety defaults
 - `intraday_bot/database.py` — SQLite persistence and audit events
-- `intraday_bot/brokers.py` — BrokerInterface, DhanBroker, PaperTradingBroker
-- `intraday_bot/technical.py` — indicators, Trend Score, intraday setup
-- `intraday_bot/research.py` — SCRAP, fundamentals, valuation, Buffett/Jhunjhunwala/Lynch/100 Baggers/CANSLIM conviction evidence
-- `intraday_bot/ai_advisor.py` — optional OpenAI/Anthropic advisory layer
+- `intraday_bot/brokers.py` — broker abstraction, Dhan integration and paper broker
+- `intraday_bot/technical.py` — indicators, Trend Score and intraday setup
+- `intraday_bot/research.py` — SCRAP, fundamentals, valuation and framework research
+- `intraday_bot/nse_preopen.py` — NSE pre-open/breadth context adapter
+- `intraday_bot/nse_fo.py` — NSE derivatives/OI-spurt context adapter
+- `intraday_bot/fundamentals_cache.py` — persisted fundamentals cache/refresh layer
+- `intraday_bot/fundamentals_provider.py` — source-backed fundamentals provider/fallbacks
+- `intraday_bot/ai_advisor.py` — optional AI advisory layer
 - `intraday_bot/alerts.py` — Telegram delivery
 - `intraday_bot/runtime.py` — bounded end-to-end monitor cycle and execution gates
-- `scripts/load_universe.py` — complete NSE cash-equity universe loader
+- `scripts/load_universe.py` — NSE cash-equity universe loader
 - `scripts/run_daily_cycle.py` — scheduled cycle entry point
-- `scripts/run_eod_close.py` — EOD paper-position close and validation report
-- `scripts/eod_report.py` — authoritative daily paper P&L report from the intraday ledger
-- `scripts/worker.py` — independent always-on worker for a Linux/VPS deployment later
-- `app.py` — Streamlit trading desk UI and live chart interface
-- `src/` — legacy/compatibility validation layer retained because current validation tests still import it
-- `tests/` — automated platform, validation, framework, worker and runtime-safety tests
+- `scripts/run_eod_close.py` — EOD paper-position close
+- `scripts/eod_report.py` — daily paper P&L/report generation
+- `scripts/worker.py` — independent always-on worker for a later Linux/VPS deployment
+- `app.py` — Streamlit trading desk UI
+- `src/` — legacy/compatibility validation layer retained where current tests import it
+- `tests/` — automated validation and safety tests
 - `SOURCE_RULES.md` — source/engineering rule traceability
-- `.github/workflows/continuous-monitor.yml` — five-minute scheduled monitor/heartbeat, every day
-- `.github/workflows/eod-close.yml` — scheduled EOD paper close
-- `.github/workflows/export-source-audit.yml` — complete source audit and validation
 
 ## Complete NSE universe
 
-`load_universe.py` downloads Dhan's public security master and keeps only NSE cash-equity rows. When the series column is available, only `EQ` is retained. The job refuses to continue with a suspiciously small universe rather than silently substituting a fixed stock list.
+`load_universe.py` downloads Dhan's public security master and keeps the NSE cash-equity universe. When the series column is available, only `EQ` is retained. The loader refuses to continue with a suspiciously small universe rather than silently substituting a fixed stock list.
 
 ## Running locally
 
@@ -1010,11 +1097,25 @@ python scripts/load_universe.py
 python scripts/run_daily_cycle.py
 ```
 
+For Streamlit:
+
+```bash
+streamlit run app.py
+```
+
+Credentials should be entered through the deployment's secret/configuration mechanism, never committed to Git.
+
+## Paper-trading operating model
+
+The project is deliberately being validated in paper mode before any consideration of live orders. A simulated entry must pass the technical setup, minimum R:R, funds/position sizing, liquidity, portfolio exposure, duplicate-position and daily risk gates. Positions are monitored for stop, target and end-of-day square-off, with P&L and charges recorded in the ledger.
+
+The ₹1,000 reference account is a **virtual validation account**. It does not represent the user's real Dhan cash balance and does not authorize real-market orders.
+
 ## 24/7 free-tier behavior
 
-The free paper deployment uses GitHub Actions as a five-minute scheduler/heartbeat rather than pretending that Streamlit Community Cloud is a persistent background worker. The monitor is scheduled every five minutes **seven days a week**. During NSE market hours it runs the complete paper cycle. Outside the market window it continues the scheduler heartbeat and explicitly reports `HEARTBEAT_ONLY`; it does not invent market data or trades. The Streamlit dashboard distinguishes scheduler liveness from a successfully completed market cycle.
+The intended free-tier design is a five-minute **scheduler/heartbeat**, not a claim that Streamlit Community Cloud is a persistent background worker. During market hours the monitor performs the configured paper cycle; outside market hours it continues heartbeat/state handling and waits for the next valid market window.
 
-This is the correct free-tier architecture for the current paper-validation phase. A persistent Linux worker remains the production option for live trading later.
+For production/live operation later, the architecture should move the persistent worker to a Linux/VPS-style environment and retain the same deterministic safety gates, reconciliation, monitoring and audit trail.
 
 ====================================================================
 FILE: SOURCE_RULES.md
@@ -1637,9 +1738,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T00:30:39.076357+05:30",
+  "updated_at": "2026-09-04T00:44:40.049132+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33793882064",
+  "workflow_run_id": "33795272663",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17520,10 +17621,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-04T00:30:39.159795+05:30",
+  "updated_at": "2026-09-04T00:44:40.122061+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmejwal",
-  "workflow_run_id": "33793882064",
+  "hostname": "runnervmgx7h7",
+  "workflow_run_id": "33795272663",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
