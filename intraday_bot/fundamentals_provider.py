@@ -34,6 +34,24 @@ def _number(value: Any) -> float | None:
         return None
 
 
+def _text(obj: Any, aliases: tuple[str, ...]) -> str | None:
+    wanted = {_norm_key(x) for x in aliases}
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if _norm_key(key) in wanted and value not in (None, ""):
+                return str(value).strip()
+        for value in obj.values():
+            found = _text(value, aliases)
+            if found:
+                return found
+    elif isinstance(obj, list):
+        for value in obj:
+            found = _text(value, aliases)
+            if found:
+                return found
+    return None
+
+
 def _norm_key(value: Any) -> str:
     return str(value).lower().replace(" ", "_").replace("-", "_").replace("/", "_")
 
@@ -59,7 +77,7 @@ def _walk(obj: Any, aliases: tuple[str, ...]) -> float | None:
 
 
 def _records(payload: Any) -> list[dict[str, Any]]:
-    """Find the provider's tabular financial records recursively."""
+    """Find tabular financial records recursively."""
     if isinstance(payload, list):
         return [x for x in payload if isinstance(x, dict)]
     if isinstance(payload, dict):
@@ -105,7 +123,7 @@ def _request(endpoint: str, symbol: str, timeout: int = 20) -> tuple[dict[str, A
             response = requests.get(f"{BASE_URL}/{endpoint}", params=params, timeout=timeout)
             try:
                 payload = response.json()
-            except ValueError as exc:
+            except ValueError:
                 errors.append(f"{response.status_code}: non-JSON response")
                 continue
             if response.status_code >= 400:
@@ -122,27 +140,12 @@ def _request(endpoint: str, symbol: str, timeout: int = 20) -> tuple[dict[str, A
     raise RuntimeError(f"TWELVEDATA_{endpoint.upper()}_FAILED: " + " | ".join(errors))
 
 
-def _latest_and_previous(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    rows = _sort_records(_records(payload))
-    return (rows[0], rows[1] if len(rows) > 1 else None) if rows else ({}, None)
+def fetch_fundamentals(symbol: str) -> dict[str, Any]:
+    """Fetch source-backed financial data without Twelve Data's paid statistics endpoint.
 
-
-def _latest_value(payload: dict[str, Any], aliases: tuple[str, ...]) -> float | None:
-    latest, _ = _latest_and_previous(payload)
-    return _walk(latest, aliases) if latest else _walk(payload, aliases)
-
-
-def _growth(latest: float | None, previous: float | None) -> float | None:
-    if latest is None or previous in (None, 0):
-        return None
-    return (latest / previous - 1.0) * 100.0
-
-
-def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[str, Any]:
-    """Fetch source-backed financial data without using Twelve Data's paid statistics endpoint.
-
-    The adapter uses the statement/earnings/profile endpoints and derives ratios
-    only from source-supplied values. Missing source values stay missing.
+    Statement ratios are calculated only from values returned by the provider.
+    Relative strength and market trend are intentionally excluded because they
+    belong to the market/technical layer.
     """
     symbol = str(symbol).strip().upper()
     if not symbol:
@@ -151,7 +154,7 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
     payloads: dict[str, dict[str, Any]] = {}
     sources: dict[str, str] = {}
     endpoint_errors: dict[str, str] = {}
-    for endpoint in ("income_statement", "balance_sheet", "cash_flow", "earnings", "profile"):
+    for endpoint in ("income_statement", "balance_sheet", "cash_flow", "earnings", "profile", "quote"):
         try:
             payload, used_symbol = _request(endpoint, symbol)
             payloads[endpoint] = payload
@@ -167,6 +170,7 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
     cashflow = payloads.get("cash_flow", {})
     earnings = payloads.get("earnings", {})
     profile = payloads.get("profile", {})
+    quote = payloads.get("quote", {})
 
     income_rows = _sort_records(_records(income))
     balance_rows = _sort_records(_records(balance))
@@ -175,12 +179,22 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
 
     result: dict[str, Any] = {
         "symbol": symbol,
-        "source": "Twelve Data financial statements/earnings/profile",
+        "source": "Twelve Data financial statements/earnings/profile/quote",
         "source_status": "AVAILABLE",
         "source_endpoints": sorted(payloads),
-        "source_symbol": next(iter(sources.values()), symbol),
+        "source_symbols": sources,
         "endpoint_errors": endpoint_errors,
     }
+
+    profile_name = _text(profile, ("name", "company_name", "symbol_name"))
+    profile_sector = _text(profile, ("sector", "sector_name"))
+    profile_industry = _text(profile, ("industry", "industry_name"))
+    if profile_name:
+        result["company_name"] = profile_name
+    if profile_sector:
+        result["sector"] = profile_sector
+    if profile_industry:
+        result["industry"] = profile_industry
 
     latest_income = income_rows[0] if income_rows else {}
     previous_income = income_rows[1] if len(income_rows) > 1 else {}
@@ -200,8 +214,6 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
     cash = _walk(latest_balance, ("cash_and_cash_equivalents", "cash_and_short_term_investments", "cash"))
     ebit = _walk(latest_income, ("ebit", "operating_income", "operating_profit"))
     operating_cash = _walk(latest_cash, ("operating_cash_flow", "cash_flow_from_operating_activities", "net_cash_provided_by_operating_activities"))
-    sector_value = _walk(profile, ("sector_weight_pct",))
-    company_value = _walk(profile, ("company_weight_pct",))
 
     fields: dict[str, float | None] = {
         "eps": eps,
@@ -218,43 +230,47 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
         if value is not None:
             result[key] = float(value)
 
-    if current_price is not None and eps not in (None, 0):
-        result["pe"] = float(current_price) / float(eps)
+    current_price = _walk(quote, ("price", "close", "last_price", "previous_close"))
+    if current_price is not None:
         result["current_price"] = float(current_price)
+        if eps not in (None, 0):
+            result["pe"] = float(current_price) / float(eps)
 
     # Predictability is derived only when at least three source periods exist.
-    income_profit_series = []
+    profit_series: list[float] = []
     for row in income_rows[:5]:
         value = _walk(row, ("net_income", "net_income_common_stockholders", "net_income_attributable_to_common_shareholders"))
         if value is not None:
-            income_profit_series.append(value)
-    if len(income_profit_series) >= 3 and all(v > 0 for v in income_profit_series):
+            profit_series.append(value)
+    if len(profit_series) >= 3 and all(v > 0 for v in profit_series):
         growths = []
-        for idx in range(len(income_profit_series) - 1):
-            prev = income_profit_series[idx + 1]
-            if prev:
-                growths.append((income_profit_series[idx] / prev) - 1.0)
+        for idx in range(len(profit_series) - 1):
+            previous = profit_series[idx + 1]
+            if previous:
+                growths.append((profit_series[idx] / previous) - 1.0)
         if growths:
             mean = sum(growths) / len(growths)
             variance = sum((g - mean) ** 2 for g in growths) / len(growths)
-            volatility = variance ** 0.5
-            result["predictability"] = max(0.0, min(1.0, 1.0 - volatility))
-
-    # Keep these only where an explicit provider field exists. Do not guess percentages.
-    if sector_value is not None:
-        result["sector_weight_pct"] = sector_value
-    if company_value is not None:
-        result["company_weight_pct"] = company_value
+            result["predictability"] = max(0.0, min(1.0, 1.0 - variance ** 0.5))
 
     required = (
         "profit_growth", "eps_growth", "roce", "roe", "debt_to_equity",
         "predictability", "earnings_quality", "pe"
     )
     result["missing_provider_fields"] = [key for key in required if key not in result]
-    # Preserve compact raw evidence for auditability without turning it into trading input.
+
+    # Raw responses are retained for auditability only; callers should use
+    # normalized source fields above when building research scores.
     result["raw_income_statement"] = income
     result["raw_balance_sheet"] = balance
     result["raw_cash_flow"] = cashflow
     result["raw_earnings"] = earnings
     result["raw_profile"] = profile
+    result["raw_quote"] = quote
     return result
+
+
+def _growth(latest: float | None, previous: float | None) -> float | None:
+    if latest is None or previous in (None, 0):
+        return None
+    return (latest / previous - 1.0) * 100.0
