@@ -3,15 +3,6 @@ name: Complete Intraday Monitor
 on:
   schedule:
     - cron: '*/5 * * * *'
-  push:
-    branches: [main]
-    paths:
-      - 'app.py'
-      - 'intraday_bot/**'
-      - 'scripts/**'
-      - 'config/**'
-      - '.github/workflows/continuous-monitor.yml'
-      - 'requirements.txt'
   workflow_dispatch: {}
 
 concurrency:
@@ -227,7 +218,6 @@ jobs:
           import json
           from pathlib import Path
           from intraday_bot.brokers import DhanBroker
-          from intraday_bot.config import settings
 
           universe = json.loads(Path('data/universe.json').read_text(encoding='utf-8'))
           if not universe:
