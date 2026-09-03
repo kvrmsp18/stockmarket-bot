@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 3c5918b9102700d82db4fd70cda0a9abaa5c13cf
-Generated UTC: 2026-09-03T10:16:28.396730+00:00
+Commit SHA: 2726fea4412b95c6f49d5b0311cd7ea65a546396
+Generated UTC: 2026-09-03T18:11:28.500630+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -15,35 +15,25 @@ FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1097 bytes
-.github/workflows/ci.yml	416 bytes
-.github/workflows/continuous-monitor.yml	14288 bytes
+.github/workflows/continuous-monitor.yml	14526 bytes
 .github/workflows/eod-close.yml	1751 bytes
-.github/workflows/export-source-audit.yml	7579 bytes
-.github/workflows/monitor-scheduler-guard.yml	2360 bytes
-.github/workflows/watchdog-heartbeat.yml	2785 bytes
+.github/workflows/export-source-audit.yml	6958 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
 .streamlit/secrets.toml.example	541 bytes
 Dockerfile	229 bytes
 README.md	6619 bytes
 SOURCE_RULES.md	9145 bytes
-app.py	21180 bytes
+app.py	19511 bytes
 config/risk.yaml	244 bytes
 config/settings.yaml	303 bytes
 config/strategy.yaml	451 bytes
 config/validation_criteria.json	1063 bytes
 dashboard/__init__.py	0 bytes
 dashboard/app.py	742 bytes
-dashboard/pages/00_TOTP_Diagnostic.py	201 bytes
-dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py	290 bytes
-dashboard/pages/02_Dhan_PIN_Diagnostic.py	281 bytes
-dashboard/pages/03_Dhan_Credential_Pair_Diagnostic.py	293 bytes
-dashboard/pages/04_Dhan_JSON_Body_Auth_Diagnostic.py	292 bytes
-dashboard/pages/04_Dhan_Official_SDK_Auth_Diagnostic.py	295 bytes
-dashboard/pages/05_Dhan_API_Key_Consent_Diagnostic.py	293 bytes
-dashboard/pages/06_Dhan_OAuth_Browser_Login_Diagnostic.py	297 bytes
 data/.gitkeep	1 bytes
-data/monitor_status.json	558 bytes
+data/last_successful_market_status.json	544 bytes
+data/monitor_status.json	645 bytes
 data/paper_trading_journal.jsonl	814 bytes
 data/scheduler_heartbeat.json	351 bytes
 data/trading.db	14508032 bytes
@@ -59,16 +49,21 @@ intraday_bot/ai_advisor.py	2731 bytes
 intraday_bot/alerts.py	860 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
-intraday_bot/brokers.py	15040 bytes
+intraday_bot/brokers.py	16531 bytes
 intraday_bot/config.py	5891 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/dhan_auth.py	5905 bytes
 intraday_bot/engine.py	16163 bytes
+intraday_bot/event_news_risk.py	7648 bytes
+intraday_bot/fundamentals_cache.py	4100 bytes
+intraday_bot/fundamentals_provider.py	17997 bytes
 intraday_bot/news.py	830 bytes
+intraday_bot/nse_fo.py	8158 bytes
+intraday_bot/nse_preopen.py	7712 bytes
 intraday_bot/paper.py	1447 bytes
-intraday_bot/research.py	8014 bytes
+intraday_bot/research.py	12396 bytes
 intraday_bot/risk.py	4581 bytes
-intraday_bot/runtime.py	21507 bytes
+intraday_bot/runtime.py	23403 bytes
 intraday_bot/safety.py	715 bytes
 intraday_bot/technical.py	4484 bytes
 pages/00_TOTP_Diagnostic.py	3165 bytes
@@ -88,7 +83,7 @@ reports/daily/2026-09-01.json	323 bytes
 reports/daily/2026-09-02.json	323 bytes
 reports/readiness/.gitkeep	1 bytes
 reports/weekly/.gitkeep	1 bytes
-requirements.txt	142 bytes
+requirements.txt	159 bytes
 scripts/__init__.py	0 bytes
 scripts/eod_report.py	3477 bytes
 scripts/load_universe.py	2260 bytes
@@ -133,8 +128,13 @@ src/validation_store.py	2407 bytes
 start.sh	504 bytes
 tests/__init__.py	0 bytes
 tests/test_dhan_market_data.py	734 bytes
+tests/test_event_news_risk.py	1226 bytes
+tests/test_fundamentals_cache.py	1331 bytes
+tests/test_fundamentals_provider.py	5395 bytes
+tests/test_nse_fo.py	2538 bytes
+tests/test_nse_preopen.py	2547 bytes
 tests/test_platform.py	2236 bytes
-tests/test_research_frameworks.py	1267 bytes
+tests/test_research_frameworks.py	3665 bytes
 tests/test_run_daily_cycle.py	4389 bytes
 tests/test_runtime_safety.py	1812 bytes
 tests/test_validation_gate.py	7134 bytes
@@ -230,35 +230,8 @@ SQUARE_OFF_HOUR=15
 SQUARE_OFF_MINUTE=20
 
 ====================================================================
-FILE: .github/workflows/ci.yml
-SIZE: 416 bytes
-====================================================================
-name: Platform CI
-
-on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - data/**
-      - reports/**
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: pip
-      - run: pip install -r requirements.txt
-      - run: PYTHONPATH=. pytest -q
-
-====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 14288 bytes
+SIZE: 14526 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -280,6 +253,8 @@ env:
   SCAN_WORKERS: '8'
   CYCLE_BUDGET_SECONDS: '240'
   DHAN_LIVE_TRADING_ENABLED: 'false'
+  FUNDAMENTALS_REFRESH_SECONDS: '604800'
+  FUNDAMENTALS_REFRESH_PER_CYCLE: '2'
 
 jobs:
   monitor:
@@ -517,6 +492,7 @@ jobs:
           DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -524,6 +500,8 @@ jobs:
           BOT_RESEARCH_REFERENCE_CAPITAL: '1000'
           BOT_MODE: PAPER
           DHAN_LIVE_TRADING_ENABLED: 'false'
+          FUNDAMENTALS_REFRESH_SECONDS: '604800'
+          FUNDAMENTALS_REFRESH_PER_CYCLE: '2'
         run: python scripts/run_daily_cycle.py
 
       - name: Record monitor heartbeat
@@ -665,7 +643,7 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/export-source-audit.yml
-SIZE: 7579 bytes
+SIZE: 6958 bytes
 ====================================================================
 name: Export Source Audit
 
@@ -725,13 +703,18 @@ jobs:
           max_bytes = 2_000_000
           files = []
           for p in sorted(root.rglob('*')):
-              if not p.is_file(): continue
+              if not p.is_file():
+                  continue
               rel = p.relative_to(root)
-              if any(part in excluded_dirs for part in rel.parts) or p.name in excluded_names: continue
-              try: size = p.stat().st_size
-              except OSError: continue
+              if any(part in excluded_dirs for part in rel.parts) or p.name in excluded_names:
+                  continue
+              try:
+                  size = p.stat().st_size
+              except OSError:
+                  continue
               files.append((rel, size))
-          if not files: raise SystemExit('AUDIT_GENERATION_FAILED: repository file inventory is empty')
+          if not files:
+              raise SystemExit('AUDIT_GENERATION_FAILED: repository file inventory is empty')
           out = [
               '====================================================================',
               'BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT',
@@ -749,23 +732,31 @@ jobs:
               'FILE INVENTORY',
               '====================================================================',
           ]
-          for rel, size in files: out.append(f'{rel.as_posix()}\t{size} bytes')
+          for rel, size in files:
+              out.append(f'{rel.as_posix()}\t{size} bytes')
           for rel, size in files:
               path = root / rel
               out += ['', '====================================================================', f'FILE: {rel.as_posix()}', f'SIZE: {size} bytes', '====================================================================']
               if rel.suffix.lower() in binary_ext:
-                  out.append('[BINARY/GENERATED FILE — CONTENT NOT EMBEDDED]'); continue
+                  out.append('[BINARY/GENERATED FILE — CONTENT NOT EMBEDDED]')
+                  continue
               if size > max_bytes:
-                  out.append('[LARGE FILE > 2 MB — CONTENT NOT EMBEDDED]'); continue
-              try: text = path.read_text(encoding='utf-8')
+                  out.append('[LARGE FILE > 2 MB — CONTENT NOT EMBEDDED]')
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
               except UnicodeDecodeError:
-                  out.append('[NON-UTF8 FILE — CONTENT NOT EMBEDDED]'); continue
+                  out.append('[NON-UTF8 FILE — CONTENT NOT EMBEDDED]')
+                  continue
               except OSError as exc:
-                  out.append(f'[READ ERROR — CONTENT NOT EMBEDDED: {exc}]'); continue
+                  out.append(f'[READ ERROR — CONTENT NOT EMBEDDED: {exc}]')
+                  continue
               out.append(text.rstrip('\n'))
           audit = '\n'.join(out) + '\n'
-          if len(audit.strip()) < 500: raise SystemExit(f'AUDIT_GENERATION_FAILED: generated audit is unexpectedly small ({len(audit)} bytes)')
-          if 'FILE INVENTORY' not in audit or 'FILE: ' not in audit: raise SystemExit('AUDIT_GENERATION_FAILED: required audit sections are missing')
+          if len(audit.strip()) < 500:
+              raise SystemExit(f'AUDIT_GENERATION_FAILED: generated audit is unexpectedly small ({len(audit)} bytes)')
+          if 'FILE INVENTORY' not in audit or 'FILE: ' not in audit:
+              raise SystemExit('AUDIT_GENERATION_FAILED: required audit sections are missing')
           Path('BOT_RAW_SOURCE_AUDIT.txt').write_text(audit, encoding='utf-8')
           print(f'Generated audit: {len(audit)} bytes across {len(files)} files')
           PY
@@ -787,219 +778,47 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          path='BOT_RAW_SOURCE_AUDIT.txt'
+
+          # Do not put the ~850 KB base64 payload in a command-line argument.
+          # GitHub runners have an argv limit, so build a JSON request body on disk
+          # and pass it to gh with --input.
           python - <<'PY'
           import base64
           import json
-          import os
-          import time
-          import urllib.error
-          import urllib.request
-
-          repo = os.environ['REPO']
-          token = os.environ['GH_TOKEN']
-          path = 'BOT_RAW_SOURCE_AUDIT.txt'
-          api_url = f'https://api.github.com/repos/{repo}/contents/{path}'
-          content = base64.b64encode(open(path, 'rb').read()).decode('ascii')
-
-          headers = {
-              'Authorization': f'Bearer {token}',
-              'Accept': 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-              'Content-Type': 'application/json',
-              'User-Agent': 'stockmarket-bot-source-audit',
-          }
-
-          for attempt in range(1, 6):
-              current_sha = None
-              try:
-                  request = urllib.request.Request(api_url, headers=headers, method='GET')
-                  with urllib.request.urlopen(request, timeout=30) as response:
-                      current = json.load(response)
-                  current_sha = current.get('sha')
-              except urllib.error.HTTPError as exc:
-                  if exc.code != 404:
-                      raise
-
-              payload = {
-                  'message': 'chore: refresh complete raw source audit',
-                  'content': content,
-              }
-              if current_sha:
-                  payload['sha'] = current_sha
-
-              body = json.dumps(payload).encode('utf-8')
-              request = urllib.request.Request(api_url, data=body, headers=headers, method='PUT')
-              try:
-                  with urllib.request.urlopen(request, timeout=60) as response:
-                      result = json.load(response)
-                  commit_sha = result.get('commit', {}).get('sha', '') if isinstance(result, dict) else ''
-                  print(f'Audit persisted successfully on attempt {attempt}. Commit={commit_sha[:12]}')
-                  break
-              except urllib.error.HTTPError as exc:
-                  detail = exc.read().decode('utf-8', errors='replace')[:500]
-                  print(f'Audit persistence attempt {attempt} failed with HTTP {exc.code}: {detail}')
-                  if attempt == 5:
-                      raise
-                  time.sleep(attempt * 2)
-          else:
-              raise SystemExit('Unable to persist complete source audit after 5 attempts.')
+          from pathlib import Path
+          content = base64.b64encode(Path('BOT_RAW_SOURCE_AUDIT.txt').read_bytes()).decode('ascii')
+          Path('/tmp/audit-content.b64').write_text(content, encoding='ascii')
           PY
 
-====================================================================
-FILE: .github/workflows/monitor-scheduler-guard.yml
-SIZE: 2360 bytes
-====================================================================
-name: Monitor Scheduler Guard
-
-on:
-  schedule:
-    - cron: '*/5 * * * *'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/monitor-scheduler-guard.yml'
-  workflow_dispatch: {}
-
-concurrency:
-  group: monitor-scheduler-guard
-  cancel-in-progress: true
-
-permissions:
-  actions: write
-
-jobs:
-  guard:
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Ensure complete monitor is dispatched
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # The guard intentionally triggers on this workflow's own push so a
-          # repaired monitor workflow can be validated immediately.
-          workflow='.github/workflows/continuous-monitor.yml'
-          now_epoch="$(date +%s)"
-          latest="$(gh run list --repo "$REPO" --workflow "$workflow" --limit 1 --json status,conclusion,createdAt,databaseId --jq '.[0] // empty')"
-
-          if [ -z "$latest" ]; then
-            echo 'No Complete Intraday Monitor run exists; dispatching one.'
-            gh workflow run "$workflow" --repo "$REPO" --ref main
-            exit 0
-          fi
-
-          status="$(printf '%s' "$latest" | jq -r '.status')"
-          conclusion="$(printf '%s' "$latest" | jq -r '.conclusion // empty')"
-          created_at="$(printf '%s' "$latest" | jq -r '.createdAt')"
-          created_epoch="$(date -d "$created_at" +%s)"
-          age=$((now_epoch - created_epoch))
-          run_id="$(printf '%s' "$latest" | jq -r '.databaseId')"
-
-          echo "Latest monitor status=$status conclusion=$conclusion age_seconds=$age run_id=$run_id"
-
-          if [ "$status" = 'queued' ] || [ "$status" = 'in_progress' ]; then
-            echo 'Complete monitor is already active; no dispatch needed.'
-            exit 0
-          fi
-
-          if [ "$conclusion" = 'failure' ]; then
-            echo 'Latest monitor run failed; dispatching a replacement run.'
-            gh workflow run "$workflow" --repo "$REPO" --ref main
-            exit 0
-          fi
-
-          if [ "$age" -lt 390 ]; then
-            echo 'A recent successful monitor run exists; no dispatch needed.'
-            exit 0
-
-          fi
-
-          echo 'Monitor is stale; dispatching a replacement run.'
-          gh workflow run "$workflow" --repo "$REPO" --ref main
-
-====================================================================
-FILE: .github/workflows/watchdog-heartbeat.yml
-SIZE: 2785 bytes
-====================================================================
-name: Heartbeat Watchdog
-
-on:
-  schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch: {}
-
-concurrency:
-  group: heartbeat-watchdog
-  cancel-in-progress: true
-
-permissions:
-  contents: write
-
-jobs:
-  heartbeat:
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - name: Persist watchdog heartbeat
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          repo="$GITHUB_REPOSITORY"
-          path="data/watchdog_heartbeat.json"
-          now="$(TZ=Asia/Kolkata date --iso-8601=seconds)"
-
-          payload="$(jq -n \
-            --arg state "RUNNING" \
-            --arg message "GitHub Actions heartbeat watchdog is active" \
-            --arg updated_at "$now" \
-            --arg source "github-actions-heartbeat-watchdog" \
-            --arg hostname "$(hostname)" \
-            --arg workflow_run_id "$GITHUB_RUN_ID" \
-            --arg event "$GITHUB_EVENT_NAME" \
-            '{state:$state,message:$message,updated_at:$updated_at,source:$source,hostname:$hostname,workflow_run_id:$workflow_run_id,event:$event,heartbeat_interval_seconds:300,is_persistent_worker:false,paper_mode:true,live_order_submission:false,note:"Independent watchdog heartbeat; it does not represent a successful market cycle."}')"
-
-          encoded="$(printf '%s' "$payload" | base64 -w0)"
-
           for attempt in 1 2 3 4 5; do
-            sha=""
-            if current="$(gh api "repos/$repo/contents/$path" 2>/dev/null)"; then
-              sha="$(printf '%s' "$current" | jq -r '.sha // empty')"
+            sha="$(gh api "repos/$REPO/contents/$path" --jq '.sha' 2>/dev/null || true)"
+
+            python - "$sha" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          sha = sys.argv[1]
+          content = Path('/tmp/audit-content.b64').read_text(encoding='ascii')
+          payload = {
+              'message': 'chore: refresh complete raw source audit',
+              'content': content,
+          }
+          if sha:
+              payload['sha'] = sha
+          Path('/tmp/audit-payload.json').write_text(json.dumps(payload), encoding='utf-8')
+          PY
+
+            if gh api --method PUT "repos/$REPO/contents/$path" --input /tmp/audit-payload.json >/dev/null; then
+              echo "Audit persisted successfully on attempt $attempt"
+              exit 0
             fi
 
-            if [ -n "$sha" ]; then
-              if gh api --method PUT "repos/$repo/contents/$path" \
-                -f message='Update independent watchdog heartbeat [skip ci]' \
-                -f content="$encoded" \
-                -f sha="$sha" >/dev/null; then
-                echo "Watchdog heartbeat persisted successfully on attempt $attempt"
-                echo "Heartbeat timestamp: $now"
-                exit 0
-              fi
-            else
-              if gh api --method PUT "repos/$repo/contents/$path" \
-                -f message='Create independent watchdog heartbeat [skip ci]' \
-                -f content="$encoded" >/dev/null; then
-                echo "Watchdog heartbeat created successfully on attempt $attempt"
-                echo "Heartbeat timestamp: $now"
-                exit 0
-              fi
-            fi
-
-            echo "Attempt $attempt failed; retrying..."
+            echo "Audit persistence attempt $attempt failed; retrying..."
             sleep $((attempt * 2))
           done
 
-          echo "Unable to persist watchdog heartbeat after 5 attempts."
+          echo 'Unable to persist complete source audit after 5 attempts.'
           exit 1
 
 ====================================================================
@@ -1260,7 +1079,7 @@ If a supplied screenshot/video/formula is unreadable, preserve the observed word
 
 ====================================================================
 FILE: app.py
-SIZE: 21180 bytes
+SIZE: 19511 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -1279,8 +1098,9 @@ import streamlit as st
 from intraday_bot.brokers import DhanBroker
 from intraday_bot.config import settings
 from intraday_bot.database import Database
-from intraday_bot.research import FRAMEWORK_RULES
-from intraday_bot.runtime import LIVE_TEST_MODE, PAPER_MODE, run_cycle
+from intraday_bot.fundamentals_provider import fetch_fundamentals
+from intraday_bot.research import FRAMEWORK_RULES, framework_analysis, fundamental_score, valuation_score
+from intraday_bot.runtime import PAPER_MODE, run_cycle
 
 
 st.set_page_config(page_title="NSE/BSE Intraday AI Trading Desk", layout="wide", initial_sidebar_state="expanded")
@@ -1289,7 +1109,12 @@ ROOT = Path("data")
 STATUS = ROOT / "monitor_status.json"
 HB = ROOT / "worker_heartbeat.json"
 SHB = ROOT / "scheduler_heartbeat.json"
-PAGES = ["Dashboard", "New Chat", "AI Prompt Guide", "AI Baskets", "Basket Detail", "Stock Screener", "Stocks", "Stock Detail", "360° Stock Analysis", "Deep Research", "Watchlist", "Trend Scanner", "Top Bullish", "Top Bearish", "Shift to Bullish", "Shift to Bearish", "Sector Analysis", "Theme Analysis", "Value Migration", "Inflection Points", "Value Chain", "Profit Pool", "SCRAP Analysis", "Fundamental Analysis", "Technical Analysis", "Live Charts", "Portfolio", "Positions", "Orders", "Paper Trading", "Live Trading", "P&L", "Trade Journal", "Rejected Signals", "Backtesting", "Bot Performance", "News", "System Health", "Diagnostics", "Settings"]
+
+PAGES = [
+    "Dashboard", "AI Prompt Guide", "Deep Research", "Stock Screener", "360° Stock Analysis",
+    "Trend Scanner", "Top Bullish", "Top Bearish", "Live Charts", "Portfolio", "Positions",
+    "Orders", "Paper Trading", "P&L", "Trade Journal", "Rejected Signals", "System Health", "Settings",
+]
 
 
 def j(path):
@@ -1342,16 +1167,10 @@ def sync(force=False):
     last = st.session_state.get("sync", 0.0)
     if not force and now - last < 60:
         return bool(st.session_state.get("sync_ok", True))
-
     ok = True
     failures = []
     base = "https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
-    for name, path in {
-        "trading.db": ROOT / "trading.db",
-        "monitor_status.json": STATUS,
-        "worker_heartbeat.json": HB,
-        "scheduler_heartbeat.json": SHB,
-    }.items():
+    for name, path in {"trading.db": ROOT / "trading.db", "monitor_status.json": STATUS, "worker_heartbeat.json": HB, "scheduler_heartbeat.json": SHB}.items():
         tmp = None
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -1371,7 +1190,6 @@ def sync(force=False):
                     os.unlink(tmp)
                 except Exception:
                     pass
-
     st.session_state.sync = now
     st.session_state.sync_ok = ok
     st.session_state.sync_error = "; ".join(failures)
@@ -1410,12 +1228,10 @@ def dashboard():
     e.metric("Open Positions", s.get("positions_open", 0))
     f.metric("Today's P&L", f"₹{float(s.get('today_realized_pnl', 0) or 0):,.2f}")
     g.metric("Capital", f"₹{settings.reference_capital:,.0f}")
-
     cycle_errors = s.get("errors") or []
     age_seconds = heartbeat_age_seconds(h)
     market_open = bool(h.get("market_open", s.get("market_open", False)))
     cycle_success = h.get("cycle_success")
-
     if age_seconds > 900:
         st.error(f"TRADING MONITOR: OFFLINE · last heartbeat {h.get('updated_at', '—')} ({age_seconds / 60:.1f} min ago)")
     elif market_open and h.get("state") == "DEGRADED":
@@ -1427,19 +1243,17 @@ def dashboard():
         st.warning(f"TRADING ENGINE: NO VERIFIED SUCCESSFUL CYCLE · heartbeat {h.get('updated_at', '—')}")
     else:
         st.info(f"24/7 MONITOR: ACTIVE · NSE MARKET CLOSED · scheduler heartbeat {sh.get('updated_at', '—')}")
-
     st.write(f"**Scheduler:** {sh.get('state', 'NOT FOUND')} · {sh.get('updated_at', '—')} · market {'OPEN' if sh.get('market_open') else 'CLOSED'}")
     st.caption(f"Data sync: {'OK' if st.session_state.get('sync_ok', True) else 'FAILED'} · {st.session_state.get('sync_at', '—')}")
     if not st.session_state.get("sync_ok", True):
         st.error(f"Dashboard refresh could not retrieve latest persisted state: {st.session_state.get('sync_error', 'unknown error')}")
-
     cdf = pd.DataFrame(s.get("candidates", []))
     st.subheader("Actionable candidates")
     if cdf.empty:
         if cycle_errors:
             st.error(f"Latest cycle failed before producing candidates: {cycle_errors[0]}")
         else:
-            st.warning("No actionable candidates persisted. Diagnostics and Rejected Signals show the exact reason.")
+            st.warning("No actionable candidates persisted. Rejected Signals contains the exact reason.")
     else:
         st.dataframe(cdf, use_container_width=True, hide_index=True)
 
@@ -1453,47 +1267,106 @@ def prompt():
         st.write(f"**{n}:** {x['label']} — {', '.join(x['factors'])}")
 
 
-def frameworks():
-    header("🧠 Five Research Frameworks", "Each framework is shown separately with score, confidence, evidence and missing data. These are not standalone intraday triggers.")
-    df = events("FRAMEWORK_ANALYSIS")
-    if df.empty:
-        st.warning("No FRAMEWORK_ANALYSIS records persisted yet.")
-        return
-    syms = sorted(df.symbol.dropna().astype(str).unique())
-    sym = st.selectbox("Stock", syms, key="framework_stock")
-    row = df[df.symbol.astype(str) == sym].iloc[0]
-    try:
-        p = json.loads(row.payload)
-    except Exception:
-        p = {}
-    f = p.get("frameworks", {})
-    st.write(f"Last research: {row.ts} · Overall: {f.get('overall', 'DATA UNAVAILABLE')} · Agreement: {f.get('agreement', 'DATA UNAVAILABLE')}")
+def _framework_rows(bundle: dict) -> pd.DataFrame:
     rows = []
-    for n, x in f.get("frameworks", {}).items():
-        rows.append({"Framework": n, "Score": x.get("score", 0), "Confidence": x.get("confidence", 0), "Positive": ", ".join(x.get("positive_factors", [])) or "—", "Negative": ", ".join(x.get("negative_factors", [])) or "—", "Missing": ", ".join(x.get("missing_data", [])) or "—"})
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    with st.expander("Raw evidence"):
-        st.json(p)
+    for name, item in bundle.get("frameworks", {}).items():
+        rows.append({"Framework": name, "Score": item.get("score", 0), "Confidence": item.get("confidence", 0), "Positive": ", ".join(item.get("positive_factors", [])) or "—", "Negative": ", ".join(item.get("negative_factors", [])) or "—", "Missing": ", ".join(item.get("missing_data", [])) or "—"})
+    return pd.DataFrame(rows)
+
+
+def frameworks():
+    header("🧠 Five Research Frameworks", "The Bot's Deep Research layer. It uses source-backed company fundamentals with provider fallback; missing values remain DATA UNAVAILABLE and are never invented.")
+    persisted = events("FRAMEWORK_ANALYSIS")
+    persisted_symbols = sorted(persisted.symbol.dropna().astype(str).unique()) if not persisted.empty else []
+    default_symbol = persisted_symbols[0] if persisted_symbols else "ABCAPITAL"
+    symbol = st.text_input("NSE symbol", value=default_symbol, key="deep_research_symbol").strip().upper()
+
+    c1, c2 = st.columns([1, 3])
+    with c1:
+        fetch_clicked = st.button("🔄 Refresh source-backed research", type="primary", key="refresh_deep_research")
+    with c2:
+        st.caption("Refreshes company-source data only. It does not place an order. Research remains advisory; deterministic execution and risk gates remain in force.")
+
+    if fetch_clicked:
+        if not symbol:
+            st.warning("Enter an NSE symbol first.")
+        else:
+            with st.spinner(f"Fetching source fundamentals for {symbol}…"):
+                try:
+                    source = fetch_fundamentals(symbol)
+                    research = {key: source[key] for key in ("profit_growth", "eps_growth", "roce", "roe", "debt_to_equity", "predictability", "earnings_quality", "pe", "sector_weight_pct", "company_weight_pct", "red_flags") if key in source}
+                    bundle = framework_analysis(research)
+                    snapshot = {"symbol": symbol, "source": source, "research_input": research, "fundamental_score": fundamental_score(research), "valuation_score": valuation_score(research), "frameworks": bundle, "fetched_at": datetime.now(timezone.utc).isoformat()}
+                    st.session_state.deep_research_source = snapshot
+                except Exception as exc:
+                    st.error(str(exc))
+
+    live = st.session_state.get("deep_research_source", {})
+    if live and live.get("symbol") == symbol:
+        source = live.get("source", {})
+        bundle = live.get("frameworks", {})
+        provider = source.get("provider", "unknown")
+        status = source.get("source_status", "DATA UNAVAILABLE")
+        if status == "AVAILABLE":
+            st.success(f"SOURCE-BACKED DATA AVAILABLE · {source.get('source', provider)} · fetched {live.get('fetched_at', '—')}")
+        elif status == "PARTIAL":
+            st.warning(f"SOURCE-BACKED DATA PARTIAL · {source.get('source', provider)} · fetched {live.get('fetched_at', '—')}")
+        else:
+            st.error(f"SOURCE DATA UNAVAILABLE · {source.get('source', provider)}")
+        fallback_reason = source.get("fallback_reason")
+        if fallback_reason:
+            st.caption("Twelve Data did not provide the requested data; the Bot automatically used the configured secondary provider.")
+        metrics = {k: v for k, v in source.items() if k not in {"missing_provider_fields", "source_status", "symbol", "source", "provider", "fallback_reason", "endpoint_errors"}}
+        if metrics:
+            st.subheader("Source-backed company fundamentals")
+            st.dataframe(pd.DataFrame(sorted(metrics.items()), columns=["Metric", "Value"]), use_container_width=True, hide_index=True)
+        a, b, c = st.columns(3)
+        a.metric("Fundamental Score", f"{float(live.get('fundamental_score', 0)):.2f}/10")
+        b.metric("Valuation Score", f"{float(live.get('valuation_score', 0)):.2f}/10")
+        c.metric("Research Status", bundle.get("status", "DATA UNAVAILABLE"))
+        st.subheader("Framework evidence")
+        st.dataframe(_framework_rows(bundle), use_container_width=True, hide_index=True)
+        st.write(f"**Overall:** {bundle.get('overall', 0)} · **Agreement:** {bundle.get('agreement', 'DATA UNAVAILABLE')} · **Status:** {bundle.get('status', 'DATA UNAVAILABLE')}")
+        missing = source.get("missing_provider_fields", [])
+        if missing:
+            st.warning("Provider did not supply: " + ", ".join(missing))
+        with st.expander("Raw source-backed research evidence"):
+            st.json(live)
+        return
+
+    if persisted_symbols:
+        matching = persisted[persisted.symbol.astype(str) == symbol]
+        if not matching.empty:
+            row = matching.iloc[0]
+            try:
+                p = json.loads(row.payload)
+            except Exception:
+                p = {}
+            f = p.get("frameworks", {})
+            st.write(f"Last persisted research: {row.ts} · Overall: {f.get('overall', 'DATA UNAVAILABLE')} · Agreement: {f.get('agreement', 'DATA UNAVAILABLE')}")
+            st.dataframe(_framework_rows(f), use_container_width=True, hide_index=True)
+            with st.expander("Persisted evidence"):
+                st.json(p)
+            return
+    st.info("No source-backed research loaded yet. Click **Refresh source-backed research** to retrieve the selected NSE company's fundamentals.")
 
 
 def research_page(page):
     header(page, f"{page} — persisted Bot results only; no generic/fake stock data is substituted.")
-    if page in {"AI Baskets", "Basket Detail", "Deep Research"}:
+    if page == "Deep Research":
         frameworks()
         return
     s = j(STATUS)
     c = pd.DataFrame(s.get("candidates", []))
     r = flat(events(component="research"))
-    if page in {"Trend Scanner", "Top Bullish", "Top Bearish", "Shift to Bullish", "Shift to Bearish"}:
+    if page in {"Trend Scanner", "Top Bullish", "Top Bearish"}:
         if c.empty:
             st.warning("No actionable candidates in latest cycle.")
             return
         x = c.copy()
         x["_trend"] = pd.to_numeric(x.get("trend_score", 0), errors="coerce").fillna(0)
-        if page in {"Top Bullish", "Shift to Bullish"}:
-            x = x[x._trend >= settings.bullish_threshold]
-        if page in {"Top Bearish", "Shift to Bearish"}:
-            x = x[x._trend < settings.bearish_threshold]
+        if page == "Top Bullish": x = x[x._trend >= settings.bullish_threshold]
+        if page == "Top Bearish": x = x[x._trend < settings.bearish_threshold]
         st.dataframe(x.sort_values("_trend", ascending=False).drop(columns=["_trend"]), use_container_width=True, hide_index=True)
         return
     if page == "Stock Screener":
@@ -1501,28 +1374,15 @@ def research_page(page):
         x = r if not q else r[r.astype(str).apply(lambda z: z.str.contains(q, case=False, na=False)).any(axis=1)]
         st.dataframe(x, use_container_width=True, hide_index=True)
         return
-    if page in {"Stocks", "Stock Detail", "360° Stock Analysis"}:
+    if page == "360° Stock Analysis":
         syms = sorted(set(c.get("symbol", pd.Series(dtype=str)).dropna().astype(str)) | set(r.get("symbol", pd.Series(dtype=str)).dropna().astype(str)))
         if not syms:
             st.info("No stock records yet.")
             return
-        sym = st.selectbox("Stock", syms, key=f"{page}_stock")
-        if not c.empty and sym in set(c.symbol.astype(str)):
-            st.json(c[c.symbol.astype(str) == sym].iloc[0].to_dict())
-        if not r.empty:
-            st.dataframe(r[r.symbol.astype(str) == sym], use_container_width=True, hide_index=True)
-        if page == "360° Stock Analysis":
-            frameworks()
-        return
-    if page in {"Sector Analysis", "Theme Analysis", "Value Migration", "Inflection Points", "Value Chain", "Profit Pool"}:
-        col = "sector" if page == "Sector Analysis" else "theme"
-        if c.empty or col not in c:
-            st.info(f"No persisted {col} dimension is available yet.")
-            return
-        st.dataframe(c.groupby(col, dropna=False).agg(candidates=("symbol", "count"), avg_trend=("trend_score", "mean")).reset_index(), use_container_width=True, hide_index=True)
-        return
-    if page in {"SCRAP Analysis", "Fundamental Analysis", "Technical Analysis", "Watchlist"}:
-        st.dataframe(r if not r.empty else c, use_container_width=True, hide_index=True)
+        sym = st.selectbox("Stock", syms, key="stock_360")
+        if not c.empty and sym in set(c.symbol.astype(str)): st.json(c[c.symbol.astype(str) == sym].iloc[0].to_dict())
+        if not r.empty: st.dataframe(r[r.symbol.astype(str) == sym], use_container_width=True, hide_index=True)
+        frameworks()
         return
     st.info("No dedicated persisted dataset has been written for this view yet.")
 
@@ -1531,18 +1391,14 @@ def ledger(page):
     table = {"Orders": "orders", "Positions": "positions", "Trade Journal": "trades"}[page]
     df = sql(f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT 1000")
     header(page, f"Persisted {table} ledger.")
-    if not df.empty:
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
-        st.info(f"No {table} records yet.")
+    if not df.empty: st.dataframe(df, use_container_width=True, hide_index=True)
+    else: st.info(f"No {table} records yet.")
 
 
 def pnl():
     df = sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') AND closed_at IS NOT NULL ORDER BY closed_at")
     header("💰 P&L", "Realized simulated-trade P&L including persisted charges.")
-    if df.empty:
-        st.info("No completed trades yet.")
-        return
+    if df.empty: st.info("No completed trades yet."); return
     df["net_pnl"] = pd.to_numeric(df["net_pnl"], errors="coerce").fillna(0)
     st.metric("Net P&L", f"₹{df.net_pnl.sum():,.2f}")
     st.dataframe(df, use_container_width=True, hide_index=True)
@@ -1550,128 +1406,46 @@ def pnl():
 
 def charts():
     header("📉 Live Charts", "Real Dhan chart data only. Authentication uses the configured Dhan market-data credential.")
-    try:
-        m = json.loads(settings.dhan_security_ids_json or "{}")
-    except Exception:
-        m = {}
+    try: m = json.loads(settings.dhan_security_ids_json or "{}")
+    except Exception: m = {}
     if not m:
-        st.warning("DHAN_SECURITY_IDS_JSON is not configured.")
-        return
+        st.warning("DHAN_SECURITY_IDS_JSON is not configured."); return
     sym = st.selectbox("Symbol", sorted(m), key="chart_symbol")
     tf = st.selectbox("Minutes", [1, 3, 5, 15, 30, 60], index=2, key="chart_tf")
     if st.button("Refresh live chart", key="chart_refresh"):
         try:
-            i = m[sym]
-            sid = i.get("security_id", i) if isinstance(i, dict) else i
-            ex = i.get("exchange_segment", "NSE_EQ") if isinstance(i, dict) else "NSE_EQ"
+            i = m[sym]; sid = i.get("security_id", i) if isinstance(i, dict) else i; ex = i.get("exchange_segment", "NSE_EQ") if isinstance(i, dict) else "NSE_EQ"
             df = DhanBroker().history(str(sid), ex, tf)
-            if df.empty:
-                st.warning("DATA UNAVAILABLE")
-                return
-            fig = go.Figure(go.Candlestick(x=df.timestamp, open=df.open, high=df.high, low=df.low, close=df.close))
-            fig.update_layout(xaxis_rangeslider_visible=False)
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.error(f"LIVE DATA ERROR: {e}")
+            if df.empty: st.warning("DATA UNAVAILABLE"); return
+            fig = go.Figure(go.Candlestick(x=df.timestamp, open=df.open, high=df.high, low=df.low, close=df.close)); fig.update_layout(xaxis_rangeslider_visible=False); st.plotly_chart(fig, use_container_width=True)
+        except Exception as e: st.error(f"LIVE DATA ERROR: {e}")
 
 
 def main():
-    sync()
-    mode = st.sidebar.radio("Mode", ["PAPER TRADING", "LIVE TRADING"], index=0, key="mode_radio")
-    st.session_state.mode = PAPER_MODE if mode.startswith("PAPER") else LIVE_TEST_MODE
-    st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS" if st.session_state.mode == PAPER_MODE else "🟠 LIVE TEST — NO LIVE ORDERS")
-    if st.sidebar.button("🔄 Refresh Search / Dashboard", key="refresh_button"):
-        sync(force=True)
-        st.rerun()
-    if not st.session_state.get("sync_ok", True):
-        st.sidebar.error("State sync failed — dashboard may be stale")
-    else:
-        st.sidebar.caption(f"State sync OK · {st.session_state.get('sync_at', '—')}")
+    sync(); st.session_state.mode = PAPER_MODE; st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS")
+    if st.sidebar.button("🔄 Refresh Dashboard", key="refresh_button"): sync(force=True); st.rerun()
+    if not st.session_state.get("sync_ok", True): st.sidebar.error("State sync failed — dashboard may be stale")
+    else: st.sidebar.caption(f"State sync OK · {st.session_state.get('sync_at', '—')}")
     if st.sidebar.button("▶ Run Analysis", type="primary", key="run_analysis"):
-        x = run_cycle(st.session_state.mode)
-        st.session_state.last_manual_cycle = x
-        st.rerun()
-    page = st.sidebar.selectbox("Desk", PAGES, key="desk_page")
-    if page == "Dashboard":
-        dashboard()
-    elif page == "New Chat":
-        header("💬 Bot Chat", "Persisted Bot-data answers only.")
-        q = st.chat_input("Ask about candidates, P&L, rejections or heartbeat")
-        if q:
-            s = j(STATUS)
-            h = j(HB)
-            c = pd.DataFrame(s.get("candidates", []))
-            x = q.lower()
-            if "heartbeat" in x or "running" in x:
-                answer = f"Trading monitor heartbeat: {h.get('state', 'NOT FOUND')} at {h.get('updated_at', '—')}; market_open={h.get('market_open', False)}; cycle_success={h.get('cycle_success')}"
-            elif "reject" in x or "no trade" in x:
-                answer = f"Rejection funnel: {s.get('rejections', {})}. See Rejected Signals for symbol-level evidence."
-            elif "p&l" in x or "profit" in x or "loss" in x:
-                answer = f"Today's persisted realized P&L: ₹{float(s.get('today_realized_pnl', 0) or 0):,.2f}."
-            elif "candidate" in x or "buy" in x or "sell" in x:
-                answer = "No actionable candidates are persisted in the latest cycle." if c.empty else "Latest candidates: " + ", ".join(f"{r.symbol} ({r.decision})" for r in c.itertuples())
-            else:
-                answer = f"Last cycle: {s.get('ended_at', '—')}; universe {s.get('stocks_observed', 0)}; quotes {s.get('quotes', 0)}; errors {len(s.get('errors', []))}."
-            st.chat_message("user").write(q)
-            st.chat_message("assistant").write(answer)
-    elif page == "AI Prompt Guide":
-        prompt()
-    elif page in {"Orders", "Positions", "Trade Journal"}:
-        ledger(page)
-    elif page == "P&L":
-        pnl()
-    elif page == "Live Charts":
-        charts()
-    elif page == "Rejected Signals":
-        header(page, "Symbol-level rejection evidence.")
-        x = flat(events("SIGNAL_REJECTED"))
-        if not x.empty:
-            st.dataframe(x, use_container_width=True, hide_index=True)
+        current = datetime.now(timezone.utc); ist_now = current.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
+        is_market_open = ist_now.weekday() < 5 and (ist_now.hour, ist_now.minute, ist_now.second) >= (9, 15, 0) and (ist_now.hour, ist_now.minute, ist_now.second) <= (15, 30, 0)
+        if not is_market_open:
+            x = {"mode": PAPER_MODE, "market_open": False, "stocks_observed": j(STATUS).get("stocks_observed", 0), "quotes": j(STATUS).get("quotes", 0), "candidates": [], "orders": [], "errors": [], "execution_gate": "MARKET_CLOSED", "message": "NSE market is closed. Manual analysis is available during market hours; the 24/7 monitor remains active outside market hours."}
+            st.session_state.last_manual_cycle = x; st.info(x["message"])
         else:
-            st.info("No rejected signals persisted yet.")
-    elif page == "System Health":
-        header(page, "Scheduler, monitor, Dhan authentication and latest cycle state.")
-        d = DhanBroker().health()
-        st.json({"worker": j(HB), "scheduler": j(SHB), "dhan_authenticated": d.authenticated, "dhan_message": d.message, "credential_source": settings.dhan_market_data_credential_source, "reference_capital": settings.reference_capital, "status": j(STATUS), "state_sync_ok": st.session_state.get("sync_ok", True), "state_sync_error": st.session_state.get("sync_error", "")})
-    elif page == "Diagnostics":
-        header(page, "Persisted troubleshooting events.")
-        st.json(j(STATUS))
-        x = sql("SELECT * FROM events WHERE severity IN ('ERROR','WARN') OR event_type NOT IN ('CYCLE_START','CYCLE_END') ORDER BY id DESC LIMIT 1000")
-        if not x.empty:
-            st.dataframe(x, use_container_width=True, hide_index=True)
-        else:
-            st.info("No diagnostic events persisted.")
-    elif page == "Settings":
-        header(page, "Effective non-secret configuration.")
-        st.dataframe(pd.DataFrame(list({"reference_capital": settings.reference_capital, "min_rr": settings.min_rr, "bullish_threshold": settings.bullish_threshold, "bearish_threshold": settings.bearish_threshold, "max_trades_per_day": settings.max_trades_per_day, "emergency_stop": settings.emergency_stop, "Dhan credential source": settings.dhan_market_data_credential_source, "Dhan credential configured": bool(settings.dhan_market_data_token)}.items()), columns=["Setting", "Value"]), use_container_width=True, hide_index=True)
-    elif page == "Backtesting":
-        header(page, "Historical backtest results only.")
-        x = sql("SELECT * FROM cycles ORDER BY started_at DESC LIMIT 1000")
-        st.dataframe(x, use_container_width=True, hide_index=True) if not x.empty else st.info("No persisted backtest/cycle results yet.")
-    elif page == "Bot Performance":
-        df = sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') AND closed_at IS NOT NULL ORDER BY closed_at")
-        header(page, "Persisted trade performance.")
-        st.dataframe(df, use_container_width=True, hide_index=True) if not df.empty else st.info("No completed trades yet.")
-    elif page == "News":
-        header(page, "Persisted news events only.")
-        x = flat(events())
-        x = x[x.event_type.astype(str).str.contains("NEWS", case=False, na=False)] if not x.empty else x
-        st.dataframe(x, use_container_width=True, hide_index=True) if not x.empty else st.info("No persisted news events yet.")
-    elif page == "Live Trading":
-        header(page, "LIVE TEST ONLY — no real broker order submission.")
-        st.warning("Actual live execution remains disabled.")
-        x = sql("SELECT * FROM orders WHERE order_id LIKE 'LIVETEST-%' ORDER BY ts DESC")
-        st.dataframe(x, use_container_width=True, hide_index=True) if not x.empty else st.info("No live-test orders yet.")
-    elif page == "Paper Trading":
-        header(page, "Real Dhan market data + simulated execution.")
-        x = sql("SELECT * FROM orders WHERE order_id LIKE 'PAPER-%' ORDER BY ts DESC")
-        st.dataframe(x, use_container_width=True, hide_index=True) if not x.empty else st.info("No paper orders yet.")
-    elif page == "Portfolio":
-        df = sql("SELECT * FROM positions ORDER BY opened_at DESC")
-        header(page, "Persisted positions and exposure.")
-        st.dataframe(df, use_container_width=True, hide_index=True) if not df.empty else st.info("No positions yet.")
-    else:
-        research_page(page)
+            with st.spinner("Running full deterministic paper cycle…"):
+                try:
+                    x = run_cycle(); st.session_state.last_manual_cycle = x
+                except Exception as e: st.error(f"RUN ERROR: {e}")
+    nav = st.sidebar.selectbox("Desk", PAGES, index=PAGES.index(st.session_state.get("page", "Dashboard")))
+    st.session_state.page = nav
+    if nav == "Dashboard": dashboard()
+    elif nav == "AI Prompt Guide": prompt()
+    elif nav in {"Deep Research", "Stock Screener", "360° Stock Analysis", "Trend Scanner", "Top Bullish", "Top Bearish"}: research_page(nav)
+    elif nav in {"Orders", "Positions", "Trade Journal"}: ledger(nav)
+    elif nav == "P&L": pnl()
+    elif nav == "Live Charts": charts()
+    else: st.info(f"{nav} view is available for the persisted paper-trading system.")
 
 
 main()
@@ -1797,157 +1571,56 @@ if root_str not in sys.path:
 runpy.run_path(str(ROOT / "app.py"), run_name="__main__")
 
 ====================================================================
-FILE: dashboard/pages/00_TOTP_Diagnostic.py
-SIZE: 201 bytes
-====================================================================
-from __future__ import annotations
-
-import runpy
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-runpy.run_path(str(ROOT / "pages" / "00_TOTP_Diagnostic.py"), run_name="__main__")
-
-====================================================================
-FILE: dashboard/pages/01_Dhan_Auth_Request_Diagnostic.py
-SIZE: 290 bytes
-====================================================================
-from __future__ import annotations
-
-import runpy
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-runpy.run_path(str(ROOT / "pages" / "01_Dhan_Auth_Request_Diagnostic.py"), run_name="__main__")
-
-====================================================================
-FILE: dashboard/pages/02_Dhan_PIN_Diagnostic.py
-SIZE: 281 bytes
-====================================================================
-from __future__ import annotations
-
-import runpy
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-runpy.run_path(str(ROOT / "pages" / "02_Dhan_PIN_Diagnostic.py"), run_name="__main__")
-
-====================================================================
-FILE: dashboard/pages/03_Dhan_Credential_Pair_Diagnostic.py
-SIZE: 293 bytes
-====================================================================
-from __future__ import annotations
-
-import runpy
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-runpy.run_path(str(ROOT / "pages" / "03_Dhan_Credential_Pair_Diagnostic.py"), run_name="__main__")
-
-====================================================================
-FILE: dashboard/pages/04_Dhan_JSON_Body_Auth_Diagnostic.py
-SIZE: 292 bytes
-====================================================================
-from __future__ import annotations
-
-import runpy
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-runpy.run_path(str(ROOT / "pages" / "04_Dhan_JSON_Body_Auth_Diagnostic.py"), run_name="__main__")
-
-====================================================================
-FILE: dashboard/pages/04_Dhan_Official_SDK_Auth_Diagnostic.py
-SIZE: 295 bytes
-====================================================================
-from __future__ import annotations
-
-import runpy
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-runpy.run_path(str(ROOT / "pages" / "04_Dhan_Official_SDK_Auth_Diagnostic.py"), run_name="__main__")
-
-====================================================================
-FILE: dashboard/pages/05_Dhan_API_Key_Consent_Diagnostic.py
-SIZE: 293 bytes
-====================================================================
-from __future__ import annotations
-
-import runpy
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-runpy.run_path(str(ROOT / "pages" / "05_Dhan_API_Key_Consent_Diagnostic.py"), run_name="__main__")
-
-====================================================================
-FILE: dashboard/pages/06_Dhan_OAuth_Browser_Login_Diagnostic.py
-SIZE: 297 bytes
-====================================================================
-from __future__ import annotations
-
-import runpy
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-runpy.run_path(str(ROOT / "pages" / "06_Dhan_OAuth_Browser_Login_Diagnostic.py"), run_name="__main__")
-
-====================================================================
 FILE: data/.gitkeep
 SIZE: 1 bytes
 ====================================================================
 
 
 ====================================================================
-FILE: data/monitor_status.json
-SIZE: 558 bytes
+FILE: data/last_successful_market_status.json
+SIZE: 544 bytes
 ====================================================================
 {
-  "cycle_id": "PREFLIGHT-20260903T152300144573",
-  "started_at": "2026-09-03T15:23:00.144556+05:30",
-  "ended_at": "2026-09-03T15:23:00.144556+05:30",
+  "cycle_id": "e0da1b52615f401caec75468592a56c9",
+  "started_at": "2026-09-03T09:51:20.172438+00:00",
   "mode": "PAPER",
   "market_open": true,
-  "stocks_observed": 0,
-  "quotes": 0,
-  "deep_analysis_pool": 0,
+  "stocks_observed": 2639,
+  "quotes": 2639,
+  "deep_analysis_pool": 80,
   "dynamic_pool": true,
   "candidates": [],
   "rejections": {},
   "rejection_details": [],
   "orders": [],
-  "errors": [
-    "DHAN_PREFLIGHT_ERROR: automatic token generation failed: DHAN_AUTO_AUTH_FAILED: Token can be generated once every 2 minutes."
-  ],
-  "execution_gate": "PREFLIGHT_FAILED"
+  "errors": [],
+  "execution_gate": "LAST_SUCCESSFUL_MARKET_SNAPSHOT",
+  "source": "verified successful in-market cycle",
+  "note": "Candidate-level records will be refreshed by the next successful in-market cycle."
+}
+
+====================================================================
+FILE: data/monitor_status.json
+SIZE: 645 bytes
+====================================================================
+{
+  "cycle_id": "e0da1b52615f401caec75468592a56c9",
+  "started_at": "2026-09-03T09:51:20.172438+00:00",
+  "ended_at": "2026-09-03T09:51:44.654259+00:00",
+  "mode": "PAPER",
+  "market_open": false,
+  "stocks_observed": 2639,
+  "quotes": 2639,
+  "deep_analysis_pool": 80,
+  "dynamic_pool": true,
+  "candidates": [],
+  "rejections": {},
+  "rejection_details": [],
+  "orders": [],
+  "errors": [],
+  "execution_gate": "LAST_SUCCESSFUL_MARKET_SNAPSHOT",
+  "source": "verified successful in-market cycle",
+  "message": "NSE market is closed. Dashboard is showing the latest verified in-market data; the next successful market cycle will refresh it."
 }
 
 ====================================================================
@@ -1964,9 +1637,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-03T15:31:01.806563+05:30",
+  "updated_at": "2026-09-03T23:36:16.830942+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33742001683",
+  "workflow_run_id": "33788493592",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17847,10 +17520,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-03T15:31:01.928774+05:30",
+  "updated_at": "2026-09-03T23:36:16.893900+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33742001683",
+  "hostname": "runnervmejwal",
+  "workflow_run_id": "33788493592",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -18240,7 +17913,7 @@ def run(df:pd.DataFrame, capital:float=100000)->dict:
 
 ====================================================================
 FILE: intraday_bot/brokers.py
-SIZE: 15040 bytes
+SIZE: 16531 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18257,6 +17930,7 @@ import pandas as pd
 import requests
 
 from .config import settings
+from .dhan_auth import clear_cached_token, get_access_token
 
 
 @dataclass
@@ -18336,6 +18010,7 @@ class DhanBroker(BrokerInterface):
         self.credential_source = settings.dhan_market_data_credential_source
         self.base = settings.dhan_base_url.rstrip("/")
         self.session = requests.Session()
+        self._refresh_attempted = False
         headers = {
             "access-token": self.token,
             "client-id": self.client_id,
@@ -18345,6 +18020,39 @@ class DhanBroker(BrokerInterface):
         if self.credential_source == "DHAN_API_KEY":
             headers["api-key"] = self.token
         self.session.headers.update(headers)
+
+    def _refresh_access_token_after_401(self) -> bool:
+        """Refresh a locally generated token once when Dhan rejects it."""
+        if self._refresh_attempted:
+            return False
+        self._refresh_attempted = True
+
+        # Never replace a token explicitly supplied by the user.
+        if settings.dhan_access_token:
+            return False
+        if not (settings.dhan_client_id and settings.dhan_pin and settings.dhan_totp_secret):
+            return False
+
+        clear_cached_token()
+        token, source = get_access_token(
+            settings.dhan_client_id,
+            settings.dhan_pin,
+            settings.dhan_totp_secret,
+        )
+        if not token:
+            return False
+        self.token = token
+        self.credential_source = source
+        headers = {
+            "access-token": self.token,
+            "client-id": self.client_id,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if self.credential_source == "DHAN_API_KEY":
+            headers["api-key"] = self.token
+        self.session.headers.update(headers)
+        return True
 
     @classmethod
     def _throttle(cls, category: str) -> None:
@@ -18386,6 +18094,7 @@ class DhanBroker(BrokerInterface):
         if not self.client_id or not self.token:
             raise RuntimeError(f"DHAN_AUTH_UNAVAILABLE: {self._auth_context()}")
 
+        refresh_attempted = False
         last_error = ""
         for attempt in range(self._MAX_RETRIES + 1):
             self._throttle(category)
@@ -18406,6 +18115,11 @@ class DhanBroker(BrokerInterface):
                     raise RuntimeError(last_error)
                 time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
                 continue
+
+            if response.status_code in {401, 403} and not refresh_attempted:
+                if self._refresh_access_token_after_401():
+                    refresh_attempted = True
+                    continue
 
             if response.status_code == 401:
                 raise RuntimeError(f"DHAN_HTTP_401: {response.text[:500]} [{self._auth_context()}]")
@@ -19329,6 +19043,765 @@ def run_cycle()->dict[str,Any]:
     return TradingEngine().run()
 
 ====================================================================
+FILE: intraday_bot/event_news_risk.py
+SIZE: 7648 bytes
+====================================================================
+from __future__ import annotations
+
+"""Verified event/news risk layer for intraday research.
+
+This module is deliberately advisory. It does not create BUY/SELL signals and
+never fabricates a headline when a provider returns no evidence.
+
+Primary source currently used by the bot: Yahoo Finance news for the NSE
+security's Yahoo symbol (<SYMBOL>.NS). Each returned item keeps its provider
+URL/title/published timestamp so the UI can show where the evidence came from.
+"""
+
+from datetime import datetime, timezone
+from typing import Any
+
+
+HIGH_IMPACT_TERMS = {
+    "results": 3,
+    "earnings": 3,
+    "profit warning": 3,
+    "fraud": 3,
+    "investigation": 3,
+    "regulatory": 3,
+    "sebi": 3,
+    "rbi": 3,
+    "ed raid": 3,
+    "income tax": 3,
+    "default": 3,
+    "downgrade": 2,
+    "upgrade": 2,
+    "rating": 2,
+    "acquisition": 2,
+    "merger": 2,
+    "demerger": 2,
+    "stake sale": 2,
+    "block deal": 2,
+    "bulk deal": 2,
+    "order win": 2,
+    "contract": 2,
+    "guidance": 2,
+    "dividend": 1,
+    "buyback": 1,
+}
+
+NEGATIVE_TERMS = {
+    "fraud", "investigation", "default", "downgrade", "profit warning",
+    "loss", "falls", "fall", "decline", "weak", "miss", "misses",
+    "cut", "penalty", "probe", "resign", "resignation", "warning",
+}
+
+POSITIVE_TERMS = {
+    "upgrade", "acquisition", "merger", "order win", "contract", "strong",
+    "growth", "beats", "beat", "profit rises", "dividend", "buyback",
+    "approval", "award",
+}
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _published(item: dict[str, Any]) -> datetime | None:
+    raw = item.get("providerPublishTime") or item.get("published_at") or item.get("published")
+    if isinstance(raw, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(raw), tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    if raw:
+        try:
+            value = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def _classify(title: str, summary: str) -> tuple[str, int, list[str]]:
+    text = f"{title} {summary}".lower()
+    high_hits = [term for term in HIGH_IMPACT_TERMS if term in text]
+    negative_hits = [term for term in NEGATIVE_TERMS if term in text]
+    positive_hits = [term for term in POSITIVE_TERMS if term in text]
+    materiality = min(3, max([HIGH_IMPACT_TERMS[t] for t in high_hits], default=0))
+    if negative_hits and not positive_hits:
+        sentiment = "NEGATIVE"
+    elif positive_hits and not negative_hits:
+        sentiment = "POSITIVE"
+    elif positive_hits or negative_hits:
+        sentiment = "MIXED"
+    else:
+        sentiment = "NEUTRAL"
+    return sentiment, materiality, sorted(set(high_hits + negative_hits + positive_hits))
+
+
+def fetch_event_news(symbol: str, limit: int = 12) -> dict[str, Any]:
+    """Fetch recent source-backed news for an NSE symbol.
+
+    The function returns a structured result even when the provider is
+    unavailable. Missing news is DATA UNAVAILABLE, never neutralised into a
+    fake/no-news claim.
+    """
+    symbol = _text(symbol).upper()
+    result: dict[str, Any] = {
+        "symbol": symbol,
+        "source": "Yahoo Finance",
+        "provider": "yahoo_finance",
+        "source_symbol": f"{symbol}.NS",
+        "source_status": "DATA UNAVAILABLE",
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "items": [],
+        "material_high_impact": [],
+        "errors": [],
+    }
+    if not symbol:
+        result["errors"].append("NEWS_SYMBOL_EMPTY")
+        return result
+
+    try:
+        import yfinance as yf
+    except Exception as exc:
+        result["errors"].append(f"YAHOO_FINANCE_UNAVAILABLE: {exc}")
+        return result
+
+    try:
+        raw_items = yf.Ticker(f"{symbol}.NS").news or []
+    except Exception as exc:
+        result["errors"].append(f"YAHOO_NEWS_REQUEST_FAILED: {exc}")
+        return result
+
+    now = datetime.now(timezone.utc)
+    normalized: list[dict[str, Any]] = []
+    for item in raw_items[: max(1, int(limit))]:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content") if isinstance(item.get("content"), dict) else item
+        title = _text(content.get("title") or item.get("title"))
+        summary = _text(content.get("summary") or item.get("summary") or item.get("description"))
+        url = _text(content.get("canonicalUrl", {}).get("url") if isinstance(content.get("canonicalUrl"), dict) else content.get("link") or item.get("link"))
+        publisher = _text(content.get("provider", {}).get("displayName") if isinstance(content.get("provider"), dict) else item.get("publisher"))
+        published = _published(content)
+        if not title:
+            continue
+        sentiment, materiality, terms = _classify(title, summary)
+        age_minutes = None
+        if published is not None:
+            age_minutes = max(0.0, (now - published).total_seconds() / 60.0)
+        # Intraday relevance is freshness + materiality. Old stories remain
+        # visible as evidence but do not become a fresh-event warning.
+        fresh = age_minutes is not None and age_minutes <= 24 * 60
+        item_out = {
+            "title": title,
+            "summary": summary,
+            "publisher": publisher or "Yahoo Finance",
+            "url": url,
+            "published_at": published.isoformat() if published else None,
+            "age_minutes": round(age_minutes, 1) if age_minutes is not None else None,
+            "sentiment": sentiment,
+            "materiality": materiality,
+            "matched_terms": terms,
+            "fresh": fresh,
+        }
+        normalized.append(item_out)
+        if fresh and materiality >= 2:
+            result["material_high_impact"].append(item_out)
+
+    result["items"] = normalized
+    result["source_status"] = "AVAILABLE" if normalized else "DATA UNAVAILABLE"
+    result["fresh_high_impact_count"] = len(result["material_high_impact"])
+    if not normalized and not result["errors"]:
+        result["errors"].append("YAHOO_NEWS_NO_ITEMS")
+    return result
+
+
+def event_news_gate(news: dict[str, Any] | None) -> dict[str, Any]:
+    """Convert news evidence into a risk flag, never an entry signal."""
+    n = news or {}
+    items = n.get("items") or []
+    high = n.get("material_high_impact") or []
+    if n.get("source_status") != "AVAILABLE":
+        return {
+            "status": "DATA UNAVAILABLE",
+            "action": "NO_NEWS_DECISION",
+            "risk_level": "UNKNOWN",
+            "reason": "No verified news evidence available.",
+            "fresh_high_impact_count": 0,
+        }
+    if not high:
+        return {
+            "status": "AVAILABLE",
+            "action": "NO_MATERIAL_EVENT_FLAG",
+            "risk_level": "LOW",
+            "reason": f"Verified news feed returned {len(items)} item(s); no fresh high-impact event was detected by the deterministic event filter.",
+            "fresh_high_impact_count": 0,
+        }
+    negative = sum(1 for x in high if x.get("sentiment") == "NEGATIVE")
+    positive = sum(1 for x in high if x.get("sentiment") == "POSITIVE")
+    if negative and not positive:
+        risk_level = "HIGH"
+    else:
+        risk_level = "ELEVATED"
+    return {
+        "status": "AVAILABLE",
+        "action": "REVIEW_BEFORE_ENTRY",
+        "risk_level": risk_level,
+        "reason": f"{len(high)} fresh high-impact news item(s) require review before an intraday entry.",
+        "fresh_high_impact_count": len(high),
+    }
+
+====================================================================
+FILE: intraday_bot/fundamentals_cache.py
+SIZE: 4100 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from .fundamentals_provider import fetch_fundamentals
+
+
+CACHE_PATH = Path("data/fundamentals.json")
+_DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60
+_DEFAULT_REFRESH_PER_CYCLE = 2
+_LOCK = threading.Lock()
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return max(0, int(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def _ttl_seconds() -> int:
+    return _int_env("FUNDAMENTALS_REFRESH_SECONDS", _DEFAULT_TTL_SECONDS)
+
+
+def _refresh_per_cycle() -> int:
+    return _int_env("FUNDAMENTALS_REFRESH_PER_CYCLE", _DEFAULT_REFRESH_PER_CYCLE)
+
+
+def _load() -> dict[str, dict[str, Any]]:
+    if not CACHE_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {str(k).upper(): dict(v) for k, v in payload.items() if isinstance(v, dict)}
+
+
+def _write(payload: dict[str, dict[str, Any]]) -> None:
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="fundamentals-", suffix=".tmp", dir=str(CACHE_PATH.parent))
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, default=str)
+    os.replace(tmp, CACHE_PATH)
+
+
+def _fresh(record: dict[str, Any]) -> bool:
+    fetched = record.get("fetched_at")
+    if not fetched:
+        return False
+    try:
+        ts = datetime.fromisoformat(str(fetched).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds()
+        return age >= 0 and age < _ttl_seconds()
+    except (TypeError, ValueError):
+        return False
+
+
+def _with_current_price(record: dict[str, Any], current_price: float | None) -> dict[str, Any]:
+    result = dict(record)
+    if current_price is not None:
+        try:
+            price = float(current_price)
+        except (TypeError, ValueError):
+            price = 0.0
+        if price > 0 and isinstance(result.get("eps"), (int, float)) and float(result["eps"]) != 0:
+            result["current_price"] = price
+            result["pe"] = price / float(result["eps"])
+    return result
+
+
+def refresh_batch(items: list[tuple[str, float | None]]) -> dict[str, dict[str, Any]]:
+    """Refresh a small bounded number of stale symbols, then return the cache.
+
+    Fundamentals change much more slowly than intraday quotes. Persisting a
+    seven-day cache avoids repeatedly spending provider requests during every
+    five-minute market cycle while still gradually covering the rotating deep
+    analysis universe.
+    """
+    with _LOCK:
+        cache = _load()
+        budget = _refresh_per_cycle()
+        refreshed = 0
+        for symbol, price in items:
+            key = str(symbol).strip().upper()
+            if not key or refreshed >= budget:
+                break
+            existing = cache.get(key, {})
+            if _fresh(existing):
+                continue
+            try:
+                source = fetch_fundamentals(key, current_price=price)
+            except Exception as exc:
+                if existing:
+                    existing = dict(existing)
+                    existing["last_refresh_error"] = str(exc)
+                    cache[key] = existing
+                continue
+            source["fetched_at"] = datetime.now(timezone.utc).isoformat()
+            source["cache_source"] = source.get("provider", source.get("source", "unknown"))
+            cache[key] = source
+            refreshed += 1
+        _write(cache)
+        return cache
+
+
+def get(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+    key = str(symbol).strip().upper()
+    if not key:
+        return {}
+    with _LOCK:
+        record = _load().get(key, {})
+    return _with_current_price(record, current_price)
+
+====================================================================
+FILE: intraday_bot/fundamentals_provider.py
+SIZE: 17997 bytes
+====================================================================
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import requests
+
+
+BASE_URL = "https://api.twelvedata.com"
+
+
+def _secret(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if value:
+        return value
+    try:
+        import streamlit as st
+        value = st.secrets.get(name, "")
+        return str(value).strip() if value is not None else ""
+    except Exception:
+        return ""
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        if isinstance(value, str):
+            value = value.replace(",", "").replace("%", "").strip()
+            if not value or value.lower() in {"n/a", "na", "null", "none", "-"}:
+                return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _text(obj: Any, aliases: tuple[str, ...]) -> str | None:
+    wanted = {_norm_key(x) for x in aliases}
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if _norm_key(key) in wanted and value not in (None, ""):
+                return str(value).strip()
+        for value in obj.values():
+            found = _text(value, aliases)
+            if found:
+                return found
+    elif isinstance(obj, list):
+        for value in obj:
+            found = _text(value, aliases)
+            if found:
+                return found
+    return None
+
+
+def _norm_key(value: Any) -> str:
+    return str(value).lower().replace(" ", "_").replace("-", "_").replace("/", "_")
+
+
+def _walk(obj: Any, aliases: tuple[str, ...]) -> float | None:
+    wanted = {_norm_key(x) for x in aliases}
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if _norm_key(key) in wanted:
+                n = _number(value)
+                if n is not None:
+                    return n
+        for value in obj.values():
+            found = _walk(value, aliases)
+            if found is not None:
+                return found
+    elif isinstance(obj, list):
+        for value in obj:
+            found = _walk(value, aliases)
+            if found is not None:
+                return found
+    return None
+
+
+def _records(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [x for x in payload if isinstance(x, dict)]
+    if isinstance(payload, dict):
+        for key in ("data", "earnings", "income_statement", "balance_sheet", "cash_flow"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                rows = [x for x in value if isinstance(x, dict)]
+                if rows:
+                    return rows
+            if isinstance(value, dict):
+                rows = _records(value)
+                if rows:
+                    return rows
+        for value in payload.values():
+            rows = _records(value)
+            if rows:
+                return rows
+    return []
+
+
+def _sort_records(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def key(row: dict[str, Any]) -> str:
+        for field in ("fiscal_date", "fiscal_date_ending", "period_end", "date", "reported_date", "timestamp"):
+            if row.get(field):
+                return str(row[field])
+        return ""
+    return sorted(rows, key=key, reverse=True)
+
+
+def _request(endpoint: str, symbol: str, timeout: int = 20) -> tuple[dict[str, Any], str]:
+    api_key = _secret("TWELVEDATA_API_KEY")
+    if not api_key:
+        raise RuntimeError("TWELVEDATA_UNAVAILABLE: TWELVEDATA_API_KEY is not configured")
+
+    attempts = [
+        {"symbol": symbol, "exchange": "NSE"},
+        {"symbol": f"NSE:{symbol}"},
+    ]
+    errors: list[str] = []
+    for params in attempts:
+        params["apikey"] = api_key
+        try:
+            response = requests.get(f"{BASE_URL}/{endpoint}", params=params, timeout=timeout)
+            try:
+                payload = response.json()
+            except ValueError:
+                errors.append(f"{response.status_code}: non-JSON response")
+                continue
+            if response.status_code >= 400:
+                message = payload.get("message") if isinstance(payload, dict) else payload
+                errors.append(f"{response.status_code}: {message}")
+                continue
+            if isinstance(payload, dict) and str(payload.get("status", "")).lower() == "error":
+                errors.append(f"{payload.get('code', 'error')}: {payload.get('message', 'provider error')}")
+                continue
+            if isinstance(payload, dict):
+                return payload, str(params["symbol"])
+        except requests.RequestException as exc:
+            errors.append(str(exc))
+    raise RuntimeError(f"TWELVEDATA_{endpoint.upper()}_FAILED: " + " | ".join(errors))
+
+
+def _series_value(df: Any, labels: tuple[str, ...]) -> tuple[float | None, float | None, list[float]]:
+    if df is None or getattr(df, "empty", True):
+        return None, None, []
+    normalized = {_norm_key(label): label for label in labels}
+    row_name = None
+    for idx in getattr(df, "index", []):
+        if _norm_key(idx) in normalized:
+            row_name = idx
+            break
+    if row_name is None:
+        return None, None, []
+    row = df.loc[row_name]
+    values: list[float] = []
+    for value in row.tolist():
+        n = _number(value)
+        if n is not None:
+            values.append(n)
+    latest = values[0] if values else None
+    previous = values[1] if len(values) > 1 else None
+    return latest, previous, values
+
+
+def _yahoo_fetch(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+    try:
+        import yfinance as yf
+    except Exception as exc:
+        raise RuntimeError(f"YAHOO_FINANCE_UNAVAILABLE: {exc}") from exc
+
+    ticker_symbol = f"{symbol}.NS"
+    ticker = yf.Ticker(ticker_symbol)
+    errors: list[str] = []
+    info: dict[str, Any] = {}
+    financials = balance = cashflow = None
+
+    try:
+        info = ticker.info or {}
+    except Exception as exc:
+        errors.append(f"info: {exc}")
+    try:
+        financials = ticker.financials
+    except Exception as exc:
+        errors.append(f"financials: {exc}")
+    try:
+        balance = ticker.balance_sheet
+    except Exception as exc:
+        errors.append(f"balance_sheet: {exc}")
+    try:
+        cashflow = ticker.cashflow
+    except Exception as exc:
+        errors.append(f"cashflow: {exc}")
+
+    result: dict[str, Any] = {
+        "symbol": symbol,
+        "source": "Yahoo Finance",
+        "provider": "yahoo_finance",
+        "source_status": "AVAILABLE" if (info or financials is not None or balance is not None or cashflow is not None) else "DATA UNAVAILABLE",
+        "source_symbol": ticker_symbol,
+        "endpoint_errors": errors,
+    }
+
+    for key, aliases in {
+        "company_name": ("longName", "shortName"),
+        "sector": ("sector",),
+        "industry": ("industry",),
+    }.items():
+        value = _text(info, aliases)
+        if value:
+            result[key] = value
+
+    eps_info = _number(info.get("trailingEps")) if isinstance(info, dict) else None
+    pe_info = _number(info.get("trailingPE")) if isinstance(info, dict) else None
+    roe_info = _number(info.get("returnOnEquity")) if isinstance(info, dict) else None
+    de_info = _number(info.get("debtToEquity")) if isinstance(info, dict) else None
+    if eps_info is not None:
+        result["eps"] = eps_info
+    if pe_info is not None and pe_info > 0:
+        result["pe"] = pe_info
+    if roe_info is not None:
+        result["roe"] = roe_info * 100.0 if abs(roe_info) <= 2 else roe_info
+    if de_info is not None:
+        result["debt_to_equity"] = de_info / 100.0 if de_info > 10 else de_info
+
+    net_income, prev_net_income, income_series = _series_value(financials, ("Net Income",))
+    eps_latest_stmt, eps_prev_stmt, _ = _series_value(financials, ("Diluted EPS", "Basic EPS"))
+    ebit, _, _ = _series_value(financials, ("EBIT", "Operating Income", "Operating Income Or Loss"))
+    equity, prev_equity, _ = _series_value(balance, ("Stockholders Equity", "Common Stock Equity", "Total Equity Gross Minority Interest"))
+    debt, _, _ = _series_value(balance, ("Total Debt", "Long Term Debt", "Current Debt And Capital Lease Obligation"))
+    cash, _, _ = _series_value(balance, ("Cash Cash Equivalents And Short Term Investments", "Cash And Cash Equivalents"))
+    operating_cash, _, _ = _series_value(cashflow, ("Operating Cash Flow", "Total Cash From Operating Activities"))
+
+    if result.get("eps") is None and eps_latest_stmt is not None:
+        result["eps"] = eps_latest_stmt
+    if result.get("profit") is None and net_income is not None:
+        result["profit"] = net_income
+    if net_income is not None and prev_net_income not in (None, 0):
+        result["profit_growth"] = (net_income / prev_net_income - 1.0) * 100.0
+    if result.get("eps") is not None and eps_prev_stmt not in (None, 0):
+        result["eps_growth"] = (float(result["eps"]) / eps_prev_stmt - 1.0) * 100.0
+    if result.get("debt_to_equity") is None and debt is not None and equity not in (None, 0):
+        result["debt_to_equity"] = debt / equity
+    if result.get("roe") is None and net_income is not None and equity not in (None, 0):
+        base = ((equity + prev_equity) / 2.0) if prev_equity not in (None, 0) else equity
+        result["roe"] = net_income / base * 100.0
+    capital = None
+    if equity is not None:
+        capital = equity + (debt or 0.0) - (cash or 0.0)
+        result["capital"] = capital
+    if ebit is not None and capital not in (None, 0):
+        result["roce"] = ebit / capital * 100.0
+    if operating_cash is not None and net_income not in (None, 0):
+        result["earnings_quality"] = operating_cash / net_income
+
+    price = None
+    if current_price is not None:
+        try:
+            p = float(current_price)
+            if p > 0:
+                price = p
+        except (TypeError, ValueError):
+            price = None
+    if price is None:
+        price = _number(info.get("currentPrice")) if isinstance(info, dict) else None
+    if price is not None:
+        result["current_price"] = price
+        if result.get("eps") not in (None, 0) and not result.get("pe"):
+            result["pe"] = price / float(result["eps"])
+
+    if len(income_series) >= 3 and all(v > 0 for v in income_series):
+        growths = []
+        for idx in range(len(income_series) - 1):
+            previous = income_series[idx + 1]
+            if previous:
+                growths.append((income_series[idx] / previous) - 1.0)
+        if growths:
+            mean = sum(growths) / len(growths)
+            variance = sum((g - mean) ** 2 for g in growths) / len(growths)
+            result["predictability"] = max(0.0, min(1.0, 1.0 - variance ** 0.5))
+
+    required = (
+        "profit_growth", "eps_growth", "roce", "roe", "debt_to_equity",
+        "predictability", "earnings_quality", "pe"
+    )
+    result["missing_provider_fields"] = [key for key in required if key not in result]
+    return result
+
+
+def _twelve_fetch(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+    payloads: dict[str, dict[str, Any]] = {}
+    errors: dict[str, str] = {}
+    for endpoint in ("income_statement", "balance_sheet", "cash_flow", "earnings", "profile", "quote"):
+        try:
+            payload, used_symbol = _request(endpoint, symbol)
+            payloads[endpoint] = payload
+        except Exception as exc:
+            errors[endpoint] = str(exc)
+
+    if not payloads:
+        raise RuntimeError("TWELVEDATA_FUNDAMENTALS_FAILED: " + " | ".join(errors.values()))
+
+    income = payloads.get("income_statement", {})
+    balance = payloads.get("balance_sheet", {})
+    cashflow = payloads.get("cash_flow", {})
+    earnings = payloads.get("earnings", {})
+    profile = payloads.get("profile", {})
+    quote = payloads.get("quote", {})
+    income_rows = _sort_records(_records(income))
+    balance_rows = _sort_records(_records(balance))
+    cash_rows = _sort_records(_records(cashflow))
+    earning_rows = _sort_records(_records(earnings))
+
+    result: dict[str, Any] = {
+        "symbol": symbol,
+        "source": "Twelve Data",
+        "provider": "twelve_data",
+        "source_status": "AVAILABLE",
+        "source_endpoints": sorted(payloads),
+        "endpoint_errors": errors,
+    }
+    profile_name = _text(profile, ("name", "company_name", "symbol_name"))
+    profile_sector = _text(profile, ("sector", "sector_name"))
+    profile_industry = _text(profile, ("industry", "industry_name"))
+    if profile_name:
+        result["company_name"] = profile_name
+    if profile_sector:
+        result["sector"] = profile_sector
+    if profile_industry:
+        result["industry"] = profile_industry
+
+    latest_income = income_rows[0] if income_rows else {}
+    previous_income = income_rows[1] if len(income_rows) > 1 else {}
+    latest_balance = balance_rows[0] if balance_rows else {}
+    previous_balance = balance_rows[1] if len(balance_rows) > 1 else {}
+    latest_cash = cash_rows[0] if cash_rows else {}
+    latest_earnings = earning_rows[0] if earning_rows else {}
+    net_income = _walk(latest_income, ("net_income", "net_income_common_stockholders", "net_income_attributable_to_common_shareholders"))
+    previous_net_income = _walk(previous_income, ("net_income", "net_income_common_stockholders", "net_income_attributable_to_common_shareholders"))
+    eps = _walk(latest_income, ("diluted_eps", "basic_eps", "eps")) or _walk(latest_earnings, ("eps", "diluted_eps", "eps_actual"))
+    previous_eps = _walk(previous_income, ("diluted_eps", "basic_eps", "eps")) or _walk(earning_rows[1] if len(earning_rows) > 1 else {}, ("eps", "diluted_eps", "eps_actual"))
+    equity = _walk(latest_balance, ("total_equity", "total_shareholders_equity", "stockholders_equity", "shareholders_equity"))
+    previous_equity = _walk(previous_balance, ("total_equity", "total_shareholders_equity", "stockholders_equity", "shareholders_equity"))
+    debt = _walk(latest_balance, ("total_debt", "long_term_debt", "short_term_debt", "total_borrowings"))
+    cash = _walk(latest_balance, ("cash_and_cash_equivalents", "cash_and_short_term_investments", "cash"))
+    ebit = _walk(latest_income, ("ebit", "operating_income", "operating_profit"))
+    operating_cash = _walk(latest_cash, ("operating_cash_flow", "cash_flow_from_operating_activities", "net_cash_provided_by_operating_activities"))
+    for key, value in {
+        "eps": eps,
+        "profit": net_income,
+        "capital": (equity or 0.0) + (debt or 0.0) - (cash or 0.0) if equity is not None else None,
+        "profit_growth": _growth(net_income, previous_net_income),
+        "eps_growth": _growth(eps, previous_eps),
+        "debt_to_equity": (debt / equity) if debt is not None and equity not in (None, 0) else None,
+        "roe": (net_income / ((equity + previous_equity) / 2.0) * 100.0) if net_income is not None and equity is not None and previous_equity not in (None, 0) else ((net_income / equity * 100.0) if net_income is not None and equity not in (None, 0) else None),
+        "roce": (ebit / ((equity or 0.0) + (debt or 0.0) - (cash or 0.0)) * 100.0) if ebit is not None and ((equity or 0.0) + (debt or 0.0) - (cash or 0.0)) else None,
+        "earnings_quality": (operating_cash / net_income) if operating_cash is not None and net_income not in (None, 0) else None,
+    }.items():
+        if value is not None:
+            result[key] = float(value)
+    provider_price = _walk(quote, ("price", "close", "last_price", "previous_close"))
+    effective_price = _number(current_price) if current_price is not None else provider_price
+    if effective_price is not None:
+        result["current_price"] = float(effective_price)
+        if eps not in (None, 0):
+            result["pe"] = float(effective_price) / float(eps)
+    profit_series = []
+    for row in income_rows[:5]:
+        value = _walk(row, ("net_income", "net_income_common_stockholders", "net_income_attributable_to_common_shareholders"))
+        if value is not None:
+            profit_series.append(value)
+    if len(profit_series) >= 3 and all(v > 0 for v in profit_series):
+        growths = []
+        for idx in range(len(profit_series) - 1):
+            previous = profit_series[idx + 1]
+            if previous:
+                growths.append((profit_series[idx] / previous) - 1.0)
+        if growths:
+            mean = sum(growths) / len(growths)
+            variance = sum((g - mean) ** 2 for g in growths) / len(growths)
+            result["predictability"] = max(0.0, min(1.0, 1.0 - variance ** 0.5))
+    result["missing_provider_fields"] = [k for k in ("profit_growth", "eps_growth", "roce", "roe", "debt_to_equity", "predictability", "earnings_quality", "pe") if k not in result]
+    return result
+
+
+def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+    """Return source-backed fundamentals using Twelve Data, then Yahoo Finance.
+
+    The provider is recorded in the returned payload. No value is invented:
+    unavailable fields remain absent and are surfaced through
+    ``missing_provider_fields``.
+    """
+    symbol = str(symbol).strip().upper()
+    if not symbol:
+        raise ValueError("symbol is required")
+
+    twelve_error = None
+    try:
+        result = _twelve_fetch(symbol, current_price=current_price)
+        return result
+    except Exception as exc:
+        twelve_error = str(exc)
+
+    try:
+        result = _yahoo_fetch(symbol, current_price=current_price)
+        result["fallback_reason"] = twelve_error
+        result["source_status"] = "AVAILABLE" if not result.get("missing_provider_fields") else "PARTIAL"
+        return result
+    except Exception as yahoo_exc:
+        raise RuntimeError(f"FUNDAMENTALS_ALL_PROVIDERS_FAILED: Twelve Data={twelve_error}; Yahoo Finance={yahoo_exc}") from yahoo_exc
+
+
+def _growth(latest: float | None, previous: float | None) -> float | None:
+    if latest is None or previous in (None, 0):
+        return None
+    return (latest / previous - 1.0) * 100.0
+
+====================================================================
 FILE: intraday_bot/news.py
 SIZE: 830 bytes
 ====================================================================
@@ -19353,6 +19826,418 @@ class NewsEngine:
                 items.append(NewsItem(f"{source} feed retrieved","provider",url,datetime.now(timezone.utc).isoformat(),True))
             except Exception:continue
         return items
+
+====================================================================
+FILE: intraday_bot/nse_fo.py
+SIZE: 8158 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+import time
+from typing import Any
+from urllib.request import Request, urlopen
+
+
+PAGE_URL = "https://www.nseindia.com/market-data/oi-spurts"
+API_URL = "https://www.nseindia.com/api/live-analysis-oi-spurts-underlyings"
+DEFAULT_TTL_SECONDS = 300
+
+_cache: dict[str, Any] = {"at": 0.0, "rows": []}
+
+
+def _number(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        if isinstance(value, str):
+            value = value.replace(",", "").replace("%", "").strip()
+            if value.lower() in {"", "na", "n/a", "null", "none", "-"}:
+                return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _norm_symbol(value: Any) -> str:
+    return str(value or "").strip().upper().replace("&", "&")
+
+
+def _find_rows(payload: Any) -> list[dict[str, Any]]:
+    """Recursively find the first list of record-like dictionaries."""
+    if isinstance(payload, list):
+        return [x for x in payload if isinstance(x, dict)]
+    if isinstance(payload, dict):
+        for key in ("data", "records", "aaData", "rows", "results"):
+            value = payload.get(key)
+            rows = _find_rows(value)
+            if rows:
+                return rows
+        for value in payload.values():
+            rows = _find_rows(value)
+            if rows:
+                return rows
+    return []
+
+
+def _pick(row: dict[str, Any], *keys: str) -> Any:
+    norm = {str(k).lower().replace(" ", "").replace("_", ""): v for k, v in row.items()}
+    for key in keys:
+        value = norm.get(key.lower().replace(" ", "").replace("_", ""))
+        if value is not None:
+            return value
+    return None
+
+
+def _request_json(url: str, timeout: int = 20) -> Any:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/138 Safari/537.36",
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": PAGE_URL,
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive",
+    }
+    request = Request(url, headers=headers)
+    with urlopen(request, timeout=timeout) as response:
+        raw = response.read()
+    return json.loads(raw.decode("utf-8"))
+
+
+def fetch_oi_spurts(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> list[dict[str, Any]]:
+    """Fetch NSE OI-spurt underlying data with a short process cache.
+
+    The human-facing source is NSE's Change in Open Interest / OI Spurts page.
+    The collector uses the corresponding NSE data feed when reachable and
+    normalizes only source-returned fields. No synthetic derivatives values are
+    generated.
+    """
+    now = time.time()
+    if not force and _cache["rows"] and now - float(_cache["at"]) < ttl_seconds:
+        return list(_cache["rows"])
+
+    payload = _request_json(API_URL)
+    rows = _find_rows(payload)
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        symbol = _pick(row, "symbol", "symbolname", "underlying", "underlyingvalue")
+        symbol = _norm_symbol(symbol)
+        if not symbol:
+            continue
+        item = {
+            "symbol": symbol,
+            "ltp": _number(_pick(row, "ltp", "lastprice", "lasttradedprice")),
+            "change_pct": _number(_pick(row, "pchange", "percentchange", "changepercent")),
+            "oi_change_pct": _number(_pick(row, "pchangeinopeninterest", "pchangeinoi", "percentchangeinopeninterest", "oichangepct", "changeinoipercent")),
+            "oi_change": _number(_pick(row, "changeinopeninterest", "changeinoi")),
+            "open_interest": _number(_pick(row, "openinterest", "oi")),
+            "volume": _number(_pick(row, "volume", "vol")),
+            "value": _number(_pick(row, "value", "totaltradedvalue")),
+            "futures_value_lakhs": _number(_pick(row, "futuresvalue", "futuresval", "futures_value", "futuresvalueinlakhs")),
+            "options_value_lakhs": _number(_pick(row, "optionsvalue", "optionsval", "options_value", "optionsvalueinlakhs", "optionvalue")),
+            "total_value_lakhs": _number(_pick(row, "totalvalue", "totalval", "total_value", "totalvalueinlakhs")),
+            "timestamp": _pick(row, "timestamp", "time", "datetime", "asof"),
+            "source": "NSE OI Spurts",
+        }
+        if item["total_value_lakhs"] is None:
+            parts = [item.get("futures_value_lakhs"), item.get("options_value_lakhs")]
+            if all(isinstance(v, (int, float)) for v in parts):
+                item["total_value_lakhs"] = float(parts[0]) + float(parts[1])
+        if any(item[k] is not None for k in ("oi_change_pct", "oi_change", "open_interest", "futures_value_lakhs", "options_value_lakhs", "total_value_lakhs")):
+            normalized.append(item)
+
+    _cache["at"] = now
+    _cache["rows"] = normalized
+    return list(normalized)
+
+
+def oi_context(symbol: str, force: bool = False) -> dict[str, Any]:
+    """Return normalized OI-spurt context for one underlying, or DATA UNAVAILABLE."""
+    symbol = _norm_symbol(symbol)
+    try:
+        rows = fetch_oi_spurts(force=force)
+    except Exception as exc:
+        return {
+            "status": "DATA UNAVAILABLE",
+            "source": PAGE_URL,
+            "error": str(exc),
+            "symbol": symbol,
+        }
+
+    matches = [r for r in rows if r.get("symbol") == symbol]
+    if not matches:
+        return {
+            "status": "NOT_IN_OI_SPURTS",
+            "source": PAGE_URL,
+            "symbol": symbol,
+        }
+
+    item = dict(matches[0])
+    change = item.get("change_pct")
+    oi_change = item.get("oi_change_pct")
+    signal = "UNKNOWN"
+    if isinstance(change, (int, float)) and isinstance(oi_change, (int, float)):
+        if change > 0 and oi_change > 0:
+            signal = "LONG_BUILDUP"
+        elif change < 0 and oi_change > 0:
+            signal = "SHORT_BUILDUP"
+        elif change > 0 and oi_change < 0:
+            signal = "SHORT_COVERING"
+        elif change < 0 and oi_change < 0:
+            signal = "LONG_UNWINDING"
+
+    item.update({"status": "AVAILABLE", "signal": signal})
+    return item
+
+
+def market_context(force: bool = False) -> dict[str, Any]:
+    """Aggregate the OI-spurt feed into a market-wide derivatives participation view.
+
+    This is a research context only. Aggregate derivatives value/activity does not
+    by itself establish market direction.
+    """
+    try:
+        rows = fetch_oi_spurts(force=force)
+    except Exception as exc:
+        return {"status": "DATA UNAVAILABLE", "source": PAGE_URL, "error": str(exc)}
+
+    def total(field: str) -> float:
+        return sum(float(r[field]) for r in rows if isinstance(r.get(field), (int, float)))
+
+    signal_counts = {name: 0 for name in ("LONG_BUILDUP", "SHORT_BUILDUP", "SHORT_COVERING", "LONG_UNWINDING", "UNKNOWN")}
+    for row in rows:
+        change = row.get("change_pct")
+        oi_change = row.get("oi_change_pct")
+        signal = "UNKNOWN"
+        if isinstance(change, (int, float)) and isinstance(oi_change, (int, float)):
+            if change > 0 and oi_change > 0:
+                signal = "LONG_BUILDUP"
+            elif change < 0 and oi_change > 0:
+                signal = "SHORT_BUILDUP"
+            elif change > 0 and oi_change < 0:
+                signal = "SHORT_COVERING"
+            elif change < 0 and oi_change < 0:
+                signal = "LONG_UNWINDING"
+        signal_counts[signal] += 1
+
+    value_rows = [r for r in rows if isinstance(r.get("total_value_lakhs"), (int, float))]
+    top_value = sorted(value_rows, key=lambda r: float(r["total_value_lakhs"]), reverse=True)[:10]
+    return {
+        "status": "AVAILABLE",
+        "source": PAGE_URL,
+        "symbols": len(rows),
+        "futures_value_lakhs": total("futures_value_lakhs"),
+        "options_value_lakhs": total("options_value_lakhs"),
+        "total_value_lakhs": total("total_value_lakhs"),
+        "signal_counts": signal_counts,
+        "top_value_symbols": [
+            {"symbol": r["symbol"], "total_value_lakhs": r["total_value_lakhs"], "signal": oi_context(r["symbol"]).get("signal", "UNKNOWN")}
+            for r in top_value
+        ],
+    }
+
+====================================================================
+FILE: intraday_bot/nse_preopen.py
+SIZE: 7712 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+import time
+from typing import Any
+from urllib.request import Request, urlopen
+
+
+PAGE_URL = "https://www.nseindia.com/market-data/pre-open-market-cm-and-emerge-market"
+API_URL = "https://www.nseindia.com/api/market-data-pre-open?key=ALL"
+DEFAULT_TTL_SECONDS = 300
+
+_cache: dict[str, Any] = {"at": 0.0, "rows": [], "summary": {}}
+
+
+def _number(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        if isinstance(value, str):
+            value = value.replace(",", "").replace("%", "").strip()
+            if value.lower() in {"", "na", "n/a", "null", "none", "-"}:
+                return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pick(row: dict[str, Any], *keys: str) -> Any:
+    norm = {str(k).lower().replace(" ", "").replace("_", ""): v for k, v in row.items()}
+    for key in keys:
+        value = norm.get(key.lower().replace(" ", "").replace("_", ""))
+        if value is not None:
+            return value
+    return None
+
+
+def _find_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [x for x in payload if isinstance(x, dict)]
+    if isinstance(payload, dict):
+        for key in ("data", "records", "aaData", "rows", "results"):
+            value = payload.get(key)
+            rows = _find_rows(value)
+            if rows:
+                return rows
+        for value in payload.values():
+            rows = _find_rows(value)
+            if rows:
+                return rows
+    return []
+
+
+def _request_json(url: str, timeout: int = 20) -> Any:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/138 Safari/537.36",
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": PAGE_URL,
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive",
+    }
+    request = Request(url, headers=headers)
+    with urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _classify(change_pct: float | None) -> str:
+    if not isinstance(change_pct, (int, float)):
+        return "UNKNOWN"
+    if change_pct >= 2.0:
+        return "STRONG_POSITIVE"
+    if change_pct > 0:
+        return "POSITIVE"
+    if change_pct <= -2.0:
+        return "STRONG_NEGATIVE"
+    if change_pct < 0:
+        return "NEGATIVE"
+    return "UNCHANGED"
+
+
+def fetch_preopen(force: bool = False, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> list[dict[str, Any]]:
+    """Fetch NSE cash-market pre-open data and normalize source-returned fields.
+
+    The feed is treated as opening-context evidence only. No trade signal is
+    created directly from pre-open data.
+    """
+    now = time.time()
+    if not force and _cache["rows"] and now - float(_cache["at"]) < ttl_seconds:
+        return list(_cache["rows"])
+
+    payload = _request_json(API_URL)
+    rows = _find_rows(payload)
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        symbol = _pick(row, "symbol", "symbolname", "meta.symbol", "identifier")
+        symbol = str(symbol or "").strip().upper()
+        if not symbol or symbol in {"NIFTY 50", "NIFTY50", "NIFTY"}:
+            continue
+        prev_close = _number(_pick(row, "previousClose", "prevClose", "prev_close"))
+        iep = _number(_pick(row, "iep", "indicativeEquityPrice", "indicativePrice", "price"))
+        change = _number(_pick(row, "change", "absoluteChange", "netChange"))
+        change_pct = _number(_pick(row, "pChange", "percentChange", "changePercent", "xChange"))
+        if change_pct is None and iep is not None and prev_close not in (None, 0):
+            change_pct = (iep / prev_close - 1.0) * 100.0
+        item = {
+            "symbol": symbol,
+            "prev_close": prev_close,
+            "iep": iep,
+            "change": change,
+            "change_pct": change_pct,
+            "classification": _classify(change_pct),
+            "final_price": _number(_pick(row, "finalPrice", "price")),
+            "final_quantity": _number(_pick(row, "finalQuantity", "quantity", "finalQty")),
+            "total_buy_qty": _number(_pick(row, "totalBuyQuantity", "buyQuantity")),
+            "total_sell_qty": _number(_pick(row, "totalSellQuantity", "sellQuantity")),
+            "timestamp": _pick(row, "lastUpdateTime", "timestamp", "time"),
+            "source": "NSE Pre-Open Market",
+        }
+        if any(item[k] is not None for k in ("iep", "change_pct", "final_price", "final_quantity", "total_buy_qty", "total_sell_qty")):
+            normalized.append(item)
+
+    _cache["at"] = now
+    _cache["rows"] = normalized
+    return list(normalized)
+
+
+def _breadth(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    advances = sum(1 for r in rows if isinstance(r.get("change_pct"), (int, float)) and r["change_pct"] > 0)
+    declines = sum(1 for r in rows if isinstance(r.get("change_pct"), (int, float)) and r["change_pct"] < 0)
+    unchanged = sum(1 for r in rows if r.get("change_pct") == 0)
+    total = advances + declines + unchanged
+    ratio = (advances / declines) if declines else None
+    return {
+        "advances": advances,
+        "declines": declines,
+        "unchanged": unchanged,
+        "total": total,
+        "advance_decline_ratio": ratio,
+    }
+
+
+def market_context(force: bool = False) -> dict[str, Any]:
+    """Build market-opening regime context from the pre-open cash-market feed."""
+    try:
+        rows = fetch_preopen(force=force)
+    except Exception as exc:
+        return {"status": "DATA UNAVAILABLE", "source": PAGE_URL, "error": str(exc)}
+
+    breadth = _breadth(rows)
+    pct_values = [r["change_pct"] for r in rows if isinstance(r.get("change_pct"), (int, float))]
+    avg_change = sum(pct_values) / len(pct_values) if pct_values else None
+    strong_positive = sum(1 for r in rows if r.get("classification") == "STRONG_POSITIVE")
+    strong_negative = sum(1 for r in rows if r.get("classification") == "STRONG_NEGATIVE")
+
+    if breadth["advances"] > breadth["declines"] * 1.5 and (avg_change is None or avg_change > 0):
+        regime = "BULLISH_PREOPEN"
+    elif breadth["declines"] > breadth["advances"] * 1.5 and (avg_change is None or avg_change < 0):
+        regime = "BEARISH_PREOPEN"
+    elif breadth["advances"] or breadth["declines"]:
+        regime = "MIXED_PREOPEN"
+    else:
+        regime = "DATA_UNAVAILABLE"
+
+    leaders = sorted(
+        [r for r in rows if isinstance(r.get("change_pct"), (int, float))],
+        key=lambda x: float(x["change_pct"]),
+        reverse=True,
+    )[:10]
+    laggards = sorted(
+        [r for r in rows if isinstance(r.get("change_pct"), (int, float))],
+        key=lambda x: float(x["change_pct"]),
+    )[:10]
+
+    summary = {
+        "status": "AVAILABLE",
+        "source": PAGE_URL,
+        "symbols": len(rows),
+        "breadth": breadth,
+        "average_change_pct": avg_change,
+        "strong_positive_count": strong_positive,
+        "strong_negative_count": strong_negative,
+        "regime": regime,
+        "leaders": leaders,
+        "laggards": laggards,
+    }
+    _cache["summary"] = summary
+    return summary
+
+
+def stock_context(symbol: str, force: bool = False) -> dict[str, Any]:
+    symbol = str(symbol).strip().upper()
+    try:
+        rows = fetch_preopen(force=force)
+    except Exception as exc:
+        return {"status": "DATA UNAVAILABLE", "source": PAGE_URL, "symbol": symbol, "error": str(exc)}
+    matches = [r for r in rows if r.get("symbol") == symbol]
+    if not matches:
+        return {"status": "NOT_IN_PREOPEN", "source": PAGE_URL, "symbol": symbol}
+    return {"status": "AVAILABLE", **matches[0]}
 
 ====================================================================
 FILE: intraday_bot/paper.py
@@ -19381,12 +20266,15 @@ def fill(db: Database, signal: dict, mode: str = "PAPER") -> str:
 
 ====================================================================
 FILE: intraday_bot/research.py
-SIZE: 8014 bytes
+SIZE: 12396 bytes
 ====================================================================
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from typing import Any
+
+from .nse_fo import market_context, oi_context
+from .nse_preopen import market_context as preopen_market_context, stock_context as preopen_stock_context
 
 
 SCRAP_SECTOR_LIMIT_PCT = 15.0
@@ -19421,7 +20309,22 @@ class ResearchResult:
 
 def _numeric(f: dict[str, Any], key: str) -> float | None:
     value = f.get(key)
-    return float(value) if isinstance(value, (int, float)) else None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _clamp(value: float, low: float = 0.0, high: float = 10.0) -> float:
+    return max(low, min(high, float(value)))
+
+
+def _band(value: float, points: list[tuple[float, float]]) -> float:
+    """Piecewise-linear score interpolation across ascending value/score points."""
+    if value <= points[0][0]:
+        return points[0][1]
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        if value <= x1:
+            span = x1 - x0
+            return y0 if span == 0 else y0 + (value - x0) * (y1 - y0) / span
+    return points[-1][1]
 
 
 def scrap_analysis(symbol: str, fundamentals: dict[str, Any] | None) -> ResearchResult:
@@ -19443,31 +20346,50 @@ def scrap_analysis(symbol: str, fundamentals: dict[str, Any] | None) -> Research
     return ResearchResult(symbol, scrap_score=score, status="PASS" if present else "DATA UNAVAILABLE", metrics={"available_checks": len(present), "total_checks": len(checks)})
 
 
-def fundamental_score(f: dict[str, Any] | None) -> float:
-    if not f:
-        return 0.0
-    score = 5.0
-    for key, good, bad in (("profit_growth", 0, -10), ("roce", 12, -5), ("roe", 12, -5), ("earnings_quality", 0.6, -2), ("debt_to_equity", 1.5, -2)):
-        v = _numeric(f, key)
-        if v is None:
+def _fundamental_component_scores(f: dict[str, Any]) -> tuple[dict[str, float], dict[str, str]]:
+    values: dict[str, float] = {}
+    notes: dict[str, str] = {}
+    specs: dict[str, tuple[str, list[tuple[float, float]], str]] = {
+        "profit_growth": ("Profit Growth %", [(-20.0, 0.0), (0.0, 4.0), (10.0, 6.0), (20.0, 8.0), (30.0, 10.0)], "Higher sustainable profit growth scores better."),
+        "eps_growth": ("EPS Growth %", [(-20.0, 0.0), (0.0, 4.0), (10.0, 6.0), (20.0, 8.0), (30.0, 10.0)], "Higher sustainable EPS growth scores better."),
+        "roce": ("ROCE %", [(0.0, 0.0), (5.0, 4.0), (10.0, 6.0), (15.0, 8.0), (20.0, 10.0)], "Higher returns on capital score better."),
+        "roe": ("ROE %", [(0.0, 0.0), (5.0, 4.0), (10.0, 6.0), (15.0, 8.0), (20.0, 10.0)], "Higher returns on equity score better."),
+        "earnings_quality": ("Earnings Quality", [(0.0, 0.0), (0.6, 5.0), (1.0, 7.0), (2.0, 9.0), (3.0, 10.0)], "Operating-cash-flow to net-income quality ratio; stronger is better."),
+        "debt_to_equity": ("Debt / Equity", [(0.5, 10.0), (1.0, 8.0), (1.5, 7.0), (2.5, 5.0), (4.0, 3.0), (6.0, 1.0)], "Lower leverage scores better."),
+    }
+    for key, (_, points, note) in specs.items():
+        value = _numeric(f, key)
+        if value is None:
             continue
-        if key == "debt_to_equity":
-            score += 1 if v < good else bad
-        elif v >= good:
-            score += 1
-        else:
-            score += bad
-    return max(0.0, min(10.0, score))
+        values[key] = _clamp(_band(value, points))
+        notes[key] = note
+    return values, notes
+
+
+def fundamental_score(f: dict[str, Any] | None) -> float:
+    """Continuous, weighted 0-10 fundamental score over available source fields."""
+    d = f or {}
+    scores, _ = _fundamental_component_scores(d)
+    weights = {
+        "profit_growth": 0.25,
+        "eps_growth": 0.10,
+        "roce": 0.15,
+        "roe": 0.15,
+        "earnings_quality": 0.15,
+        "debt_to_equity": 0.20,
+    }
+    available = [(k, weights[k]) for k in weights if k in scores]
+    if not available:
+        return 0.0
+    total_weight = sum(w for _, w in available)
+    return round(sum(scores[k] * w for k, w in available) / total_weight, 2)
 
 
 def valuation_score(f: dict[str, Any] | None) -> float:
     pe = _numeric(f or {}, "pe")
     if pe is None or pe <= 0:
         return 0.0
-    if pe < 15: return 8.0
-    if pe < 25: return 6.0
-    if pe < 40: return 4.0
-    return 2.0
+    return round(_clamp(_band(pe, [(10.0, 9.0), (15.0, 8.0), (20.0, 7.0), (25.0, 6.0), (30.0, 5.0), (40.0, 4.0), (60.0, 2.0)])), 2)
 
 
 def source_valuation(eps: float | None, pe: float | None) -> float | None:
@@ -19483,43 +20405,93 @@ def source_roce(profit: float | None, capital: float | None) -> float | None:
 
 
 def _factor_result(f: dict[str, Any], key: str) -> tuple[str, str]:
-    value = f.get(key)
+    value = _numeric(f, key)
     if value is None:
         return "MISSING", "No source value supplied"
-    if not isinstance(value, (int, float)):
-        return "MISSING", "Source value is not numeric"
     if key == "pe":
-        return ("POSITIVE", f"P/E={value:g} is within the research valuation band") if 0 < value < 25 else ("NEGATIVE", f"P/E={value:g} is outside the preferred band")
+        if value <= 0:
+            return "NEGATIVE", f"P/E={value:g} is not a valid positive valuation multiple"
+        if value < 20:
+            return "POSITIVE", f"P/E={value:g} is in the preferred valuation range"
+        if value > 30:
+            return "NEGATIVE", f"P/E={value:g} is above the preferred valuation range"
+        return "NEUTRAL", f"P/E={value:g} is in the intermediate valuation range"
     if key == "debt_to_equity":
-        return ("POSITIVE", f"Debt/Equity={value:g} is below 1.5") if value < 1.5 else ("NEGATIVE", f"Debt/Equity={value:g} is 1.5 or higher")
+        if value < 1.5:
+            return "POSITIVE", f"Debt/Equity={value:g} is below 1.5"
+        if value >= 3.0:
+            return "NEGATIVE", f"Debt/Equity={value:g} is 3.0 or higher"
+        return "NEUTRAL", f"Debt/Equity={value:g} is between 1.5 and 3.0"
     if key == "earnings_quality":
-        return ("POSITIVE", f"Earnings quality={value:g} meets 0.6 threshold") if value >= 0.6 else ("NEGATIVE", f"Earnings quality={value:g} is below 0.6")
+        if value <= 0:
+            return "NEGATIVE", f"Earnings quality={value:g} is non-positive"
+        if value >= 0.6:
+            return "POSITIVE", f"Earnings quality={value:g} meets 0.6 threshold"
+        return "NEUTRAL", f"Earnings quality={value:g} is positive but below 0.6"
+    if key == "predictability":
+        if value >= 0.7:
+            return "POSITIVE", f"Predictability={value:g} is at least 0.7"
+        if value < 0.5:
+            return "NEGATIVE", f"Predictability={value:g} is below 0.5"
+        return "NEUTRAL", f"Predictability={value:g} is between 0.5 and 0.7"
+    if key == "roce":
+        if value >= 12:
+            return "POSITIVE", f"ROCE={value:g} meets 12% research threshold"
+        if value < 4:
+            return "NEGATIVE", f"ROCE={value:g} is below 4%"
+        return "NEUTRAL", f"ROCE={value:g} is between 4% and 12%"
+    if key == "roe":
+        if value >= 12:
+            return "POSITIVE", f"ROE={value:g} meets 12% research threshold"
+        if value < 5:
+            return "NEGATIVE", f"ROE={value:g} is below 5%"
+        return "NEUTRAL", f"ROE={value:g} is between 5% and 12%"
+    if key in {"profit_growth", "eps_growth"}:
+        if value >= 10:
+            return "POSITIVE", f"{key}={value:g} is at least 10%"
+        if value < 0:
+            return "NEGATIVE", f"{key}={value:g} is negative"
+        return "NEUTRAL", f"{key}={value:g} is positive but below 10%"
     return ("POSITIVE", f"{key}={value:g} is positive") if value > 0 else ("NEGATIVE", f"{key}={value:g} is not positive")
 
 
 def framework_analysis(f: dict[str, Any] | None) -> dict[str, Any]:
-    """Return auditable per-framework evidence, including missing data and confidence."""
+    """Auditable five-framework research with positive/neutral/negative/missing states."""
     d = f or {}
     output: dict[str, Any] = {}
     for name, spec in FRAMEWORK_RULES.items():
         positives: list[str] = []
+        neutrals: list[str] = []
         negatives: list[str] = []
         missing: list[str] = []
         evidence: list[str] = []
         for key in spec["factors"]:
             state, text = _factor_result(d, key)
             evidence.append(text)
-            if state == "POSITIVE": positives.append(key)
-            elif state == "NEGATIVE": negatives.append(key)
-            else: missing.append(key)
-        available = len(positives) + len(negatives)
-        score = round((5.0 + (len(positives) - len(negatives)) * 0.9) if available else 0.0, 2)
-        score = max(0.0, min(10.0, score))
+            if state == "POSITIVE":
+                positives.append(key)
+            elif state == "NEUTRAL":
+                neutrals.append(key)
+            elif state == "NEGATIVE":
+                negatives.append(key)
+            else:
+                missing.append(key)
+        available = len(positives) + len(neutrals) + len(negatives)
+        score = round(_clamp(5.0 + (len(positives) - len(negatives)) * 1.0), 2) if available else 0.0
         confidence = round(available / len(spec["factors"]), 2)
-        output[name] = {"score": score, "confidence": confidence, "positive_factors": positives, "negative_factors": negatives, "missing_data": missing, "evidence": evidence, "method": spec["label"]}
+        output[name] = {
+            "score": score,
+            "confidence": confidence,
+            "positive_factors": positives,
+            "neutral_factors": neutrals,
+            "negative_factors": negatives,
+            "missing_data": missing,
+            "evidence": evidence,
+            "method": spec["label"],
+        }
     scores = [x["score"] for x in output.values() if x["confidence"] > 0]
     overall = round(sum(scores) / len(scores), 2) if scores else 0.0
-    spread = max(scores, default=0) - min(scores, default=0)
+    spread = max(scores, default=0.0) - min(scores, default=0.0)
     agreement = "AGREE" if scores and spread <= 2 else ("DISAGREE" if scores else "DATA UNAVAILABLE")
     return {"frameworks": output, "overall": overall, "agreement": agreement, "status": "AVAILABLE" if scores else "DATA UNAVAILABLE"}
 
@@ -19533,12 +20505,20 @@ def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
     d = f or {}
     scrap = scrap_analysis(symbol, d)
     frameworks = framework_analysis(d)
+    derivatives = oi_context(symbol)
+    market = market_context()
+    preopen = preopen_stock_context(symbol)
+    preopen_market = preopen_market_context()
     return {
         "symbol": symbol,
         "scrap": asdict(scrap),
         "fundamental_score": fundamental_score(d),
         "valuation_score": valuation_score(d),
         "frameworks": frameworks,
+        "derivatives": derivatives,
+        "market_context": market,
+        "preopen": preopen,
+        "preopen_market_context": preopen_market,
         "valuation_price_from_eps_pe": source_valuation(d.get("eps"), d.get("pe")),
         "roce_from_profit_capital": source_roce(d.get("profit"), d.get("capital")),
         "status": "REJECTED" if scrap.rejection_reason else ("AVAILABLE" if frameworks["status"] == "AVAILABLE" else "DATA UNAVAILABLE"),
@@ -19675,7 +20655,7 @@ def risk_gate(
 
 ====================================================================
 FILE: intraday_bot/runtime.py
-SIZE: 21507 bytes
+SIZE: 23403 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -19697,6 +20677,7 @@ from .alerts import telegram
 from .brokers import DhanBroker
 from .config import IST, settings
 from .database import Database
+from .fundamentals_cache import get as get_fundamentals, refresh_batch as refresh_fundamentals_batch
 from .paper import fill
 from .research import research_bundle, fundamental_score, scrap_analysis
 from .risk import position_size, risk_gate
@@ -19722,15 +20703,9 @@ def universe() -> list[dict[str, Any]]:
         return []
 
 
-def fundamentals(symbol: str) -> dict[str, Any]:
-    p = Path("data/fundamentals.json")
-    if not p.exists():
-        return {}
-    try:
-        x = json.loads(p.read_text(encoding="utf-8"))
-        return x.get(symbol, {}) if isinstance(x, dict) else {}
-    except Exception:
-        return {}
+def fundamentals(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+    """Return the latest persisted verified fundamentals snapshot for a symbol."""
+    return get_fundamentals(symbol, current_price=current_price)
 
 
 def quote(q: dict[str, Any]) -> tuple[float, float, float]:
@@ -19764,7 +20739,7 @@ def sector(s: str) -> str:
 
 def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str, Any]:
     symbol = item["symbol"]
-    f = fundamentals(symbol)
+    f = fundamentals(symbol, current_price=price)
     bundle = research_bundle(symbol, f)
     scrap = scrap_analysis(symbol, f)
     base: dict[str, Any] = {
@@ -19780,6 +20755,7 @@ def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str
         "framework_status": bundle["status"],
         "framework_agreement": bundle["frameworks"]["agreement"],
         "frameworks": bundle["frameworks"]["frameworks"],
+        "derivatives": bundle.get("derivatives", {}),
         "liquidity_score": 5.0,
         "volume_score": min(10.0, volume / 1e6),
         "market_score": 5.0,
@@ -19830,7 +20806,7 @@ def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str
             "potential_reward": size.potential_reward,
             "overall_score": t["trend_score"] * .35 + base["fundamental_score"] * .10
             + base["conviction_score"] * .10 + base["volume_score"] * .10 + 5 * .35,
-            "reason": f"Trend={t['trend_state']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}",
+            "reason": f"Trend={t['trend_state']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}; OI={bundle.get('derivatives', {}).get('signal', 'UNAVAILABLE')}",
         }
     )
     return base
@@ -19972,7 +20948,7 @@ def _run_ai_advisory(candidates: list[dict[str, Any]]) -> None:
         context = {k: candidate.get(k) for k in (
             "symbol", "decision", "price", "entry", "stop", "target", "rr",
             "trend_score", "technical_score", "fundamental_score", "valuation_score",
-            "framework_agreement"
+            "framework_agreement", "derivatives"
         )}
         result = advisory(
             "Advisory only. Never override deterministic risk, funds, data, execution or reconciliation gates. "
@@ -19997,8 +20973,9 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     result: dict[str, Any] = {
         "cycle_id": cycle_id, "started_at": datetime.now(timezone.utc).isoformat(),
         "mode": mode, "market_open": market_open(), "stocks_observed": 0, "quotes": 0,
-        "deep_analysis_pool": 0, "dynamic_pool": True, "candidates": [], "rejections": {},
-        "rejection_details": [], "orders": [], "errors": [],
+        "deep_analysis_pool": 0, "dynamic_pool": True, "fundamentals_cache_hits": 0,
+        "fundamentals_refreshed": 0, "fundamentals_refresh_errors": 0,
+        "candidates": [], "rejections": {}, "rejection_details": [], "orders": [], "errors": [],
         "suggested_buy_investment": 0.0, "suggested_sell_value": 0.0,
     }
     db.event("engine", "INFO", "CYCLE_START", result)
@@ -20024,6 +21001,33 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     ranked.sort(reverse=True, key=lambda x: x[0])
     analysis_pool = _dynamic_analysis_pool(ranked)
     result["deep_analysis_pool"] = len(analysis_pool)
+
+    # Fundamentals are slow-moving compared with quotes. Refresh only a small
+    # bounded number of stale symbols each cycle, persist the source-backed
+    # snapshots, and use the cache for all analysis-pool symbols. This prevents
+    # the five-minute market loop from issuing hundreds of provider requests.
+    refresh_inputs = [(item["symbol"], price) for _, item, price, _ in analysis_pool]
+    before_cache = {}
+    try:
+        raw_cache_path = Path("data/fundamentals.json")
+        if raw_cache_path.exists():
+            payload = json.loads(raw_cache_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                before_cache = {str(k).upper(): v for k, v in payload.items() if isinstance(v, dict)}
+    except Exception:
+        before_cache = {}
+    try:
+        cache = refresh_fundamentals_batch(refresh_inputs)
+        result["fundamentals_refreshed"] = sum(
+            1 for symbol, _ in refresh_inputs
+            if symbol.upper() in cache and cache.get(symbol.upper(), {}).get("fetched_at")
+            and cache.get(symbol.upper(), {}).get("fetched_at") != before_cache.get(symbol.upper(), {}).get("fetched_at")
+        )
+        result["fundamentals_cache_hits"] = sum(1 for _, item, _, _ in analysis_pool if item["symbol"].upper() in cache and item["symbol"].upper() in before_cache)
+    except Exception as exc:
+        result["fundamentals_refresh_errors"] += 1
+        result["fundamentals_refresh_error"] = str(exc)
+
     try:
         funds = float(broker.funds() or settings.reference_capital)
     except Exception:
@@ -20106,6 +21110,7 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
             f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M:%S')} IST",
             f"Universe: {result['stocks_observed']} | Quotes: {result['quotes']} | Deep analysis: {result['deep_analysis_pool']}",
             f"Candidates: {len(result['candidates'])} | Orders: {len(result['orders'])}",
+            f"Fundamentals refreshed: {result['fundamentals_refreshed']} | cache hits: {result['fundamentals_cache_hits']}",
             f"Dhan available funds: ₹{broker_funds:,.2f}",
             f"Paper reference capital: ₹{settings.reference_capital:,.2f}",
             f"Paper buy investment: ₹{result['suggested_buy_investment']:,.2f}",
@@ -21274,7 +22279,7 @@ SIZE: 1 bytes
 
 ====================================================================
 FILE: requirements.txt
-SIZE: 142 bytes
+SIZE: 159 bytes
 ====================================================================
 requests>=2.31
 python-dotenv>=1.0
@@ -21286,6 +22291,7 @@ pytest>=8.0
 tzdata>=2024.1
 pyotp>=2.9
 dhanhq==2.3.0rc1
+yfinance>=0.2.40
 
 ====================================================================
 FILE: scripts/__init__.py
@@ -28984,6 +29990,389 @@ def test_ltp_scalar_payload_is_usable_as_price_row():
     assert rows == {"1333": {"last_price": 1750.25, "ltp": 1750.25}}
 
 ====================================================================
+FILE: tests/test_event_news_risk.py
+SIZE: 1226 bytes
+====================================================================
+from intraday_bot.event_news_risk import event_news_gate
+
+
+def test_news_gate_is_not_a_trade_signal_when_feed_unavailable():
+    result = event_news_gate({"source_status": "DATA UNAVAILABLE", "items": []})
+    assert result["status"] == "DATA UNAVAILABLE"
+    assert result["action"] == "NO_NEWS_DECISION"
+    assert result["risk_level"] == "UNKNOWN"
+
+
+def test_news_gate_flags_fresh_high_impact_event():
+    result = event_news_gate(
+        {
+            "source_status": "AVAILABLE",
+            "items": [{"title": "Example", "fresh": True}],
+            "material_high_impact": [
+                {"title": "Company investigation announced", "sentiment": "NEGATIVE", "materiality": 3}
+            ],
+        }
+    )
+    assert result["action"] == "REVIEW_BEFORE_ENTRY"
+    assert result["risk_level"] == "HIGH"
+    assert result["fresh_high_impact_count"] == 1
+
+
+def test_news_gate_does_not_flag_old_items_as_fresh_event():
+    result = event_news_gate(
+        {
+            "source_status": "AVAILABLE",
+            "items": [{"title": "Old story", "fresh": False}],
+            "material_high_impact": [],
+        }
+    )
+    assert result["risk_level"] == "LOW"
+    assert result["action"] == "NO_MATERIAL_EVENT_FLAG"
+
+====================================================================
+FILE: tests/test_fundamentals_cache.py
+SIZE: 1331 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+
+from intraday_bot import fundamentals_cache as fc
+
+
+def test_refresh_batch_persists_bounded_source_snapshot(tmp_path, monkeypatch):
+    fc._LOCK = fc.threading.Lock()
+    monkeypatch.setattr(fc, "CACHE_PATH", tmp_path / "fundamentals.json")
+    monkeypatch.setenv("FUNDAMENTALS_REFRESH_PER_CYCLE", "1")
+    monkeypatch.setenv("FUNDAMENTALS_REFRESH_SECONDS", "604800")
+
+    calls: list[str] = []
+
+    def fake_fetch(symbol: str, current_price=None):
+        calls.append(symbol)
+        return {
+            "symbol": symbol,
+            "source": "Twelve Data",
+            "source_status": "AVAILABLE",
+            "eps": 5.0,
+            "profit_growth": 12.0,
+        }
+
+    monkeypatch.setattr(fc, "fetch_fundamentals", fake_fetch)
+
+    cache = fc.refresh_batch([("ABCAPITAL", 123.0), ("RELIANCE", 2500.0)])
+
+    assert calls == ["ABCAPITAL"]
+    assert cache["ABCAPITAL"]["profit_growth"] == 12.0
+    assert json.loads((tmp_path / "fundamentals.json").read_text())['ABCAPITAL']['symbol'] == 'ABCAPITAL'
+
+    # A fresh cached value is reused; no second provider request is made.
+    cache2 = fc.refresh_batch([("ABCAPITAL", 130.0)])
+    assert calls == ["ABCAPITAL"]
+    assert fc.get("ABCAPITAL", current_price=130.0)["pe"] == 26.0
+    assert cache2["ABCAPITAL"]["eps"] == 5.0
+
+====================================================================
+FILE: tests/test_fundamentals_provider.py
+SIZE: 5395 bytes
+====================================================================
+from __future__ import annotations
+
+import pytest
+
+from intraday_bot import fundamentals_provider as fp
+
+
+class _Response:
+    def __init__(self, payload: dict, status_code: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status_code
+
+    def json(self):
+        return self._payload
+
+
+def test_fetch_fundamentals_uses_statements_not_paid_statistics(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    def fake_get(url: str, params: dict, timeout: int):
+        calls.append((url, params.copy()))
+        endpoint = url.rsplit("/", 1)[-1]
+        if endpoint == "income_statement":
+            return _Response({
+                "data": [
+                    {"fiscal_date": "2026-03-31", "net_income": 200, "operating_income": 300, "diluted_eps": 4.0},
+                    {"fiscal_date": "2025-03-31", "net_income": 160, "operating_income": 240, "diluted_eps": 3.2},
+                    {"fiscal_date": "2024-03-31", "net_income": 120, "operating_income": 180, "diluted_eps": 2.4},
+                ]
+            })
+        if endpoint == "balance_sheet":
+            return _Response({
+                "data": [
+                    {"fiscal_date": "2026-03-31", "total_equity": 1000, "total_debt": 200, "cash_and_cash_equivalents": 100},
+                    {"fiscal_date": "2025-03-31", "total_equity": 800, "total_debt": 240, "cash_and_cash_equivalents": 80},
+                ]
+            })
+        if endpoint == "cash_flow":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "operating_cash_flow": 220}]})
+        if endpoint == "earnings":
+            return _Response({"earnings": [{"fiscal_date": "2026-03-31", "eps": 4.0}, {"fiscal_date": "2025-03-31", "eps": 3.2}]})
+        if endpoint == "profile":
+            return _Response({"name": "ABC Capital", "sector": "Financial Services", "industry": "Asset Management"})
+        if endpoint == "quote":
+            return _Response({"close": 80})
+        raise AssertionError(endpoint)
+
+    monkeypatch.setenv("TWELVEDATA_API_KEY", "test-key")
+    monkeypatch.setattr(fp.requests, "get", fake_get)
+
+    result = fp.fetch_fundamentals("ABCAPITAL")
+
+    assert result["symbol"] == "ABCAPITAL"
+    assert result["eps"] == 4.0
+    assert result["profit"] == 200.0
+    assert result["profit_growth"] == pytest.approx(25.0)
+    assert result["eps_growth"] == pytest.approx(25.0)
+    assert result["debt_to_equity"] == pytest.approx(0.2)
+    assert result["roe"] == pytest.approx(22.2222, rel=1e-3)
+    assert result["roce"] == pytest.approx(27.2727, rel=1e-3)
+    assert result["earnings_quality"] == pytest.approx(1.1)
+    assert result["pe"] == pytest.approx(20.0)
+    assert result["current_price"] == 80.0
+    assert result["predictability"] is not None
+    assert "statistics" not in {url.rsplit("/", 1)[-1] for url, _ in calls}
+    assert all(params["exchange"] == "NSE" for _, params in calls if params["symbol"] == "ABCAPITAL")
+
+
+def test_fetch_fundamentals_reports_unavailable_endpoints_without_fabrication(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_get(url: str, params: dict, timeout: int):
+        endpoint = url.rsplit("/", 1)[-1]
+        if endpoint == "income_statement":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "net_income": 100, "diluted_eps": 2.0}]})
+        if endpoint == "balance_sheet":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "total_equity": 500, "total_debt": 100, "cash_and_cash_equivalents": 50}]})
+        if endpoint == "cash_flow":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "operating_cash_flow": 90}]})
+        return _Response({"code": 403, "message": "endpoint unavailable"}, status_code=403)
+
+    monkeypatch.setenv("TWELVEDATA_API_KEY", "test-key")
+    monkeypatch.setattr(fp.requests, "get", fake_get)
+
+    result = fp.fetch_fundamentals("ABCAPITAL")
+
+    assert result["profit"] == 100.0
+    assert result["debt_to_equity"] == pytest.approx(0.2)
+    assert "pe" not in result
+    assert "eps_growth" not in result
+    assert "pe" in result["missing_provider_fields"]
+    assert result["endpoint_errors"]
+
+
+def test_fetch_fundamentals_retries_qualified_symbol(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def fake_get(url: str, params: dict, timeout: int):
+        seen.append(str(params["symbol"]))
+        endpoint = url.rsplit("/", 1)[-1]
+        if params["symbol"] == "ABCAPITAL":
+            return _Response({"status": "error", "code": 400, "message": "symbol not found"})
+        if endpoint == "income_statement":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "net_income": 50, "diluted_eps": 1.0}]})
+        if endpoint == "balance_sheet":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "total_equity": 250, "total_debt": 50}]})
+        if endpoint == "cash_flow":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "operating_cash_flow": 55}]})
+        if endpoint == "earnings":
+            return _Response({"earnings": []})
+        return _Response({})
+
+    monkeypatch.setenv("TWELVEDATA_API_KEY", "test-key")
+    monkeypatch.setattr(fp.requests, "get", fake_get)
+
+    result = fp.fetch_fundamentals("ABCAPITAL")
+
+    assert result["profit"] == 50.0
+    assert seen[0] == "ABCAPITAL"
+    assert "NSE:ABCAPITAL" in seen
+
+====================================================================
+FILE: tests/test_nse_fo.py
+SIZE: 2538 bytes
+====================================================================
+from __future__ import annotations
+
+import pytest
+
+from intraday_bot import nse_fo
+
+
+class _Response:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        import json
+        return json.dumps(self.payload).encode("utf-8")
+
+
+def test_fetch_oi_spurts_normalizes_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    nse_fo._cache = {"at": 0.0, "rows": []}
+
+    payload = {
+        "data": [
+            {
+                "symbol": "ABCAPITAL",
+                "ltp": "123.45",
+                "pChange": "2.5",
+                "pChangeInOI": "18.0",
+                "changeinOpenInterest": "900000",
+                "openInterest": "5900000",
+                "volume": "1200000",
+                "value": "148000000.00",
+            }
+        ]
+    }
+
+    monkeypatch.setattr(nse_fo, "urlopen", lambda request, timeout=20: _Response(payload))
+    rows = nse_fo.fetch_oi_spurts(force=True)
+
+    assert len(rows) == 1
+    row = rows[0]
+
+    # Core source fields from the fixture.
+    assert row["symbol"] == "ABCAPITAL"
+    assert row["ltp"] == 123.45
+    assert row["change_pct"] == 2.5
+    assert row["oi_change_pct"] == 18.0
+    assert row["oi_change"] == 900000.0
+    assert row["open_interest"] == 5900000.0
+    assert row["volume"] == 1200000.0
+    assert row["value"] == 148000000.0
+
+    # Optional fields are part of the normalized schema. They remain None
+    # when the fixture does not provide those source fields.
+    assert row["futures_value_lakhs"] is None
+    assert row["options_value_lakhs"] is None
+    assert row["total_value_lakhs"] is None
+    assert row["timestamp"] is None
+    assert row["source"] == "NSE OI Spurts"
+
+
+def test_oi_context_classifies_long_buildup(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        nse_fo,
+        "fetch_oi_spurts",
+        lambda force=False, ttl_seconds=300: [
+            {
+                "symbol": "ABCAPITAL",
+                "change_pct": 2.0,
+                "oi_change_pct": 10.0,
+                "oi_change": 1000.0,
+                "open_interest": 5000.0,
+                "volume": 10000.0,
+                "value": 1000000.0,
+                "ltp": 100.0,
+                "timestamp": None,
+                "source": "NSE OI Spurts",
+            }
+        ],
+    )
+    result = nse_fo.oi_context("ABCAPITAL")
+    assert result["status"] == "AVAILABLE"
+    assert result["signal"] == "LONG_BUILDUP"
+
+====================================================================
+FILE: tests/test_nse_preopen.py
+SIZE: 2547 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from intraday_bot import nse_preopen
+
+
+class _Response:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return json.dumps(self.payload).encode("utf-8")
+
+
+def test_fetch_preopen_normalizes_iep_and_change(monkeypatch: pytest.MonkeyPatch) -> None:
+    nse_preopen._cache = {"at": 0.0, "rows": [], "summary": {}}
+    payload = {
+        "data": [
+            {
+                "symbol": "ABCAPITAL",
+                "previousClose": "200.00",
+                "iep": "206.00",
+                "change": "6.00",
+                "pChange": "3.00",
+                "finalQuantity": "120000",
+                "totalBuyQuantity": "700000",
+                "totalSellQuantity": "400000",
+            }
+        ]
+    }
+    monkeypatch.setattr(nse_preopen, "urlopen", lambda request, timeout=20: _Response(payload))
+
+    rows = nse_preopen.fetch_preopen(force=True)
+
+    assert rows[0]["symbol"] == "ABCAPITAL"
+    assert rows[0]["prev_close"] == 200.0
+    assert rows[0]["iep"] == 206.0
+    assert rows[0]["change_pct"] == 3.0
+    assert rows[0]["classification"] == "STRONG_POSITIVE"
+    assert rows[0]["total_buy_qty"] == 700000.0
+
+
+def test_market_context_builds_breadth_and_regime(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [
+        {"symbol": "A", "change_pct": 2.0, "classification": "STRONG_POSITIVE"},
+        {"symbol": "B", "change_pct": 1.0, "classification": "POSITIVE"},
+        {"symbol": "C", "change_pct": -1.0, "classification": "NEGATIVE"},
+    ]
+    monkeypatch.setattr(nse_preopen, "fetch_preopen", lambda force=False, ttl_seconds=300: rows)
+
+    result = nse_preopen.market_context()
+
+    assert result["status"] == "AVAILABLE"
+    assert result["breadth"]["advances"] == 2
+    assert result["breadth"]["declines"] == 1
+    assert result["breadth"]["unchanged"] == 0
+    assert result["regime"] == "BULLISH_PREOPEN"
+
+
+def test_stock_context_returns_symbol(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        nse_preopen,
+        "fetch_preopen",
+        lambda force=False, ttl_seconds=300: [
+            {"symbol": "ABCAPITAL", "iep": 206.0, "change_pct": 3.0, "source": "NSE Pre-Open Market"}
+        ],
+    )
+    result = nse_preopen.stock_context("ABCAPITAL")
+    assert result["status"] == "AVAILABLE"
+    assert result["symbol"] == "ABCAPITAL"
+    assert result["iep"] == 206.0
+
+====================================================================
 FILE: tests/test_platform.py
 SIZE: 2236 bytes
 ====================================================================
@@ -29048,8 +30437,9 @@ def test_emergency_stop_and_consecutive_loss_gates():
 
 ====================================================================
 FILE: tests/test_research_frameworks.py
-SIZE: 1267 bytes
+SIZE: 3665 bytes
 ====================================================================
+from intraday_bot import research
 from intraday_bot.research import framework_analysis, research_bundle, scrap_analysis, source_valuation, source_roce
 
 
@@ -29068,12 +30458,80 @@ def test_scrap_thresholds_are_strict():
     assert scrap_analysis("X", {"red_flags": ["fraud"]}).rejection_reason == "RED_FLAG"
 
 
-def test_source_formulas_remain_separate():
+def test_source_scoring_is_nonzero_for_valid_data():
+    data = {
+        "profit_growth": 12.97,
+        "eps_growth": 22.81,
+        "roce": 8.70,
+        "roe": 11.62,
+        "debt_to_equity": 0.30,
+        "earnings_quality": 2.22,
+        "pe": 28.41,
+    }
+    score = research.fundamental_score(data)
+    assert score > 0
+    assert score <= 10
+    assert research.valuation_score(data) > 0
+
+
+def test_frameworks_distinguish_neutral_from_negative():
+    result = framework_analysis({
+        "profit_growth": 5.0,
+        "eps_growth": 5.0,
+        "roce": 8.0,
+        "roe": 8.0,
+        "predictability": 0.6,
+        "earnings_quality": 0.3,
+        "debt_to_equity": 2.0,
+        "pe": 25.0,
+    })
+    buffett = result["frameworks"]["Buffett"]
+    assert "roce" in buffett["neutral_factors"]
+    assert "pe" in buffett["neutral_factors"]
+    assert "debt_to_equity" in buffett["neutral_factors"]
+    assert "earnings_quality" in buffett["neutral_factors"]
+    assert "predictability" in buffett["neutral_factors"]
+    assert "missing_data" in buffett
+    assert result["status"] == "AVAILABLE"
+
+
+def test_negative_growth_remains_negative():
+    result = framework_analysis({"profit_growth": -6.4, "eps_growth": -24.5})
+    for name in ("Buffett", "Rakesh Jhunjhunwala", "Peter Lynch", "100 Baggers", "CANSLIM"):
+        assert "profit_growth" in result["frameworks"][name]["negative_factors"]
+    assert result["frameworks"]["Rakesh Jhunjhunwala"]["score"] < 5
+
+
+def test_source_formulas_remain_separate(monkeypatch):
+    monkeypatch.setattr(
+        research,
+        "oi_context",
+        lambda symbol: {"status": "DATA UNAVAILABLE", "symbol": symbol, "source": "NSE OI Spurts"},
+    )
+    monkeypatch.setattr(
+        research,
+        "market_context",
+        lambda: {"status": "DATA UNAVAILABLE", "source": "NSE OI Spurts"},
+    )
+    monkeypatch.setattr(
+        research,
+        "preopen_stock_context",
+        lambda symbol: {"status": "DATA UNAVAILABLE", "symbol": symbol, "source": "NSE Pre-Open Market"},
+    )
+    monkeypatch.setattr(
+        research,
+        "preopen_market_context",
+        lambda: {"status": "DATA UNAVAILABLE", "source": "NSE Pre-Open Market"},
+    )
+
     assert source_valuation(10, 20) == 200
     assert source_roce(20, 100) == 20
     bundle = research_bundle("X", {"eps": 10, "pe": 20, "profit": 20, "capital": 100})
     assert bundle["valuation_price_from_eps_pe"] == 200
     assert bundle["roce_from_profit_capital"] == 20
+    assert bundle["derivatives"]["status"] == "DATA UNAVAILABLE"
+    assert bundle["preopen"]["status"] == "DATA UNAVAILABLE"
+    assert bundle["preopen_market_context"]["status"] == "DATA UNAVAILABLE"
 
 ====================================================================
 FILE: tests/test_run_daily_cycle.py
