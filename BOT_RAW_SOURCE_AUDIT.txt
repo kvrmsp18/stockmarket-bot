@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: b9f8e715dc764d3613705a09942ba607ff8d2151
-Generated UTC: 2026-09-03T06:22:55.187288+00:00
+Commit SHA: 4daf5a46e5fdb002eeb33c6d6051cbe4282c8943
+Generated UTC: 2026-09-03T09:00:33.467341+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -15,10 +15,11 @@ FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1097 bytes
-.github/workflows/ci.yml	363 bytes
+.github/workflows/ci.yml	416 bytes
 .github/workflows/continuous-monitor.yml	13673 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	5415 bytes
+.github/workflows/monitor-scheduler-guard.yml	1741 bytes
 .github/workflows/watchdog-heartbeat.yml	2785 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
@@ -230,13 +231,16 @@ SQUARE_OFF_MINUTE=20
 
 ====================================================================
 FILE: .github/workflows/ci.yml
-SIZE: 363 bytes
+SIZE: 416 bytes
 ====================================================================
 name: Platform CI
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - data/**
+      - reports/**
   pull_request:
     branches: [main]
 
@@ -780,6 +784,67 @@ jobs:
             git pull --rebase --autostash
             git push
           fi
+
+====================================================================
+FILE: .github/workflows/monitor-scheduler-guard.yml
+SIZE: 1741 bytes
+====================================================================
+name: Monitor Scheduler Guard
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: monitor-scheduler-guard
+  cancel-in-progress: true
+
+permissions:
+  actions: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ensure complete monitor is dispatched
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workflow='.github/workflows/continuous-monitor.yml'
+          now_epoch="$(date +%s)"
+          latest="$(gh run list --repo "$REPO" --workflow "$workflow" --limit 1 --json status,createdAt,databaseId --jq '.[0] // empty')"
+
+          if [ -z "$latest" ]; then
+            echo 'No Complete Intraday Monitor run exists; dispatching one.'
+            gh workflow run "$workflow" --repo "$REPO" --ref main
+            exit 0
+          fi
+
+          status="$(printf '%s' "$latest" | jq -r '.status')"
+          created_at="$(printf '%s' "$latest" | jq -r '.createdAt')"
+          created_epoch="$(date -d "$created_at" +%s)"
+          age=$((now_epoch - created_epoch))
+
+          echo "Latest monitor status=$status age_seconds=$age run_id=$(printf '%s' "$latest" | jq -r '.databaseId')"
+
+          if [ "$status" = 'queued' ] || [ "$status" = 'in_progress' ]; then
+            echo 'Complete monitor is already active; no dispatch needed.'
+            exit 0
+          fi
+
+          if [ "$age" -lt 390 ]; then
+            echo 'A recent monitor run exists; no dispatch needed.'
+            exit 0
+          fi
+
+          echo 'Monitor is stale; dispatching a replacement run.'
+          gh workflow run "$workflow" --repo "$REPO" --ref main
 
 ====================================================================
 FILE: .github/workflows/watchdog-heartbeat.yml
@@ -17892,10 +17957,10 @@ SIZE: 488 bytes
 {
   "state": "RUNNING",
   "message": "GitHub Actions heartbeat watchdog is active",
-  "updated_at": "2026-09-03T11:49:37+05:30",
+  "updated_at": "2026-09-03T14:26:07+05:30",
   "source": "github-actions-heartbeat-watchdog",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33722694957",
+  "workflow_run_id": "33736052404",
   "event": "schedule",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
