@@ -39,7 +39,22 @@ class ResearchResult:
 
 def _numeric(f: dict[str, Any], key: str) -> float | None:
     value = f.get(key)
-    return float(value) if isinstance(value, (int, float)) else None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _clamp(value: float, low: float = 0.0, high: float = 10.0) -> float:
+    return max(low, min(high, float(value)))
+
+
+def _band(value: float, points: list[tuple[float, float]]) -> float:
+    """Piecewise-linear score interpolation across ascending value/score points."""
+    if value <= points[0][0]:
+        return points[0][1]
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        if value <= x1:
+            span = x1 - x0
+            return y0 if span == 0 else y0 + (value - x0) * (y1 - y0) / span
+    return points[-1][1]
 
 
 def scrap_analysis(symbol: str, fundamentals: dict[str, Any] | None) -> ResearchResult:
@@ -61,31 +76,50 @@ def scrap_analysis(symbol: str, fundamentals: dict[str, Any] | None) -> Research
     return ResearchResult(symbol, scrap_score=score, status="PASS" if present else "DATA UNAVAILABLE", metrics={"available_checks": len(present), "total_checks": len(checks)})
 
 
-def fundamental_score(f: dict[str, Any] | None) -> float:
-    if not f:
-        return 0.0
-    score = 5.0
-    for key, good, bad in (("profit_growth", 0, -10), ("roce", 12, -5), ("roe", 12, -5), ("earnings_quality", 0.6, -2), ("debt_to_equity", 1.5, -2)):
-        v = _numeric(f, key)
-        if v is None:
+def _fundamental_component_scores(f: dict[str, Any]) -> tuple[dict[str, float], dict[str, str]]:
+    values: dict[str, float] = {}
+    notes: dict[str, str] = {}
+    specs: dict[str, tuple[str, list[tuple[float, float]], str]] = {
+        "profit_growth": ("Profit Growth %", [(-20.0, 0.0), (0.0, 4.0), (10.0, 6.0), (20.0, 8.0), (30.0, 10.0)], "Higher sustainable profit growth scores better."),
+        "eps_growth": ("EPS Growth %", [(-20.0, 0.0), (0.0, 4.0), (10.0, 6.0), (20.0, 8.0), (30.0, 10.0)], "Higher sustainable EPS growth scores better."),
+        "roce": ("ROCE %", [(0.0, 0.0), (5.0, 4.0), (10.0, 6.0), (15.0, 8.0), (20.0, 10.0)], "Higher returns on capital score better."),
+        "roe": ("ROE %", [(0.0, 0.0), (5.0, 4.0), (10.0, 6.0), (15.0, 8.0), (20.0, 10.0)], "Higher returns on equity score better."),
+        "earnings_quality": ("Earnings Quality", [(0.0, 0.0), (0.6, 5.0), (1.0, 7.0), (2.0, 9.0), (3.0, 10.0)], "Operating-cash-flow to net-income quality ratio; stronger is better."),
+        "debt_to_equity": ("Debt / Equity", [(0.5, 10.0), (1.0, 8.0), (1.5, 7.0), (2.5, 5.0), (4.0, 3.0), (6.0, 1.0)], "Lower leverage scores better."),
+    }
+    for key, (_, points, note) in specs.items():
+        value = _numeric(f, key)
+        if value is None:
             continue
-        if key == "debt_to_equity":
-            score += 1 if v < good else bad
-        elif v >= good:
-            score += 1
-        else:
-            score += bad
-    return max(0.0, min(10.0, score))
+        values[key] = _clamp(_band(value, points))
+        notes[key] = note
+    return values, notes
+
+
+def fundamental_score(f: dict[str, Any] | None) -> float:
+    """Continuous, weighted 0-10 fundamental score over available source fields."""
+    d = f or {}
+    scores, _ = _fundamental_component_scores(d)
+    weights = {
+        "profit_growth": 0.25,
+        "eps_growth": 0.10,
+        "roce": 0.15,
+        "roe": 0.15,
+        "earnings_quality": 0.15,
+        "debt_to_equity": 0.20,
+    }
+    available = [(k, weights[k]) for k in weights if k in scores]
+    if not available:
+        return 0.0
+    total_weight = sum(w for _, w in available)
+    return round(sum(scores[k] * w for k, w in available) / total_weight, 2)
 
 
 def valuation_score(f: dict[str, Any] | None) -> float:
     pe = _numeric(f or {}, "pe")
     if pe is None or pe <= 0:
         return 0.0
-    if pe < 15: return 8.0
-    if pe < 25: return 6.0
-    if pe < 40: return 4.0
-    return 2.0
+    return round(_clamp(_band(pe, [(10.0, 9.0), (15.0, 8.0), (20.0, 7.0), (25.0, 6.0), (30.0, 5.0), (40.0, 4.0), (60.0, 2.0)])), 2)
 
 
 def source_valuation(eps: float | None, pe: float | None) -> float | None:
@@ -101,43 +135,93 @@ def source_roce(profit: float | None, capital: float | None) -> float | None:
 
 
 def _factor_result(f: dict[str, Any], key: str) -> tuple[str, str]:
-    value = f.get(key)
+    value = _numeric(f, key)
     if value is None:
         return "MISSING", "No source value supplied"
-    if not isinstance(value, (int, float)):
-        return "MISSING", "Source value is not numeric"
     if key == "pe":
-        return ("POSITIVE", f"P/E={value:g} is within the research valuation band") if 0 < value < 25 else ("NEGATIVE", f"P/E={value:g} is outside the preferred band")
+        if value <= 0:
+            return "NEGATIVE", f"P/E={value:g} is not a valid positive valuation multiple"
+        if value < 20:
+            return "POSITIVE", f"P/E={value:g} is in the preferred valuation range"
+        if value > 30:
+            return "NEGATIVE", f"P/E={value:g} is above the preferred valuation range"
+        return "NEUTRAL", f"P/E={value:g} is in the intermediate valuation range"
     if key == "debt_to_equity":
-        return ("POSITIVE", f"Debt/Equity={value:g} is below 1.5") if value < 1.5 else ("NEGATIVE", f"Debt/Equity={value:g} is 1.5 or higher")
+        if value < 1.5:
+            return "POSITIVE", f"Debt/Equity={value:g} is below 1.5"
+        if value >= 3.0:
+            return "NEGATIVE", f"Debt/Equity={value:g} is 3.0 or higher"
+        return "NEUTRAL", f"Debt/Equity={value:g} is between 1.5 and 3.0"
     if key == "earnings_quality":
-        return ("POSITIVE", f"Earnings quality={value:g} meets 0.6 threshold") if value >= 0.6 else ("NEGATIVE", f"Earnings quality={value:g} is below 0.6")
+        if value <= 0:
+            return "NEGATIVE", f"Earnings quality={value:g} is non-positive"
+        if value >= 0.6:
+            return "POSITIVE", f"Earnings quality={value:g} meets 0.6 threshold"
+        return "NEUTRAL", f"Earnings quality={value:g} is positive but below 0.6"
+    if key == "predictability":
+        if value >= 0.7:
+            return "POSITIVE", f"Predictability={value:g} is at least 0.7"
+        if value < 0.5:
+            return "NEGATIVE", f"Predictability={value:g} is below 0.5"
+        return "NEUTRAL", f"Predictability={value:g} is between 0.5 and 0.7"
+    if key == "roce":
+        if value >= 12:
+            return "POSITIVE", f"ROCE={value:g} meets 12% research threshold"
+        if value < 4:
+            return "NEGATIVE", f"ROCE={value:g} is below 4%"
+        return "NEUTRAL", f"ROCE={value:g} is between 4% and 12%"
+    if key == "roe":
+        if value >= 12:
+            return "POSITIVE", f"ROE={value:g} meets 12% research threshold"
+        if value < 5:
+            return "NEGATIVE", f"ROE={value:g} is below 5%"
+        return "NEUTRAL", f"ROE={value:g} is between 5% and 12%"
+    if key in {"profit_growth", "eps_growth"}:
+        if value >= 10:
+            return "POSITIVE", f"{key}={value:g} is at least 10%"
+        if value < 0:
+            return "NEGATIVE", f"{key}={value:g} is negative"
+        return "NEUTRAL", f"{key}={value:g} is positive but below 10%"
     return ("POSITIVE", f"{key}={value:g} is positive") if value > 0 else ("NEGATIVE", f"{key}={value:g} is not positive")
 
 
 def framework_analysis(f: dict[str, Any] | None) -> dict[str, Any]:
-    """Return auditable per-framework evidence, including missing data and confidence."""
+    """Auditable five-framework research with positive/neutral/negative/missing states."""
     d = f or {}
     output: dict[str, Any] = {}
     for name, spec in FRAMEWORK_RULES.items():
         positives: list[str] = []
+        neutrals: list[str] = []
         negatives: list[str] = []
         missing: list[str] = []
         evidence: list[str] = []
         for key in spec["factors"]:
             state, text = _factor_result(d, key)
             evidence.append(text)
-            if state == "POSITIVE": positives.append(key)
-            elif state == "NEGATIVE": negatives.append(key)
-            else: missing.append(key)
-        available = len(positives) + len(negatives)
-        score = round((5.0 + (len(positives) - len(negatives)) * 0.9) if available else 0.0, 2)
-        score = max(0.0, min(10.0, score))
+            if state == "POSITIVE":
+                positives.append(key)
+            elif state == "NEUTRAL":
+                neutrals.append(key)
+            elif state == "NEGATIVE":
+                negatives.append(key)
+            else:
+                missing.append(key)
+        available = len(positives) + len(neutrals) + len(negatives)
+        score = round(_clamp(5.0 + (len(positives) - len(negatives)) * 1.0), 2) if available else 0.0
         confidence = round(available / len(spec["factors"]), 2)
-        output[name] = {"score": score, "confidence": confidence, "positive_factors": positives, "negative_factors": negatives, "missing_data": missing, "evidence": evidence, "method": spec["label"]}
+        output[name] = {
+            "score": score,
+            "confidence": confidence,
+            "positive_factors": positives,
+            "neutral_factors": neutrals,
+            "negative_factors": negatives,
+            "missing_data": missing,
+            "evidence": evidence,
+            "method": spec["label"],
+        }
     scores = [x["score"] for x in output.values() if x["confidence"] > 0]
     overall = round(sum(scores) / len(scores), 2) if scores else 0.0
-    spread = max(scores, default=0) - min(scores, default=0)
+    spread = max(scores, default=0.0) - min(scores, default=0.0)
     agreement = "AGREE" if scores and spread <= 2 else ("DISAGREE" if scores else "DATA UNAVAILABLE")
     return {"frameworks": output, "overall": overall, "agreement": agreement, "status": "AVAILABLE" if scores else "DATA UNAVAILABLE"}
 
