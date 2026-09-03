@@ -41,20 +41,26 @@ def test_fetch_oi_spurts_normalizes_rows(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(nse_fo, "urlopen", lambda request, timeout=20: _Response(payload))
     rows = nse_fo.fetch_oi_spurts(force=True)
 
-    assert rows == [
-        {
-            "symbol": "ABCAPITAL",
-            "ltp": 123.45,
-            "change_pct": 2.5,
-            "oi_change_pct": 18.0,
-            "oi_change": 900000.0,
-            "open_interest": 5900000.0,
-            "volume": 1200000.0,
-            "value": 148000000.0,
-            "timestamp": None,
-            "source": "NSE OI Spurts",
-        }
-    ]
+    assert len(rows) == 1
+    row = rows[0]
+
+    # Core source fields from the fixture.
+    assert row["symbol"] == "ABCAPITAL"
+    assert row["ltp"] == 123.45
+    assert row["change_pct"] == 2.5
+    assert row["oi_change_pct"] == 18.0
+    assert row["oi_change"] == 900000.0
+    assert row["open_interest"] == 5900000.0
+    assert row["volume"] == 1200000.0
+    assert row["value"] == 148000000.0
+
+    # Optional fields are part of the normalized schema. They remain None
+    # when the fixture does not provide those source fields.
+    assert row["futures_value_lakhs"] is None
+    assert row["options_value_lakhs"] is None
+    assert row["total_value_lakhs"] is None
+    assert row["timestamp"] is None
+    assert row["source"] == "NSE OI Spurts"
 
 
 def test_oi_context_classifies_long_buildup(monkeypatch: pytest.MonkeyPatch) -> None:
