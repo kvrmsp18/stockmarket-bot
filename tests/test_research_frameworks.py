@@ -77,32 +77,11 @@ def test_negative_growth_remains_negative():
 
 
 def test_source_formulas_remain_separate(monkeypatch):
-    monkeypatch.setattr(
-        research,
-        "oi_context",
-        lambda symbol: {"status": "DATA UNAVAILABLE", "symbol": symbol, "source": "NSE OI Spurts"},
-    )
-    monkeypatch.setattr(
-        research,
-        "market_context",
-        lambda: {"status": "DATA UNAVAILABLE", "source": "NSE OI Spurts"},
-    )
-    monkeypatch.setattr(
-        research,
-        "preopen_stock_context",
-        lambda symbol: {"status": "DATA UNAVAILABLE", "symbol": symbol, "source": "NSE Pre-Open Market"},
-    )
-    monkeypatch.setattr(
-        research,
-        "preopen_market_context",
-        lambda: {"status": "DATA UNAVAILABLE", "source": "NSE Pre-Open Market"},
-    )
-    monkeypatch.setattr(
-        research,
-        "fetch_event_news",
-        lambda symbol: {"source_status": "DATA UNAVAILABLE", "symbol": symbol, "items": [], "material_high_impact": []},
-    )
-
+    monkeypatch.setattr(research, "oi_context", lambda symbol: {"status": "DATA UNAVAILABLE", "symbol": symbol, "source": "NSE OI Spurts"})
+    monkeypatch.setattr(research, "market_context", lambda: {"status": "DATA UNAVAILABLE", "source": "NSE OI Spurts"})
+    monkeypatch.setattr(research, "preopen_stock_context", lambda symbol: {"status": "DATA UNAVAILABLE", "symbol": symbol, "source": "NSE Pre-Open Market"})
+    monkeypatch.setattr(research, "preopen_market_context", lambda: {"status": "DATA UNAVAILABLE", "source": "NSE Pre-Open Market"})
+    monkeypatch.setattr(research, "fetch_event_news", lambda symbol: {"source_status": "DATA UNAVAILABLE", "symbol": symbol, "items": [], "material_high_impact": []})
     assert source_valuation(10, 20) == 200
     assert source_roce(20, 100) == 20
     bundle = research_bundle("X", {"eps": 10, "pe": 20, "profit": 20, "capital": 100})
@@ -134,3 +113,15 @@ def test_event_news_is_attached_to_research_bundle(monkeypatch):
     assert bundle["event_news"]["source_status"] == "AVAILABLE"
     assert bundle["event_news_risk"]["risk_level"] == "HIGH"
     assert bundle["event_news_risk"]["action"] == "REVIEW_BEFORE_ENTRY"
+    assert bundle["scrap"]["rejection_reason"] == "EVENT_NEWS_HIGH_RISK"
+
+
+def test_event_news_unknown_blocks_automated_entry(monkeypatch):
+    monkeypatch.setattr(research, "oi_context", lambda symbol: {"status": "DATA UNAVAILABLE"})
+    monkeypatch.setattr(research, "market_context", lambda: {"status": "DATA UNAVAILABLE"})
+    monkeypatch.setattr(research, "preopen_stock_context", lambda symbol: {"status": "DATA UNAVAILABLE"})
+    monkeypatch.setattr(research, "preopen_market_context", lambda: {"status": "DATA UNAVAILABLE"})
+    monkeypatch.setattr(research, "fetch_event_news", lambda symbol: {"source_status": "DATA UNAVAILABLE", "symbol": symbol, "items": [], "material_high_impact": []})
+    bundle = research_bundle("ABC", {"profit_growth": 10, "roe": 12})
+    assert bundle["event_news_risk"]["risk_level"] == "UNKNOWN"
+    assert bundle["scrap"]["rejection_reason"] == "EVENT_NEWS_DATA_UNAVAILABLE"
