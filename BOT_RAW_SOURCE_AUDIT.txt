@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 484744e4a217404f6dbcea5c5d35e5f9b567df49
-Generated UTC: 2026-09-03T18:47:38.595475+00:00
+Commit SHA: 56fc511ef3c9122c2c8324ea2d8e20448f4bf5ad
+Generated UTC: 2026-09-03T19:06:22.657278+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -50,7 +50,7 @@ intraday_bot/alerts.py	860 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	16531 bytes
-intraday_bot/config.py	5891 bytes
+intraday_bot/config.py	5700 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/dhan_auth.py	5905 bytes
 intraday_bot/engine.py	16163 bytes
@@ -1637,9 +1637,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T00:09:21.654322+05:30",
+  "updated_at": "2026-09-04T00:30:39.076357+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33791790479",
+  "workflow_run_id": "33793882064",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17520,10 +17520,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-04T00:09:21.730990+05:30",
+  "updated_at": "2026-09-04T00:30:39.159795+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "33791790479",
+  "workflow_run_id": "33793882064",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -18329,7 +18329,7 @@ def load_security_map() -> dict[str, dict[str, Any]]:
 
 ====================================================================
 FILE: intraday_bot/config.py
-SIZE: 5891 bytes
+SIZE: 5700 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18427,25 +18427,19 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Return a real Dhan Access Token, never an API Key."""
-        if self.dhan_access_token:
-            return self.dhan_access_token
-        if self.dhan_client_id and self.dhan_pin and self.dhan_totp_secret:
-            from .dhan_auth import get_access_token
-            token, _ = get_access_token(
-                self.dhan_client_id,
-                self.dhan_pin,
-                self.dhan_totp_secret,
-            )
-            return token
-        return ""
+        """Return the configured Dhan API credential for the active paper path.
+
+        The current paper deployment intentionally uses DHAN_API_KEY, the
+        longer-valid credential configured for the repository. The short-lived
+        DHAN_ACCESS_TOKEN and PIN/TOTP auto-generation path are not selected by
+        the active market-data configuration.
+        """
+        return self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        if self.dhan_access_token:
-            return "DHAN_ACCESS_TOKEN"
-        if self.dhan_client_id and self.dhan_pin and self.dhan_totp_secret:
-            return "DHAN_PIN_TOTP"
+        if self.dhan_api_key:
+            return "DHAN_API_KEY"
         return "NONE"
 
     @property
