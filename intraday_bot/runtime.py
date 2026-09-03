@@ -18,6 +18,7 @@ from .alerts import telegram
 from .brokers import DhanBroker
 from .config import IST, settings
 from .database import Database
+from .fundamentals_cache import get as get_fundamentals, refresh_batch as refresh_fundamentals_batch
 from .paper import fill
 from .research import research_bundle, fundamental_score, scrap_analysis
 from .risk import position_size, risk_gate
@@ -43,15 +44,9 @@ def universe() -> list[dict[str, Any]]:
         return []
 
 
-def fundamentals(symbol: str) -> dict[str, Any]:
-    p = Path("data/fundamentals.json")
-    if not p.exists():
-        return {}
-    try:
-        x = json.loads(p.read_text(encoding="utf-8"))
-        return x.get(symbol, {}) if isinstance(x, dict) else {}
-    except Exception:
-        return {}
+def fundamentals(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+    """Return the latest persisted verified fundamentals snapshot for a symbol."""
+    return get_fundamentals(symbol, current_price=current_price)
 
 
 def quote(q: dict[str, Any]) -> tuple[float, float, float]:
@@ -85,7 +80,7 @@ def sector(s: str) -> str:
 
 def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str, Any]:
     symbol = item["symbol"]
-    f = fundamentals(symbol)
+    f = fundamentals(symbol, current_price=price)
     bundle = research_bundle(symbol, f)
     scrap = scrap_analysis(symbol, f)
     base: dict[str, Any] = {
@@ -101,6 +96,7 @@ def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str
         "framework_status": bundle["status"],
         "framework_agreement": bundle["frameworks"]["agreement"],
         "frameworks": bundle["frameworks"]["frameworks"],
+        "derivatives": bundle.get("derivatives", {}),
         "liquidity_score": 5.0,
         "volume_score": min(10.0, volume / 1e6),
         "market_score": 5.0,
@@ -151,7 +147,7 @@ def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str
             "potential_reward": size.potential_reward,
             "overall_score": t["trend_score"] * .35 + base["fundamental_score"] * .10
             + base["conviction_score"] * .10 + base["volume_score"] * .10 + 5 * .35,
-            "reason": f"Trend={t['trend_state']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}",
+            "reason": f"Trend={t['trend_state']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}; OI={bundle.get('derivatives', {}).get('signal', 'UNAVAILABLE')}",
         }
     )
     return base
@@ -293,7 +289,7 @@ def _run_ai_advisory(candidates: list[dict[str, Any]]) -> None:
         context = {k: candidate.get(k) for k in (
             "symbol", "decision", "price", "entry", "stop", "target", "rr",
             "trend_score", "technical_score", "fundamental_score", "valuation_score",
-            "framework_agreement"
+            "framework_agreement", "derivatives"
         )}
         result = advisory(
             "Advisory only. Never override deterministic risk, funds, data, execution or reconciliation gates. "
@@ -318,8 +314,9 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     result: dict[str, Any] = {
         "cycle_id": cycle_id, "started_at": datetime.now(timezone.utc).isoformat(),
         "mode": mode, "market_open": market_open(), "stocks_observed": 0, "quotes": 0,
-        "deep_analysis_pool": 0, "dynamic_pool": True, "candidates": [], "rejections": {},
-        "rejection_details": [], "orders": [], "errors": [],
+        "deep_analysis_pool": 0, "dynamic_pool": True, "fundamentals_cache_hits": 0,
+        "fundamentals_refreshed": 0, "fundamentals_refresh_errors": 0,
+        "candidates": [], "rejections": {}, "rejection_details": [], "orders": [], "errors": [],
         "suggested_buy_investment": 0.0, "suggested_sell_value": 0.0,
     }
     db.event("engine", "INFO", "CYCLE_START", result)
@@ -345,6 +342,33 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     ranked.sort(reverse=True, key=lambda x: x[0])
     analysis_pool = _dynamic_analysis_pool(ranked)
     result["deep_analysis_pool"] = len(analysis_pool)
+
+    # Fundamentals are slow-moving compared with quotes. Refresh only a small
+    # bounded number of stale symbols each cycle, persist the source-backed
+    # snapshots, and use the cache for all analysis-pool symbols. This prevents
+    # the five-minute market loop from issuing hundreds of provider requests.
+    refresh_inputs = [(item["symbol"], price) for _, item, price, _ in analysis_pool]
+    before_cache = {}
+    try:
+        raw_cache_path = Path("data/fundamentals.json")
+        if raw_cache_path.exists():
+            payload = json.loads(raw_cache_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                before_cache = {str(k).upper(): v for k, v in payload.items() if isinstance(v, dict)}
+    except Exception:
+        before_cache = {}
+    try:
+        cache = refresh_fundamentals_batch(refresh_inputs)
+        result["fundamentals_refreshed"] = sum(
+            1 for symbol, _ in refresh_inputs
+            if symbol.upper() in cache and cache.get(symbol.upper(), {}).get("fetched_at")
+            and cache.get(symbol.upper(), {}).get("fetched_at") != before_cache.get(symbol.upper(), {}).get("fetched_at")
+        )
+        result["fundamentals_cache_hits"] = sum(1 for _, item, _, _ in analysis_pool if item["symbol"].upper() in cache and item["symbol"].upper() in before_cache)
+    except Exception as exc:
+        result["fundamentals_refresh_errors"] += 1
+        result["fundamentals_refresh_error"] = str(exc)
+
     try:
         funds = float(broker.funds() or settings.reference_capital)
     except Exception:
@@ -427,6 +451,7 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
             f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M:%S')} IST",
             f"Universe: {result['stocks_observed']} | Quotes: {result['quotes']} | Deep analysis: {result['deep_analysis_pool']}",
             f"Candidates: {len(result['candidates'])} | Orders: {len(result['orders'])}",
+            f"Fundamentals refreshed: {result['fundamentals_refreshed']} | cache hits: {result['fundamentals_cache_hits']}",
             f"Dhan available funds: ₹{broker_funds:,.2f}",
             f"Paper reference capital: ₹{settings.reference_capital:,.2f}",
             f"Paper buy investment: ₹{result['suggested_buy_investment']:,.2f}",
