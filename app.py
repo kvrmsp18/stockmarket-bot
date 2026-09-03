@@ -26,21 +26,17 @@ STATUS = ROOT / "monitor_status.json"
 HB = ROOT / "worker_heartbeat.json"
 SHB = ROOT / "scheduler_heartbeat.json"
 
-# Production navigation: only operational, analytical and reporting views.
-# Live trading remains deliberately unavailable while the broker is paper-only.
+# Production navigation: only the views needed for daily operation,
+# research, paper trading, reporting and system monitoring.
 PAGES = [
     "Dashboard",
-    "AI Baskets",
+    "AI Prompt Guide",
     "Deep Research",
     "Stock Screener",
-    "Stocks",
     "360° Stock Analysis",
     "Trend Scanner",
     "Top Bullish",
     "Top Bearish",
-    "SCRAP Analysis",
-    "Fundamental Analysis",
-    "Technical Analysis",
     "Live Charts",
     "Portfolio",
     "Positions",
@@ -49,9 +45,6 @@ PAGES = [
     "P&L",
     "Trade Journal",
     "Rejected Signals",
-    "Backtesting",
-    "Bot Performance",
-    "News",
     "System Health",
     "Settings",
 ]
@@ -243,7 +236,7 @@ def frameworks():
 
 def research_page(page):
     header(page, f"{page} — persisted Bot results only; no generic/fake stock data is substituted.")
-    if page in {"AI Baskets", "Deep Research"}:
+    if page == "Deep Research":
         frameworks()
         return
     s = j(STATUS)
@@ -266,21 +259,17 @@ def research_page(page):
         x = r if not q else r[r.astype(str).apply(lambda z: z.str.contains(q, case=False, na=False)).any(axis=1)]
         st.dataframe(x, use_container_width=True, hide_index=True)
         return
-    if page in {"Stocks", "360° Stock Analysis"}:
+    if page == "360° Stock Analysis":
         syms = sorted(set(c.get("symbol", pd.Series(dtype=str)).dropna().astype(str)) | set(r.get("symbol", pd.Series(dtype=str)).dropna().astype(str)))
         if not syms:
             st.info("No stock records yet.")
             return
-        sym = st.selectbox("Stock", syms, key=f"{page}_stock")
+        sym = st.selectbox("Stock", syms, key="stock_360")
         if not c.empty and sym in set(c.symbol.astype(str)):
             st.json(c[c.symbol.astype(str) == sym].iloc[0].to_dict())
         if not r.empty:
             st.dataframe(r[r.symbol.astype(str) == sym], use_container_width=True, hide_index=True)
-        if page == "360° Stock Analysis":
-            frameworks()
-        return
-    if page in {"SCRAP Analysis", "Fundamental Analysis", "Technical Analysis"}:
-        st.dataframe(r if not r.empty else c, use_container_width=True, hide_index=True)
+        frameworks()
         return
     st.info("No dedicated persisted dataset has been written for this view yet.")
 
@@ -375,19 +364,6 @@ def main():
     elif page == "Settings":
         header(page, "Effective non-secret configuration.")
         st.dataframe(pd.DataFrame(list({"reference_capital": settings.reference_capital, "min_rr": settings.min_rr, "bullish_threshold": settings.bullish_threshold, "bearish_threshold": settings.bearish_threshold, "max_trades_per_day": settings.max_trades_per_day, "emergency_stop": settings.emergency_stop, "Dhan credential source": settings.dhan_market_data_credential_source, "Dhan credential configured": bool(settings.dhan_market_data_token)}.items()), columns=["Setting", "Value"]), use_container_width=True, hide_index=True)
-    elif page == "Backtesting":
-        header(page, "Historical backtest results only.")
-        x = sql("SELECT * FROM cycles ORDER BY started_at DESC LIMIT 1000")
-        st.dataframe(x, use_container_width=True, hide_index=True) if not x.empty else st.info("No persisted backtest/cycle results yet.")
-    elif page == "Bot Performance":
-        df = sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') AND closed_at IS NOT NULL ORDER BY closed_at")
-        header(page, "Persisted trade performance.")
-        st.dataframe(df, use_container_width=True, hide_index=True) if not df.empty else st.info("No completed trades yet.")
-    elif page == "News":
-        header(page, "Persisted news events only.")
-        x = flat(events())
-        x = x[x.event_type.astype(str).str.contains("NEWS", case=False, na=False)] if not x.empty else x
-        st.dataframe(x, use_container_width=True, hide_index=True) if not x.empty else st.info("No persisted news events yet.")
     elif page == "Paper Trading":
         header(page, "Real Dhan market data + simulated execution.")
         x = sql("SELECT * FROM orders WHERE order_id LIKE 'PAPER-%' ORDER BY ts DESC")
