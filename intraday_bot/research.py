@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Any
 
+from .event_news_risk import event_news_gate, fetch_event_news
 from .nse_fo import market_context, oi_context
 from .nse_preopen import market_context as preopen_market_context, stock_context as preopen_stock_context
 
@@ -12,8 +13,7 @@ SCRAP_COMPANY_LIMIT_PCT = 25.0
 FRAMEWORKS = ("Buffett", "Rakesh Jhunjhunwala", "Peter Lynch", "100 Baggers", "CANSLIM")
 
 # These are explicit engineering mappings for the named research frameworks.
-# They are research/conviction inputs only; the source rules prohibit using them
-# as standalone intraday triggers.
+# They are research/conviction inputs only; they are never standalone intraday triggers.
 FRAMEWORK_RULES: dict[str, dict[str, Any]] = {
     "Buffett": {"label": "Quality / economics / predictability / valuation", "factors": ("profit_growth", "roce", "predictability", "earnings_quality", "debt_to_equity", "pe")},
     "Rakesh Jhunjhunwala": {"label": "Growth / earnings / operating leverage / long runway", "factors": ("profit_growth", "eps_growth", "roce", "predictability", "earnings_quality")},
@@ -85,7 +85,7 @@ def _fundamental_component_scores(f: dict[str, Any]) -> tuple[dict[str, float], 
         "roce": ("ROCE %", [(0.0, 0.0), (5.0, 4.0), (10.0, 6.0), (15.0, 8.0), (20.0, 10.0)], "Higher returns on capital score better."),
         "roe": ("ROE %", [(0.0, 0.0), (5.0, 4.0), (10.0, 6.0), (15.0, 8.0), (20.0, 10.0)], "Higher returns on equity score better."),
         "earnings_quality": ("Earnings Quality", [(0.0, 0.0), (0.6, 5.0), (1.0, 7.0), (2.0, 9.0), (3.0, 10.0)], "Operating-cash-flow to net-income quality ratio; stronger is better."),
-        "debt_to_equity": ("Debt / Equity", [(0.5, 10.0), (1.0, 8.0), (1.5, 7.0), (2.5, 5.0), (4.0, 3.0), (6.0, 1.0)], "Lower leverage scores better."),
+        "debt_to_equity": ("Debt / Equity", [(0.5, 10.0), (1.0, 8.0), (1.5, 7.0), (2.5, 5.0), (4.0, 3.0), (6.0, 1.0)], "Lower leverage scores better for non-financial companies."),
     }
     for key, (_, points, note) in specs.items():
         value = _numeric(f, key)
@@ -97,17 +97,34 @@ def _fundamental_component_scores(f: dict[str, Any]) -> tuple[dict[str, float], 
 
 
 def fundamental_score(f: dict[str, Any] | None) -> float:
-    """Continuous, weighted 0-10 fundamental score over available source fields."""
+    """Continuous 0-10 fundamental score with sector-aware weighting.
+
+    Financial-services companies are not scored as ordinary industrial companies:
+    leverage and ROCE receive much less weight because balance-sheet leverage is
+    intrinsic to many financial businesses and ROCE is not directly comparable.
+    """
     d = f or {}
     scores, _ = _fundamental_component_scores(d)
-    weights = {
-        "profit_growth": 0.25,
-        "eps_growth": 0.10,
-        "roce": 0.15,
-        "roe": 0.15,
-        "earnings_quality": 0.15,
-        "debt_to_equity": 0.20,
-    }
+    sector_name = str(d.get("sector") or "").strip().lower()
+    financial = any(x in sector_name for x in ("financial", "bank", "insurance", "capital markets", "credit"))
+    if financial:
+        weights = {
+            "profit_growth": 0.30,
+            "eps_growth": 0.15,
+            "roe": 0.25,
+            "earnings_quality": 0.20,
+            "roce": 0.05,
+            "debt_to_equity": 0.05,
+        }
+    else:
+        weights = {
+            "profit_growth": 0.25,
+            "eps_growth": 0.10,
+            "roce": 0.15,
+            "roe": 0.15,
+            "earnings_quality": 0.15,
+            "debt_to_equity": 0.20,
+        }
     available = [(k, weights[k]) for k in weights if k in scores]
     if not available:
         return 0.0
@@ -239,6 +256,8 @@ def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
     market = market_context()
     preopen = preopen_stock_context(symbol)
     preopen_market = preopen_market_context()
+    news = fetch_event_news(symbol)
+    news_gate = event_news_gate(news)
     return {
         "symbol": symbol,
         "scrap": asdict(scrap),
@@ -249,6 +268,8 @@ def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
         "market_context": market,
         "preopen": preopen,
         "preopen_market_context": preopen_market,
+        "event_news": news,
+        "event_news_risk": news_gate,
         "valuation_price_from_eps_pe": source_valuation(d.get("eps"), d.get("pe")),
         "roce_from_profit_capital": source_roce(d.get("profit"), d.get("capital")),
         "status": "REJECTED" if scrap.rejection_reason else ("AVAILABLE" if frameworks["status"] == "AVAILABLE" else "DATA UNAVAILABLE"),
