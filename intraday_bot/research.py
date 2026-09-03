@@ -4,6 +4,7 @@ from dataclasses import dataclass, asdict
 from typing import Any
 
 from .nse_fo import market_context, oi_context
+from .nse_preopen import market_context as preopen_market_context, stock_context as preopen_stock_context
 
 
 SCRAP_SECTOR_LIMIT_PCT = 15.0
@@ -152,6 +153,8 @@ def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
     frameworks = framework_analysis(d)
     derivatives = oi_context(symbol)
     market = market_context()
+    preopen = preopen_stock_context(symbol)
+    preopen_market = preopen_market_context()
     return {
         "symbol": symbol,
         "scrap": asdict(scrap),
@@ -160,6 +163,8 @@ def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
         "frameworks": frameworks,
         "derivatives": derivatives,
         "market_context": market,
+        "preopen": preopen,
+        "preopen_market_context": preopen_market,
         "valuation_price_from_eps_pe": source_valuation(d.get("eps"), d.get("pe")),
         "roce_from_profit_capital": source_roce(d.get("profit"), d.get("capital")),
         "status": "REJECTED" if scrap.rejection_reason else ("AVAILABLE" if frameworks["status"] == "AVAILABLE" else "DATA UNAVAILABLE"),
