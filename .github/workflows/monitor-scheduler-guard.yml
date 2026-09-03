@@ -31,7 +31,7 @@ jobs:
 
           workflow='.github/workflows/continuous-monitor.yml'
           now_epoch="$(date +%s)"
-          latest="$(gh run list --repo "$REPO" --workflow "$workflow" --limit 1 --json status,createdAt,databaseId --jq '.[0] // empty')"
+          latest="$(gh run list --repo "$REPO" --workflow "$workflow" --limit 1 --json status,conclusion,createdAt,databaseId --jq '.[0] // empty')"
 
           if [ -z "$latest" ]; then
             echo 'No Complete Intraday Monitor run exists; dispatching one.'
@@ -40,14 +40,22 @@ jobs:
           fi
 
           status="$(printf '%s' "$latest" | jq -r '.status')"
+          conclusion="$(printf '%s' "$latest" | jq -r '.conclusion // empty')"
           created_at="$(printf '%s' "$latest" | jq -r '.createdAt')"
           created_epoch="$(date -d "$created_at" +%s)"
           age=$((now_epoch - created_epoch))
+          run_id="$(printf '%s' "$latest" | jq -r '.databaseId')"
 
-          echo "Latest monitor status=$status age_seconds=$age run_id=$(printf '%s' "$latest" | jq -r '.databaseId')"
+          echo "Latest monitor status=$status conclusion=$conclusion age_seconds=$age run_id=$run_id"
 
           if [ "$status" = 'queued' ] || [ "$status" = 'in_progress' ]; then
             echo 'Complete monitor is already active; no dispatch needed.'
+            exit 0
+          fi
+
+          if [ "$conclusion" = 'failure' ] && [ "$age" -ge 60 ]; then
+            echo 'Latest monitor run failed; dispatching a replacement run.'
+            gh workflow run "$workflow" --repo "$REPO" --ref main
             exit 0
           fi
 
