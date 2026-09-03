@@ -26,6 +26,9 @@ for row in reader:
     # Complete NSE cash equity only. If Dhan exposes series, EQ is required.
     if exchange!="NSE" or segment!="E" or instrument!="EQUITY" or not symbol or not sid: continue
     if series_key and series not in {"EQ",""}: continue
+    # Dhan's public scrip master can include synthetic NSETEST rows. They are
+    # master-data records, not tradeable NSE cash-equity symbols with quotes.
+    if "NSETEST" in symbol: continue
     if symbol in seen: continue
     seen.add(symbol); universe.append({"symbol":symbol,"security_id":sid,"exchange_segment":"NSE_EQ","series":series or "EQ"})
 universe.sort(key=lambda x:x["symbol"])
