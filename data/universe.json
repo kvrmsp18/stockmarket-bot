@@ -2544,12 +2544,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "CALSOFT",
-    "security_id": "8341",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "CAMLINFINE",
     "security_id": "6216",
     "exchange_segment": "NSE_EQ",
@@ -3786,12 +3780,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "DTIL",
-    "security_id": "6227",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "DUCON",
     "security_id": "28952",
     "exchange_segment": "NSE_EQ",
@@ -3872,12 +3860,6 @@
   {
     "symbol": "EBGNG",
     "security_id": "757862",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "EBIX",
-    "security_id": "765070",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -5592,12 +5574,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "GVPTECH",
-    "security_id": "10865",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "GVT&D",
     "security_id": "16783",
     "exchange_segment": "NSE_EQ",
@@ -5996,12 +5972,6 @@
   {
     "symbol": "HEXT",
     "security_id": "29666",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "HFCL",
-    "security_id": "21951",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -7452,12 +7422,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "KALYANIFRG",
-    "security_id": "15156",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "KALYANKJIL",
     "security_id": "2955",
     "exchange_segment": "NSE_EQ",
@@ -7556,6 +7520,12 @@
   {
     "symbol": "KDDL",
     "security_id": "14908",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "KDGREEN",
+    "security_id": "765105",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -8148,12 +8118,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "LEENEE",
-    "security_id": "765095",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "LEMERITE",
     "security_id": "760300",
     "exchange_segment": "NSE_EQ",
@@ -8514,6 +8478,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "LUMINO",
+    "security_id": "765524",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "LUPIN",
     "security_id": "10440",
     "exchange_segment": "NSE_EQ",
@@ -8720,12 +8690,6 @@
   {
     "symbol": "MANBA",
     "security_id": "25597",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "MANBRO",
-    "security_id": "765105",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -9846,12 +9810,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "NATCAPSUQ",
-    "security_id": "29583",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "NATCOPHARM",
     "security_id": "3918",
     "exchange_segment": "NSE_EQ",
@@ -10286,12 +10244,6 @@
   {
     "symbol": "NIRAJ",
     "security_id": "255",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "NIRAJISPAT",
-    "security_id": "18840",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -12882,12 +12834,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "SHAHALLOYS",
-    "security_id": "11856",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "SHAILY",
     "security_id": "8727",
     "exchange_segment": "NSE_EQ",
@@ -13554,12 +13500,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "SONAMLTD",
-    "security_id": "8806",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "SONATSOFTW",
     "security_id": "6596",
     "exchange_segment": "NSE_EQ",
@@ -14126,12 +14066,6 @@
   {
     "symbol": "SWIGGY",
     "security_id": "27066",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "SWISSMLTRY",
-    "security_id": "765190",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -15470,12 +15404,6 @@
   {
     "symbol": "VIRINCHI",
     "security_id": "15295",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "VIRTUALG",
-    "security_id": "765215",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
