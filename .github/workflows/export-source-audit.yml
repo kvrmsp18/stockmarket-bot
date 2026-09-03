@@ -111,17 +111,38 @@ jobs:
           grep -q '^FILE: ' BOT_RAW_SOURCE_AUDIT.txt
           echo "Audit validation passed: $(wc -c < BOT_RAW_SOURCE_AUDIT.txt) bytes"
 
-      - name: Commit audit
+      - name: Persist audit through GitHub Contents API
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add BOT_RAW_SOURCE_AUDIT.txt
-          if git diff --cached --quiet; then
-            echo 'Audit unchanged.'
-          else
-            git commit -m 'chore: refresh complete raw source audit'
-            git pull --rebase --autostash
-            git push
-          fi
+          encoded="$(base64 -w0 BOT_RAW_SOURCE_AUDIT.txt)"
+          path='BOT_RAW_SOURCE_AUDIT.txt'
+
+          for attempt in 1 2 3 4 5; do
+            sha="$(gh api "repos/$REPO/contents/$path" --jq '.sha' 2>/dev/null || true)"
+            if [ -z "$sha" ]; then
+              echo 'Audit file does not exist yet; creating it.'
+              if gh api --method PUT "repos/$REPO/contents/$path" \
+                -f message='chore: refresh complete raw source audit' \
+                -f content="$encoded" >/dev/null; then
+                echo "Audit persisted successfully on attempt $attempt"
+                exit 0
+              fi
+            else
+              if gh api --method PUT "repos/$REPO/contents/$path" \
+                -f message='chore: refresh complete raw source audit' \
+                -f content="$encoded" \
+                -f sha="$sha" >/dev/null; then
+                echo "Audit persisted successfully on attempt $attempt"
+                exit 0
+              fi
+            fi
+            echo "Audit persistence attempt $attempt failed; retrying..."
+            sleep $((attempt * 2))
+          done
+
+          echo 'Unable to persist complete source audit after 5 attempts.'
+          exit 1
