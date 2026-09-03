@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Any
 
+from .nse_fo import oi_context
+
 
 SCRAP_SECTOR_LIMIT_PCT = 15.0
 SCRAP_COMPANY_LIMIT_PCT = 25.0
@@ -148,12 +150,26 @@ def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
     d = f or {}
     scrap = scrap_analysis(symbol, d)
     frameworks = framework_analysis(d)
+    derivatives = oi_context(symbol)
     return {
         "symbol": symbol,
         "scrap": asdict(scrap),
         "fundamental_score": fundamental_score(d),
         "valuation_score": valuation_score(d),
         "frameworks": frameworks,
+        "derivatives": {
+            "source": derivatives.get("source"),
+            "status": derivatives.get("status"),
+            "signal": derivatives.get("signal"),
+            "change_pct": derivatives.get("change_pct"),
+            "oi_change_pct": derivatives.get("oi_change_pct"),
+            "oi_change": derivatives.get("oi_change"),
+            "open_interest": derivatives.get("open_interest"),
+            "volume": derivatives.get("volume"),
+            "value": derivatives.get("value"),
+            "timestamp": derivatives.get("timestamp"),
+            "error": derivatives.get("error"),
+        },
         "valuation_price_from_eps_pe": source_valuation(d.get("eps"), d.get("pe")),
         "roce_from_profit_capital": source_roce(d.get("profit"), d.get("capital")),
         "status": "REJECTED" if scrap.rejection_reason else ("AVAILABLE" if frameworks["status"] == "AVAILABLE" else "DATA UNAVAILABLE"),
