@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 4daf5a46e5fdb002eeb33c6d6051cbe4282c8943
-Generated UTC: 2026-09-03T09:00:33.467341+00:00
+Commit SHA: dd395d01b4289b58d49323b3f39f3572a6ca6baa
+Generated UTC: 2026-09-03T09:02:17.055414+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -19,7 +19,7 @@ FILE INVENTORY
 .github/workflows/continuous-monitor.yml	13673 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	5415 bytes
-.github/workflows/monitor-scheduler-guard.yml	1741 bytes
+.github/workflows/monitor-scheduler-guard.yml	2223 bytes
 .github/workflows/watchdog-heartbeat.yml	2785 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
@@ -787,13 +787,17 @@ jobs:
 
 ====================================================================
 FILE: .github/workflows/monitor-scheduler-guard.yml
-SIZE: 1741 bytes
+SIZE: 2223 bytes
 ====================================================================
 name: Monitor Scheduler Guard
 
 on:
   schedule:
     - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/monitor-scheduler-guard.yml'
   workflow_dispatch: {}
 
 concurrency:
@@ -818,7 +822,7 @@ jobs:
 
           workflow='.github/workflows/continuous-monitor.yml'
           now_epoch="$(date +%s)"
-          latest="$(gh run list --repo "$REPO" --workflow "$workflow" --limit 1 --json status,createdAt,databaseId --jq '.[0] // empty')"
+          latest="$(gh run list --repo "$REPO" --workflow "$workflow" --limit 1 --json status,conclusion,createdAt,databaseId --jq '.[0] // empty')"
 
           if [ -z "$latest" ]; then
             echo 'No Complete Intraday Monitor run exists; dispatching one.'
@@ -827,14 +831,22 @@ jobs:
           fi
 
           status="$(printf '%s' "$latest" | jq -r '.status')"
+          conclusion="$(printf '%s' "$latest" | jq -r '.conclusion // empty')"
           created_at="$(printf '%s' "$latest" | jq -r '.createdAt')"
           created_epoch="$(date -d "$created_at" +%s)"
           age=$((now_epoch - created_epoch))
+          run_id="$(printf '%s' "$latest" | jq -r '.databaseId')"
 
-          echo "Latest monitor status=$status age_seconds=$age run_id=$(printf '%s' "$latest" | jq -r '.databaseId')"
+          echo "Latest monitor status=$status conclusion=$conclusion age_seconds=$age run_id=$run_id"
 
           if [ "$status" = 'queued' ] || [ "$status" = 'in_progress' ]; then
             echo 'Complete monitor is already active; no dispatch needed.'
+            exit 0
+          fi
+
+          if [ "$conclusion" = 'failure' ] && [ "$age" -ge 60 ]; then
+            echo 'Latest monitor run failed; dispatching a replacement run.'
+            gh workflow run "$workflow" --repo "$REPO" --ref main
             exit 0
           fi
 
