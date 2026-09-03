@@ -26,8 +26,6 @@ STATUS = ROOT / "monitor_status.json"
 HB = ROOT / "worker_heartbeat.json"
 SHB = ROOT / "scheduler_heartbeat.json"
 
-# Production navigation: only the views needed for daily operation,
-# research, paper trading, reporting and system monitoring.
 PAGES = [
     "Dashboard",
     "AI Prompt Guide",
@@ -100,7 +98,6 @@ def sync(force=False):
     last = st.session_state.get("sync", 0.0)
     if not force and now - last < 60:
         return bool(st.session_state.get("sync_ok", True))
-
     ok = True
     failures = []
     base = "https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
@@ -129,7 +126,6 @@ def sync(force=False):
                     os.unlink(tmp)
                 except Exception:
                     pass
-
     st.session_state.sync = now
     st.session_state.sync_ok = ok
     st.session_state.sync_error = "; ".join(failures)
@@ -168,12 +164,10 @@ def dashboard():
     e.metric("Open Positions", s.get("positions_open", 0))
     f.metric("Today's P&L", f"₹{float(s.get('today_realized_pnl', 0) or 0):,.2f}")
     g.metric("Capital", f"₹{settings.reference_capital:,.0f}")
-
     cycle_errors = s.get("errors") or []
     age_seconds = heartbeat_age_seconds(h)
     market_open = bool(h.get("market_open", s.get("market_open", False)))
     cycle_success = h.get("cycle_success")
-
     if age_seconds > 900:
         st.error(f"TRADING MONITOR: OFFLINE · last heartbeat {h.get('updated_at', '—')} ({age_seconds / 60:.1f} min ago)")
     elif market_open and h.get("state") == "DEGRADED":
@@ -185,12 +179,10 @@ def dashboard():
         st.warning(f"TRADING ENGINE: NO VERIFIED SUCCESSFUL CYCLE · heartbeat {h.get('updated_at', '—')}")
     else:
         st.info(f"24/7 MONITOR: ACTIVE · NSE MARKET CLOSED · scheduler heartbeat {sh.get('updated_at', '—')}")
-
     st.write(f"**Scheduler:** {sh.get('state', 'NOT FOUND')} · {sh.get('updated_at', '—')} · market {'OPEN' if sh.get('market_open') else 'CLOSED'}")
     st.caption(f"Data sync: {'OK' if st.session_state.get('sync_ok', True) else 'FAILED'} · {st.session_state.get('sync_at', '—')}")
     if not st.session_state.get("sync_ok", True):
         st.error(f"Dashboard refresh could not retrieve latest persisted state: {st.session_state.get('sync_error', 'unknown error')}")
-
     cdf = pd.DataFrame(s.get("candidates", []))
     st.subheader("Actionable candidates")
     if cdf.empty:
@@ -324,8 +316,6 @@ def charts():
 
 def main():
     sync()
-    # Live order execution is not exposed in the UI. The deployed desk is
-    # intentionally paper-only until the broker/live gate is explicitly enabled.
     st.session_state.mode = PAPER_MODE
     st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS")
     if st.sidebar.button("🔄 Refresh Dashboard", key="refresh_button"):
@@ -336,9 +326,27 @@ def main():
     else:
         st.sidebar.caption(f"State sync OK · {st.session_state.get('sync_at', '—')}")
     if st.sidebar.button("▶ Run Analysis", type="primary", key="run_analysis"):
-        x = run_cycle(PAPER_MODE)
-        st.session_state.last_manual_cycle = x
-        st.rerun()
+        current = datetime.now(settings.__class__.__annotations__.get("IST", timezone.utc)) if False else datetime.now(timezone.utc)
+        ist_now = current.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
+        is_market_open = ist_now.weekday() < 5 and (ist_now.hour, ist_now.minute, ist_now.second) >= (9, 15, 0) and (ist_now.hour, ist_now.minute, ist_now.second) <= (15, 30, 0)
+        if not is_market_open:
+            x = {
+                "mode": PAPER_MODE,
+                "market_open": False,
+                "stocks_observed": j(STATUS).get("stocks_observed", 0),
+                "quotes": j(STATUS).get("quotes", 0),
+                "candidates": [],
+                "orders": [],
+                "errors": [],
+                "execution_gate": "MARKET_CLOSED",
+                "message": "NSE market is closed. Manual analysis is available during market hours; the 24/7 monitor remains active outside market hours.",
+            }
+            st.session_state.last_manual_cycle = x
+            st.info(x["message"])
+        else:
+            x = run_cycle(PAPER_MODE)
+            st.session_state.last_manual_cycle = x
+            st.rerun()
     page = st.sidebar.selectbox("Desk", PAGES, key="desk_page")
     if page == "Dashboard":
         dashboard()
