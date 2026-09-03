@@ -25,7 +25,37 @@ ROOT = Path("data")
 STATUS = ROOT / "monitor_status.json"
 HB = ROOT / "worker_heartbeat.json"
 SHB = ROOT / "scheduler_heartbeat.json"
-PAGES = ["Dashboard", "New Chat", "AI Prompt Guide", "AI Baskets", "Basket Detail", "Stock Screener", "Stocks", "Stock Detail", "360° Stock Analysis", "Deep Research", "Watchlist", "Trend Scanner", "Top Bullish", "Top Bearish", "Shift to Bullish", "Shift to Bearish", "Sector Analysis", "Theme Analysis", "Value Migration", "Inflection Points", "Value Chain", "Profit Pool", "SCRAP Analysis", "Fundamental Analysis", "Technical Analysis", "Live Charts", "Portfolio", "Positions", "Orders", "Paper Trading", "Live Trading", "P&L", "Trade Journal", "Rejected Signals", "Backtesting", "Bot Performance", "News", "System Health", "Diagnostics", "Settings"]
+
+# Production navigation: only pages needed for daily operation, analysis,
+# paper trading, monitoring, and configuration. Troubleshooting-only pages
+# are intentionally kept out of the public navigation.
+PAGES = [
+    "Dashboard",
+    "AI Baskets",
+    "Deep Research",
+    "Stock Screener",
+    "Stocks",
+    "360° Stock Analysis",
+    "Trend Scanner",
+    "Top Bullish",
+    "Top Bearish",
+    "SCRAP Analysis",
+    "Fundamental Analysis",
+    "Technical Analysis",
+    "Live Charts",
+    "Portfolio",
+    "Positions",
+    "Orders",
+    "Paper Trading",
+    "P&L",
+    "Trade Journal",
+    "Rejected Signals",
+    "Backtesting",
+    "Bot Performance",
+    "News",
+    "System Health",
+    "Settings",
+]
 
 
 def j(path):
@@ -175,7 +205,7 @@ def dashboard():
         if cycle_errors:
             st.error(f"Latest cycle failed before producing candidates: {cycle_errors[0]}")
         else:
-            st.warning("No actionable candidates persisted. Diagnostics and Rejected Signals show the exact reason.")
+            st.warning("No actionable candidates persisted. Rejected Signals contains the exact reason.")
     else:
         st.dataframe(cdf, use_container_width=True, hide_index=True)
 
@@ -214,21 +244,21 @@ def frameworks():
 
 def research_page(page):
     header(page, f"{page} — persisted Bot results only; no generic/fake stock data is substituted.")
-    if page in {"AI Baskets", "Basket Detail", "Deep Research"}:
+    if page in {"AI Baskets", "Deep Research"}:
         frameworks()
         return
     s = j(STATUS)
     c = pd.DataFrame(s.get("candidates", []))
     r = flat(events(component="research"))
-    if page in {"Trend Scanner", "Top Bullish", "Top Bearish", "Shift to Bullish", "Shift to Bearish"}:
+    if page in {"Trend Scanner", "Top Bullish", "Top Bearish"}:
         if c.empty:
             st.warning("No actionable candidates in latest cycle.")
             return
         x = c.copy()
         x["_trend"] = pd.to_numeric(x.get("trend_score", 0), errors="coerce").fillna(0)
-        if page in {"Top Bullish", "Shift to Bullish"}:
+        if page == "Top Bullish":
             x = x[x._trend >= settings.bullish_threshold]
-        if page in {"Top Bearish", "Shift to Bearish"}:
+        if page == "Top Bearish":
             x = x[x._trend < settings.bearish_threshold]
         st.dataframe(x.sort_values("_trend", ascending=False).drop(columns=["_trend"]), use_container_width=True, hide_index=True)
         return
@@ -237,7 +267,7 @@ def research_page(page):
         x = r if not q else r[r.astype(str).apply(lambda z: z.str.contains(q, case=False, na=False)).any(axis=1)]
         st.dataframe(x, use_container_width=True, hide_index=True)
         return
-    if page in {"Stocks", "Stock Detail", "360° Stock Analysis"}:
+    if page in {"Stocks", "360° Stock Analysis"}:
         syms = sorted(set(c.get("symbol", pd.Series(dtype=str)).dropna().astype(str)) | set(r.get("symbol", pd.Series(dtype=str)).dropna().astype(str)))
         if not syms:
             st.info("No stock records yet.")
@@ -250,14 +280,7 @@ def research_page(page):
         if page == "360° Stock Analysis":
             frameworks()
         return
-    if page in {"Sector Analysis", "Theme Analysis", "Value Migration", "Inflection Points", "Value Chain", "Profit Pool"}:
-        col = "sector" if page == "Sector Analysis" else "theme"
-        if c.empty or col not in c:
-            st.info(f"No persisted {col} dimension is available yet.")
-            return
-        st.dataframe(c.groupby(col, dropna=False).agg(candidates=("symbol", "count"), avg_trend=("trend_score", "mean")).reset_index(), use_container_width=True, hide_index=True)
-        return
-    if page in {"SCRAP Analysis", "Fundamental Analysis", "Technical Analysis", "Watchlist"}:
+    if page in {"SCRAP Analysis", "Fundamental Analysis", "Technical Analysis"}:
         st.dataframe(r if not r.empty else c, use_container_width=True, hide_index=True)
         return
     st.info("No dedicated persisted dataset has been written for this view yet.")
@@ -316,7 +339,7 @@ def main():
     mode = st.sidebar.radio("Mode", ["PAPER TRADING", "LIVE TRADING"], index=0, key="mode_radio")
     st.session_state.mode = PAPER_MODE if mode.startswith("PAPER") else LIVE_TEST_MODE
     st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS" if st.session_state.mode == PAPER_MODE else "🟠 LIVE TEST — NO LIVE ORDERS")
-    if st.sidebar.button("🔄 Refresh Search / Dashboard", key="refresh_button"):
+    if st.sidebar.button("🔄 Refresh Dashboard", key="refresh_button"):
         sync(force=True)
         st.rerun()
     if not st.session_state.get("sync_ok", True):
@@ -330,26 +353,6 @@ def main():
     page = st.sidebar.selectbox("Desk", PAGES, key="desk_page")
     if page == "Dashboard":
         dashboard()
-    elif page == "New Chat":
-        header("💬 Bot Chat", "Persisted Bot-data answers only.")
-        q = st.chat_input("Ask about candidates, P&L, rejections or heartbeat")
-        if q:
-            s = j(STATUS)
-            h = j(HB)
-            c = pd.DataFrame(s.get("candidates", []))
-            x = q.lower()
-            if "heartbeat" in x or "running" in x:
-                answer = f"Trading monitor heartbeat: {h.get('state', 'NOT FOUND')} at {h.get('updated_at', '—')}; market_open={h.get('market_open', False)}; cycle_success={h.get('cycle_success')}"
-            elif "reject" in x or "no trade" in x:
-                answer = f"Rejection funnel: {s.get('rejections', {})}. See Rejected Signals for symbol-level evidence."
-            elif "p&l" in x or "profit" in x or "loss" in x:
-                answer = f"Today's persisted realized P&L: ₹{float(s.get('today_realized_pnl', 0) or 0):,.2f}."
-            elif "candidate" in x or "buy" in x or "sell" in x:
-                answer = "No actionable candidates are persisted in the latest cycle." if c.empty else "Latest candidates: " + ", ".join(f"{r.symbol} ({r.decision})" for r in c.itertuples())
-            else:
-                answer = f"Last cycle: {s.get('ended_at', '—')}; universe {s.get('stocks_observed', 0)}; quotes {s.get('quotes', 0)}; errors {len(s.get('errors', []))}."
-            st.chat_message("user").write(q)
-            st.chat_message("assistant").write(answer)
     elif page == "AI Prompt Guide":
         prompt()
     elif page in {"Orders", "Positions", "Trade Journal"}:
@@ -369,14 +372,6 @@ def main():
         header(page, "Scheduler, monitor, Dhan authentication and latest cycle state.")
         d = DhanBroker().health()
         st.json({"worker": j(HB), "scheduler": j(SHB), "dhan_authenticated": d.authenticated, "dhan_message": d.message, "credential_source": settings.dhan_market_data_credential_source, "reference_capital": settings.reference_capital, "status": j(STATUS), "state_sync_ok": st.session_state.get("sync_ok", True), "state_sync_error": st.session_state.get("sync_error", "")})
-    elif page == "Diagnostics":
-        header(page, "Persisted troubleshooting events.")
-        st.json(j(STATUS))
-        x = sql("SELECT * FROM events WHERE severity IN ('ERROR','WARN') OR event_type NOT IN ('CYCLE_START','CYCLE_END') ORDER BY id DESC LIMIT 1000")
-        if not x.empty:
-            st.dataframe(x, use_container_width=True, hide_index=True)
-        else:
-            st.info("No diagnostic events persisted.")
     elif page == "Settings":
         header(page, "Effective non-secret configuration.")
         st.dataframe(pd.DataFrame(list({"reference_capital": settings.reference_capital, "min_rr": settings.min_rr, "bullish_threshold": settings.bullish_threshold, "bearish_threshold": settings.bearish_threshold, "max_trades_per_day": settings.max_trades_per_day, "emergency_stop": settings.emergency_stop, "Dhan credential source": settings.dhan_market_data_credential_source, "Dhan credential configured": bool(settings.dhan_market_data_token)}.items()), columns=["Setting", "Value"]), use_container_width=True, hide_index=True)
@@ -393,11 +388,6 @@ def main():
         x = flat(events())
         x = x[x.event_type.astype(str).str.contains("NEWS", case=False, na=False)] if not x.empty else x
         st.dataframe(x, use_container_width=True, hide_index=True) if not x.empty else st.info("No persisted news events yet.")
-    elif page == "Live Trading":
-        header(page, "LIVE TEST ONLY — no real broker order submission.")
-        st.warning("Actual live execution remains disabled.")
-        x = sql("SELECT * FROM orders WHERE order_id LIKE 'LIVETEST-%' ORDER BY ts DESC")
-        st.dataframe(x, use_container_width=True, hide_index=True) if not x.empty else st.info("No live-test orders yet.")
     elif page == "Paper Trading":
         header(page, "Real Dhan market data + simulated execution.")
         x = sql("SELECT * FROM orders WHERE order_id LIKE 'PAPER-%' ORDER BY ts DESC")
