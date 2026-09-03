@@ -28,24 +28,9 @@ HB = ROOT / "worker_heartbeat.json"
 SHB = ROOT / "scheduler_heartbeat.json"
 
 PAGES = [
-    "Dashboard",
-    "AI Prompt Guide",
-    "Deep Research",
-    "Stock Screener",
-    "360° Stock Analysis",
-    "Trend Scanner",
-    "Top Bullish",
-    "Top Bearish",
-    "Live Charts",
-    "Portfolio",
-    "Positions",
-    "Orders",
-    "Paper Trading",
-    "P&L",
-    "Trade Journal",
-    "Rejected Signals",
-    "System Health",
-    "Settings",
+    "Dashboard", "AI Prompt Guide", "Deep Research", "Stock Screener", "360° Stock Analysis",
+    "Trend Scanner", "Top Bullish", "Top Bearish", "Live Charts", "Portfolio", "Positions",
+    "Orders", "Paper Trading", "P&L", "Trade Journal", "Rejected Signals", "System Health", "Settings",
 ]
 
 
@@ -102,12 +87,7 @@ def sync(force=False):
     ok = True
     failures = []
     base = "https://raw.githubusercontent.com/kvrmsp18/stockmarket-bot/main/data/"
-    for name, path in {
-        "trading.db": ROOT / "trading.db",
-        "monitor_status.json": STATUS,
-        "worker_heartbeat.json": HB,
-        "scheduler_heartbeat.json": SHB,
-    }.items():
+    for name, path in {"trading.db": ROOT / "trading.db", "monitor_status.json": STATUS, "worker_heartbeat.json": HB, "scheduler_heartbeat.json": SHB}.items():
         tmp = None
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -207,25 +187,12 @@ def prompt():
 def _framework_rows(bundle: dict) -> pd.DataFrame:
     rows = []
     for name, item in bundle.get("frameworks", {}).items():
-        rows.append(
-            {
-                "Framework": name,
-                "Score": item.get("score", 0),
-                "Confidence": item.get("confidence", 0),
-                "Positive": ", ".join(item.get("positive_factors", [])) or "—",
-                "Negative": ", ".join(item.get("negative_factors", [])) or "—",
-                "Missing": ", ".join(item.get("missing_data", [])) or "—",
-            }
-        )
+        rows.append({"Framework": name, "Score": item.get("score", 0), "Confidence": item.get("confidence", 0), "Positive": ", ".join(item.get("positive_factors", [])) or "—", "Negative": ", ".join(item.get("negative_factors", [])) or "—", "Missing": ", ".join(item.get("missing_data", [])) or "—"})
     return pd.DataFrame(rows)
 
 
 def frameworks():
-    header(
-        "🧠 Five Research Frameworks",
-        "The Bot's Deep Research layer. Source-backed company fundamentals are fetched on demand from Twelve Data; missing values remain DATA UNAVAILABLE and are never invented.",
-    )
-
+    header("🧠 Five Research Frameworks", "The Bot's Deep Research layer. It uses source-backed company fundamentals with provider fallback; missing values remain DATA UNAVAILABLE and are never invented.")
     persisted = events("FRAMEWORK_ANALYSIS")
     persisted_symbols = sorted(persisted.symbol.dropna().astype(str).unique()) if not persisted.empty else []
     default_symbol = persisted_symbols[0] if persisted_symbols else "ABCAPITAL"
@@ -235,7 +202,7 @@ def frameworks():
     with c1:
         fetch_clicked = st.button("🔄 Refresh source-backed research", type="primary", key="refresh_deep_research")
     with c2:
-        st.caption("This refreshes source data only. It does not place an order. Research remains advisory; deterministic execution and risk gates remain in force.")
+        st.caption("Refreshes company-source data only. It does not place an order. Research remains advisory; deterministic execution and risk gates remain in force.")
 
     if fetch_clicked:
         if not symbol:
@@ -244,25 +211,9 @@ def frameworks():
             with st.spinner(f"Fetching source fundamentals for {symbol}…"):
                 try:
                     source = fetch_fundamentals(symbol)
-                    research = {
-                        key: source[key]
-                        for key in (
-                            "profit_growth", "eps_growth", "roce", "roe", "debt_to_equity",
-                            "predictability", "earnings_quality", "pe", "sector_weight_pct",
-                            "company_weight_pct", "red_flags"
-                        )
-                        if key in source
-                    }
+                    research = {key: source[key] for key in ("profit_growth", "eps_growth", "roce", "roe", "debt_to_equity", "predictability", "earnings_quality", "pe", "sector_weight_pct", "company_weight_pct", "red_flags") if key in source}
                     bundle = framework_analysis(research)
-                    snapshot = {
-                        "symbol": symbol,
-                        "source": source,
-                        "research_input": research,
-                        "fundamental_score": fundamental_score(research),
-                        "valuation_score": valuation_score(research),
-                        "frameworks": bundle,
-                        "fetched_at": datetime.now(timezone.utc).isoformat(),
-                    }
+                    snapshot = {"symbol": symbol, "source": source, "research_input": research, "fundamental_score": fundamental_score(research), "valuation_score": valuation_score(research), "frameworks": bundle, "fetched_at": datetime.now(timezone.utc).isoformat()}
                     st.session_state.deep_research_source = snapshot
                 except Exception as exc:
                     st.error(str(exc))
@@ -271,11 +222,18 @@ def frameworks():
     if live and live.get("symbol") == symbol:
         source = live.get("source", {})
         bundle = live.get("frameworks", {})
-        st.success(f"SOURCE VERIFIED · {source.get('source', 'Twelve Data')} · fetched {live.get('fetched_at', '—')}")
-        metrics = {
-            k: v for k, v in source.items()
-            if k not in {"missing_provider_fields", "source_status", "symbol", "source"}
-        }
+        provider = source.get("provider", "unknown")
+        status = source.get("source_status", "DATA UNAVAILABLE")
+        if status == "AVAILABLE":
+            st.success(f"SOURCE-BACKED DATA AVAILABLE · {source.get('source', provider)} · fetched {live.get('fetched_at', '—')}")
+        elif status == "PARTIAL":
+            st.warning(f"SOURCE-BACKED DATA PARTIAL · {source.get('source', provider)} · fetched {live.get('fetched_at', '—')}")
+        else:
+            st.error(f"SOURCE DATA UNAVAILABLE · {source.get('source', provider)}")
+        fallback_reason = source.get("fallback_reason")
+        if fallback_reason:
+            st.caption("Twelve Data did not provide the requested data; the Bot automatically used the configured secondary provider.")
+        metrics = {k: v for k, v in source.items() if k not in {"missing_provider_fields", "source_status", "symbol", "source", "provider", "fallback_reason", "endpoint_errors"}}
         if metrics:
             st.subheader("Source-backed company fundamentals")
             st.dataframe(pd.DataFrame(sorted(metrics.items()), columns=["Metric", "Value"]), use_container_width=True, hide_index=True)
@@ -307,7 +265,6 @@ def frameworks():
             with st.expander("Persisted evidence"):
                 st.json(p)
             return
-
     st.info("No source-backed research loaded yet. Click **Refresh source-backed research** to retrieve the selected NSE company's fundamentals.")
 
 
@@ -325,10 +282,8 @@ def research_page(page):
             return
         x = c.copy()
         x["_trend"] = pd.to_numeric(x.get("trend_score", 0), errors="coerce").fillna(0)
-        if page == "Top Bullish":
-            x = x[x._trend >= settings.bullish_threshold]
-        if page == "Top Bearish":
-            x = x[x._trend < settings.bearish_threshold]
+        if page == "Top Bullish": x = x[x._trend >= settings.bullish_threshold]
+        if page == "Top Bearish": x = x[x._trend < settings.bearish_threshold]
         st.dataframe(x.sort_values("_trend", ascending=False).drop(columns=["_trend"]), use_container_width=True, hide_index=True)
         return
     if page == "Stock Screener":
@@ -342,10 +297,8 @@ def research_page(page):
             st.info("No stock records yet.")
             return
         sym = st.selectbox("Stock", syms, key="stock_360")
-        if not c.empty and sym in set(c.symbol.astype(str)):
-            st.json(c[c.symbol.astype(str) == sym].iloc[0].to_dict())
-        if not r.empty:
-            st.dataframe(r[r.symbol.astype(str) == sym], use_container_width=True, hide_index=True)
+        if not c.empty and sym in set(c.symbol.astype(str)): st.json(c[c.symbol.astype(str) == sym].iloc[0].to_dict())
+        if not r.empty: st.dataframe(r[r.symbol.astype(str) == sym], use_container_width=True, hide_index=True)
         frameworks()
         return
     st.info("No dedicated persisted dataset has been written for this view yet.")
@@ -355,18 +308,14 @@ def ledger(page):
     table = {"Orders": "orders", "Positions": "positions", "Trade Journal": "trades"}[page]
     df = sql(f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT 1000")
     header(page, f"Persisted {table} ledger.")
-    if not df.empty:
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
-        st.info(f"No {table} records yet.")
+    if not df.empty: st.dataframe(df, use_container_width=True, hide_index=True)
+    else: st.info(f"No {table} records yet.")
 
 
 def pnl():
     df = sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') AND closed_at IS NOT NULL ORDER BY closed_at")
     header("💰 P&L", "Realized simulated-trade P&L including persisted charges.")
-    if df.empty:
-        st.info("No completed trades yet.")
-        return
+    if df.empty: st.info("No completed trades yet."); return
     df["net_pnl"] = pd.to_numeric(df["net_pnl"], errors="coerce").fillna(0)
     st.metric("Net P&L", f"₹{df.net_pnl.sum():,.2f}")
     st.dataframe(df, use_container_width=True, hide_index=True)
@@ -374,99 +323,46 @@ def pnl():
 
 def charts():
     header("📉 Live Charts", "Real Dhan chart data only. Authentication uses the configured Dhan market-data credential.")
-    try:
-        m = json.loads(settings.dhan_security_ids_json or "{}")
-    except Exception:
-        m = {}
+    try: m = json.loads(settings.dhan_security_ids_json or "{}")
+    except Exception: m = {}
     if not m:
-        st.warning("DHAN_SECURITY_IDS_JSON is not configured.")
-        return
+        st.warning("DHAN_SECURITY_IDS_JSON is not configured."); return
     sym = st.selectbox("Symbol", sorted(m), key="chart_symbol")
     tf = st.selectbox("Minutes", [1, 3, 5, 15, 30, 60], index=2, key="chart_tf")
     if st.button("Refresh live chart", key="chart_refresh"):
         try:
-            i = m[sym]
-            sid = i.get("security_id", i) if isinstance(i, dict) else i
-            ex = i.get("exchange_segment", "NSE_EQ") if isinstance(i, dict) else "NSE_EQ"
+            i = m[sym]; sid = i.get("security_id", i) if isinstance(i, dict) else i; ex = i.get("exchange_segment", "NSE_EQ") if isinstance(i, dict) else "NSE_EQ"
             df = DhanBroker().history(str(sid), ex, tf)
-            if df.empty:
-                st.warning("DATA UNAVAILABLE")
-                return
-            fig = go.Figure(go.Candlestick(x=df.timestamp, open=df.open, high=df.high, low=df.low, close=df.close))
-            fig.update_layout(xaxis_rangeslider_visible=False)
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.error(f"LIVE DATA ERROR: {e}")
+            if df.empty: st.warning("DATA UNAVAILABLE"); return
+            fig = go.Figure(go.Candlestick(x=df.timestamp, open=df.open, high=df.high, low=df.low, close=df.close)); fig.update_layout(xaxis_rangeslider_visible=False); st.plotly_chart(fig, use_container_width=True)
+        except Exception as e: st.error(f"LIVE DATA ERROR: {e}")
 
 
 def main():
-    sync()
-    st.session_state.mode = PAPER_MODE
-    st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS")
-    if st.sidebar.button("🔄 Refresh Dashboard", key="refresh_button"):
-        sync(force=True)
-        st.rerun()
-    if not st.session_state.get("sync_ok", True):
-        st.sidebar.error("State sync failed — dashboard may be stale")
-    else:
-        st.sidebar.caption(f"State sync OK · {st.session_state.get('sync_at', '—')}")
+    sync(); st.session_state.mode = PAPER_MODE; st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS")
+    if st.sidebar.button("🔄 Refresh Dashboard", key="refresh_button"): sync(force=True); st.rerun()
+    if not st.session_state.get("sync_ok", True): st.sidebar.error("State sync failed — dashboard may be stale")
+    else: st.sidebar.caption(f"State sync OK · {st.session_state.get('sync_at', '—')}")
     if st.sidebar.button("▶ Run Analysis", type="primary", key="run_analysis"):
-        current = datetime.now(timezone.utc)
-        ist_now = current.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
+        current = datetime.now(timezone.utc); ist_now = current.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
         is_market_open = ist_now.weekday() < 5 and (ist_now.hour, ist_now.minute, ist_now.second) >= (9, 15, 0) and (ist_now.hour, ist_now.minute, ist_now.second) <= (15, 30, 0)
         if not is_market_open:
-            x = {
-                "mode": PAPER_MODE,
-                "market_open": False,
-                "stocks_observed": j(STATUS).get("stocks_observed", 0),
-                "quotes": j(STATUS).get("quotes", 0),
-                "candidates": [],
-                "orders": [],
-                "errors": [],
-                "execution_gate": "MARKET_CLOSED",
-                "message": "NSE market is closed. Manual analysis is available during market hours; the 24/7 monitor remains active outside market hours.",
-            }
-            st.session_state.last_manual_cycle = x
-            st.info(x["message"])
+            x = {"mode": PAPER_MODE, "market_open": False, "stocks_observed": j(STATUS).get("stocks_observed", 0), "quotes": j(STATUS).get("quotes", 0), "candidates": [], "orders": [], "errors": [], "execution_gate": "MARKET_CLOSED", "message": "NSE market is closed. Manual analysis is available during market hours; the 24/7 monitor remains active outside market hours."}
+            st.session_state.last_manual_cycle = x; st.info(x["message"])
         else:
-            x = run_cycle(PAPER_MODE)
-            st.session_state.last_manual_cycle = x
-            st.rerun()
-    page = st.sidebar.selectbox("Desk", PAGES, key="desk_page")
-    if page == "Dashboard":
-        dashboard()
-    elif page == "AI Prompt Guide":
-        prompt()
-    elif page in {"Orders", "Positions", "Trade Journal"}:
-        ledger(page)
-    elif page == "P&L":
-        pnl()
-    elif page == "Live Charts":
-        charts()
-    elif page == "Rejected Signals":
-        header(page, "Symbol-level rejection evidence.")
-        x = flat(events("SIGNAL_REJECTED"))
-        if not x.empty:
-            st.dataframe(x, use_container_width=True, hide_index=True)
-        else:
-            st.info("No rejected signals persisted yet.")
-    elif page == "System Health":
-        header(page, "Scheduler, monitor, Dhan authentication and latest cycle state.")
-        d = DhanBroker().health()
-        st.json({"worker": j(HB), "scheduler": j(SHB), "dhan_authenticated": d.authenticated, "dhan_message": d.message, "credential_source": settings.dhan_market_data_credential_source, "reference_capital": settings.reference_capital, "status": j(STATUS), "state_sync_ok": st.session_state.get("sync_ok", True), "state_sync_error": st.session_state.get("sync_error", "")})
-    elif page == "Settings":
-        header(page, "Effective non-secret configuration.")
-        st.dataframe(pd.DataFrame(list({"reference_capital": settings.reference_capital, "min_rr": settings.min_rr, "bullish_threshold": settings.bullish_threshold, "bearish_threshold": settings.bearish_threshold, "max_trades_per_day": settings.max_trades_per_day, "emergency_stop": settings.emergency_stop, "Dhan credential source": settings.dhan_market_data_credential_source, "Dhan credential configured": bool(settings.dhan_market_data_token)}.items()), columns=["Setting", "Value"]), use_container_width=True, hide_index=True)
-    elif page == "Paper Trading":
-        header(page, "Real Dhan market data + simulated execution.")
-        x = sql("SELECT * FROM orders WHERE order_id LIKE 'PAPER-%' ORDER BY ts DESC")
-        st.dataframe(x, use_container_width=True, hide_index=True) if not x.empty else st.info("No paper orders yet.")
-    elif page == "Portfolio":
-        df = sql("SELECT * FROM positions ORDER BY opened_at DESC")
-        header(page, "Persisted positions and exposure.")
-        st.dataframe(df, use_container_width=True, hide_index=True) if not df.empty else st.info("No positions yet.")
-    else:
-        research_page(page)
+            with st.spinner("Running full deterministic paper cycle…"):
+                try:
+                    x = run_cycle(); st.session_state.last_manual_cycle = x
+                except Exception as e: st.error(f"RUN ERROR: {e}")
+    nav = st.sidebar.selectbox("Desk", PAGES, index=PAGES.index(st.session_state.get("page", "Dashboard")))
+    st.session_state.page = nav
+    if nav == "Dashboard": dashboard()
+    elif nav == "AI Prompt Guide": prompt()
+    elif nav in {"Deep Research", "Stock Screener", "360° Stock Analysis", "Trend Scanner", "Top Bullish", "Top Bearish"}: research_page(nav)
+    elif nav in {"Orders", "Positions", "Trade Journal"}: ledger(nav)
+    elif nav == "P&L": pnl()
+    elif nav == "Live Charts": charts()
+    else: st.info(f"{nav} view is available for the persisted paper-trading system.")
 
 
 main()
