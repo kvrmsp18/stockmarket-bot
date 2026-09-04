@@ -179,6 +179,16 @@ jobs:
           print('DHAN_FRESH_UNIVERSE_QUOTE_VERIFY_PASSED')
           PY
 
+      - name: Build live NSE sector intelligence
+        if: steps.market.outputs.run_cycle == 'true'
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
+        run: |
+          set -euo pipefail
+          python scripts/run_sector_intelligence.py
+
       - name: Run complete 5-minute paper cycle
         id: run_cycle
         if: steps.market.outputs.run_cycle == 'true'
