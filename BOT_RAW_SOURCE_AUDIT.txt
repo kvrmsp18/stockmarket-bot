@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 27a7d35ba139a792194b56ccc0a5acc1ad5fa138
-Generated UTC: 2026-09-04T04:44:46.247678+00:00
+Commit SHA: 67d89debfe4ef8f43578893eecd5bd6a47787a8a
+Generated UTC: 2026-09-04T04:45:37.779465+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -15,12 +15,12 @@ FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1058 bytes
-.github/workflows/continuous-monitor.yml	13365 bytes
+.github/workflows/continuous-monitor.yml	13748 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	6958 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
-.streamlit/secrets.toml.example	541 bytes
+.streamlit/secrets.toml.example	555 bytes
 Dockerfile	229 bytes
 README.md	11801 bytes
 SOURCE_RULES.md	9145 bytes
@@ -35,7 +35,7 @@ data/.gitkeep	1 bytes
 data/last_successful_market_status.json	544 bytes
 data/monitor_status.json	645 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/preflight_status.json	354 bytes
+data/preflight_status.json	545 bytes
 data/scheduler_heartbeat.json	350 bytes
 data/telegram_preflight_status.json	221 bytes
 data/trading.db	14508032 bytes
@@ -229,7 +229,7 @@ SQUARE_OFF_MINUTE=20
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 13365 bytes
+SIZE: 13748 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -333,13 +333,19 @@ jobs:
           else:
               try:
                   r=requests.get(f'https://api.telegram.org/bot{token}/getMe',timeout=10); p=r.json()
-                  if not r.ok or p.get('ok') is not True: raise RuntimeError(f'getMe HTTP {r.status_code}')
+                  if not r.ok or p.get('ok') is not True:
+                      detail=p.get('description','unknown getMe error') if isinstance(p,dict) else 'unknown getMe error'
+                      raise RuntimeError(f'getMe HTTP {r.status_code}: {detail}')
                   text=('🟢 STOCKMARKET BOT — Telegram preflight OK\n'
                         f'Market: {"OPEN" if result["market_open"] else "CLOSED"}\n'
                         'Mode: PAPER\nLive orders: DISABLED\n'
                         f'Time: {result["updated_at"]}')
-                  r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json={'chat_id':chat,'text':text,'disable_web_page_preview':True},timeout=10); p=r.json()
-                  if not r.ok or p.get('ok') is not True: raise RuntimeError(f'sendMessage HTTP {r.status_code}')
+                  r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json={'chat_id':chat,'text':text,'disable_web_page_preview':True},timeout=10)
+                  try: p=r.json()
+                  except ValueError: p={}
+                  if not r.ok or p.get('ok') is not True:
+                      detail=p.get('description','unknown sendMessage error') if isinstance(p,dict) else 'unknown sendMessage error'
+                      raise RuntimeError(f'sendMessage HTTP {r.status_code}: {detail}')
                   result.update(status='PASSED',message='Telegram authenticated and test message delivered')
                   print('TELEGRAM_PREFLIGHT_PASSED')
               except Exception as exc:
@@ -775,15 +781,15 @@ level = "info"
 
 ====================================================================
 FILE: .streamlit/secrets.toml.example
-SIZE: 541 bytes
+SIZE: 555 bytes
 ====================================================================
 # Streamlit Community Cloud Secrets
 # Paste the real values into the app's Settings -> Secrets panel.
 # NEVER commit the real secrets to this file or to GitHub.
 
 DHAN_CLIENT_ID = ""
-# Use the user's longer-valid Dhan API credential here.
-# DHAN_ACCESS_TOKEN is the 24-hour credential and is intentionally not used.
+# Enter the manually generated long-valid Dhan access credential here.
+# No separate Dhan token, PIN, TOTP, or automatic token generation is used.
 DHAN_API_KEY = ""
 DHAN_SECURITY_IDS_JSON = "{}"
 BSE_SCRIP_CODES_JSON = "{}"
@@ -1636,14 +1642,14 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/preflight_status.json
-SIZE: 354 bytes
+SIZE: 545 bytes
 ====================================================================
 {
   "status": "FAILED",
-  "message": "Dhan requires DHAN_CLIENT_ID, DHAN_API_KEY (API key) and DHAN_ACCESS_TOKEN (user-generated access token)",
-  "updated_at": "2026-09-04T10:02:25.670922+05:30",
+  "message": "DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_API_KEY_MANUAL; client_id_configured=yes; manual_credential_configured=yes; manual_credential_length=8]",
+  "updated_at": "2026-09-04T10:14:28.038574+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "33837157263",
+  "workflow_run_id": "33837889548",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
@@ -1656,9 +1662,9 @@ SIZE: 350 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T10:01:59.822036+05:30",
+  "updated_at": "2026-09-04T10:14:02.618677+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33837157263",
+  "workflow_run_id": "33837889548",
   "event": "schedule",
   "market_open": true,
   "scheduled_interval_seconds": 300,
@@ -1671,10 +1677,10 @@ FILE: data/telegram_preflight_status.json
 SIZE: 221 bytes
 ====================================================================
 {
-  "updated_at": "2026-09-04T10:02:24.007523+05:30",
+  "updated_at": "2026-09-04T10:14:26.112544+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "33837157263",
+  "workflow_run_id": "33837889548",
   "status": "FAILED",
   "message": "sendMessage HTTP 400"
 }
@@ -17552,10 +17558,10 @@ SIZE: 448 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect preflight_status or Diagnostics",
-  "updated_at": "2026-09-04T10:02:25.881259+05:30",
+  "updated_at": "2026-09-04T10:14:28.217132+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33837157263",
+  "workflow_run_id": "33837889548",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
