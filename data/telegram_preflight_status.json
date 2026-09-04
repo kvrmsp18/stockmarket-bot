@@ -1,6 +1,8 @@
 {
-  "date": "2026-09-04",
+  "updated_at": "2026-09-04T10:02:24.007523+05:30",
   "market_open": true,
+  "source": "github-actions-telegram-preflight",
+  "workflow_run_id": "33837157263",
   "status": "FAILED",
-  "message": "sendMessage failed: HTTP 400"
+  "message": "sendMessage HTTP 400"
 }
