@@ -322,6 +322,34 @@ def _run_ai_advisory(candidates: list[dict[str, Any]]) -> None:
         if result.get("text"): candidate["ai_advisory_text"] = str(result["text"])[:4000]
 
 
+def _persist_morning_snapshot(recommendations: list[dict[str, Any]]) -> None:
+    """Persist the first validated morning set without overwriting a user import."""
+    now = datetime.now(IST)
+    if now.weekday() >= 5 or not (clock(9, 15) <= now.time() <= clock(11, 0)) or not recommendations:
+        return
+    path = Path("data/morning_recommendations") / f"{now.date().isoformat()}.json"
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    records = []
+    for item in recommendations:
+        record = dict(item)
+        record["source"] = "BOT_AUTO_MORNING_SNAPSHOT"
+        record["purchase_status"] = "NOT_A_BROKER_FILL"
+        record["recommendation_id"] = f"{now.date().isoformat()}:{str(item.get('symbol','')).upper()}:{str(item.get('decision','')).upper()}"
+        records.append(record)
+    payload = {
+        "date": now.date().isoformat(),
+        "source": "BOT_AUTO_MORNING_SNAPSHOT",
+        "generated_at": now.isoformat(),
+        "purchase_status": "NOT_A_BROKER_FILL",
+        "records": records,
+    }
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    tmp.replace(path)
+
+
 def _telegram_cycle_message(result: dict[str, Any], funds: float | None, sector_info: dict[str, Any]) -> str:
     lines = [
         "📊 STOCKMARKET BOT — PAPER CYCLE",
@@ -464,7 +492,6 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
                 except Exception as exc:
                     result["errors"].append("ANALYSIS_ERROR: " + str(exc))
     result["candidates"].sort(key=lambda x: x.get("overall_score", 0), reverse=True)
-    result["recommendations"] = [dict(c) for c in result["candidates"]]
     _run_ai_advisory(result["candidates"])
     _manage_positions(db, qmap, uni)
     if result["market_open"]:
@@ -525,10 +552,12 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     else:
         for c in result["candidates"]:
             c["execution_status"] = "NOT_ATTEMPTED_MARKET_CLOSED"
+    result["recommendations"] = [dict(c) for c in result["candidates"]]
     result["validated_candidate_count"] = len(result["candidates"])
     result["suggested_buy_investment"] = round(result["suggested_buy_investment"], 2)
     result["suggested_sell_value"] = round(result["suggested_sell_value"], 2)
     result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"
+    _persist_morning_snapshot(result["recommendations"])
     if settings.telegram_token and settings.telegram_chat_id:
         telegram(_telegram_cycle_message(result, funds, sector_info))
     return finish(result, start, db)
