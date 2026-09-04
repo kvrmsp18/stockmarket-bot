@@ -80,8 +80,6 @@ def _period_rsi(daily: pd.DataFrame, rule: str) -> float | None:
     x = x.dropna(subset=["timestamp", "close"]).sort_values("timestamp").set_index("timestamp")
     if x.empty:
         return None
-    # The daily series is the source. Weekly/monthly candles are true OHLC
-    # aggregations of daily observations, never fabricated from intraday bars.
     close = x["close"].resample(rule).last().dropna()
     rsi = _wilder_rsi(close, 14).dropna()
     return float(rsi.iloc[-1]) if not rsi.empty else None
@@ -103,7 +101,7 @@ def multi_timeframe_rsi(daily: pd.DataFrame) -> dict[str, float | None]:
 
 
 def mtf_rsi_agreement(rsi: dict[str, float | None], direction: str) -> tuple[bool, str]:
-    """Require all available MTF RSI values to agree with the trade direction."""
+    """Require all three MTF RSI values to agree with the trade direction."""
     values = [rsi.get("monthly"), rsi.get("weekly"), rsi.get("daily")]
     if any(v is None for v in values):
         return False, "MTF_RSI_DATA_UNAVAILABLE"
@@ -152,6 +150,7 @@ def technical_setup(df: pd.DataFrame, daily_history: pd.DataFrame | None = None)
     x = indicators(df)
     row = x.iloc[-1]
     score = trend_score(row)
+    previous_score = trend_score(x.iloc[-2]) if len(x) >= 2 else None
     state = trend_state(score)
     atr = float(row.get("atr", 0) or 0)
     price = float(row["close"])
@@ -179,7 +178,7 @@ def technical_setup(df: pd.DataFrame, daily_history: pd.DataFrame | None = None)
         "direction": direction,
         "trend_score": score,
         "trend_state": state,
-        "transition": None,
+        "transition": transition(previous_score, score),
         "technical_score": score,
         "atr": atr,
         "entry": price,
