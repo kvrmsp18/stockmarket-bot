@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 8c42bd6dea33b6a8c525c9d4871323cfd3202e7e
-Generated UTC: 2026-09-03T19:17:40.723305+00:00
+Commit SHA: 11c33571f047e9c77bb1160e7c62072506c66829
+Generated UTC: 2026-09-04T02:49:09.378939+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -63,7 +63,7 @@ intraday_bot/nse_preopen.py	7712 bytes
 intraday_bot/paper.py	1447 bytes
 intraday_bot/research.py	13124 bytes
 intraday_bot/risk.py	4581 bytes
-intraday_bot/runtime.py	23403 bytes
+intraday_bot/runtime.py	24854 bytes
 intraday_bot/safety.py	715 bytes
 intraday_bot/technical.py	4484 bytes
 pages/00_TOTP_Diagnostic.py	3165 bytes
@@ -1738,9 +1738,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T00:44:40.049132+05:30",
+  "updated_at": "2026-09-04T08:17:00.437780+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33795272663",
+  "workflow_run_id": "33830786832",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -17621,10 +17621,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-04T00:44:40.122061+05:30",
+  "updated_at": "2026-09-04T08:17:00.521949+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33795272663",
+  "workflow_run_id": "33830786832",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -20717,13 +20717,12 @@ def risk_gate(
 
 ====================================================================
 FILE: intraday_bot/runtime.py
-SIZE: 23403 bytes
+SIZE: 24854 bytes
 ====================================================================
 from __future__ import annotations
 
-# NOTE: Complete runtime is intentionally preserved here. The market is ranked
-# across the full universe, while expensive historical analysis is performed
-# on a dynamic rotating pool rather than a hard-coded symbol list.
+# Active production research/paper-trading runtime.
+# Deterministic data and risk gates own every trading decision; AI is advisory only.
 
 import json
 import os
@@ -20766,7 +20765,6 @@ def universe() -> list[dict[str, Any]]:
 
 
 def fundamentals(symbol: str, current_price: float | None = None) -> dict[str, Any]:
-    """Return the latest persisted verified fundamentals snapshot for a symbol."""
     return get_fundamentals(symbol, current_price=current_price)
 
 
@@ -20787,6 +20785,8 @@ def quote(q: dict[str, Any]) -> tuple[float, float, float]:
 
 
 def sector(s: str) -> str:
+    # This is deliberately only a compatibility fallback. Full sector intelligence
+    # must come from source-backed universe metadata when available.
     groups = {
         "BANKING": {"HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK"},
         "IT": {"TCS", "INFY", "WIPRO", "HCLTECH", "TECHM"},
@@ -20799,14 +20799,52 @@ def sector(s: str) -> str:
     return next((k for k, v in groups.items() if s in v), "OTHER")
 
 
-def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str, Any]:
-    symbol = item["symbol"]
+def _source_sector(item: dict[str, Any], f: dict[str, Any]) -> str:
+    for value in (item.get("sector"), item.get("industry"), f.get("sector")):
+        if isinstance(value, str) and value.strip():
+            return value.strip().upper()
+    return sector(str(item.get("symbol", "")).upper())
+
+
+def _verified_funds(broker: DhanBroker) -> tuple[float | None, str]:
+    """Return verified broker funds; never silently substitute reference capital."""
+    try:
+        raw = broker.funds()
+        value = float(raw)
+        if value >= 0:
+            return value, "DHAN"
+    except Exception:
+        pass
+    return None, "UNAVAILABLE"
+
+
+def _research_gate(bundle: dict[str, Any], f: dict[str, Any]) -> tuple[bool, str | None]:
+    """Deterministic research/data gate. Missing data is unknown, not negative."""
+    status = str(bundle.get("status") or "DATA UNAVAILABLE").upper()
+    if status == "REJECTED":
+        return False, str(bundle.get("scrap", {}).get("rejection_reason") or "RESEARCH_REJECTION")
+    if status != "AVAILABLE":
+        return False, "RESEARCH_DATA_UNAVAILABLE"
+    frameworks = bundle.get("frameworks") or {}
+    if str(frameworks.get("status")) != "AVAILABLE":
+        return False, "FRAMEWORK_DATA_UNAVAILABLE"
+    # A trade may proceed only when at least one core source-backed growth/quality
+    # measure exists. Missing optional fields remain neutral/unknown.
+    core = ("profit_growth", "eps_growth", "roce", "roe", "earnings_quality", "predictability")
+    if not any(isinstance(f.get(k), (int, float)) and not isinstance(f.get(k), bool) for k in core):
+        return False, "FUNDAMENTAL_DATA_UNAVAILABLE"
+    return True, None
+
+
+def analyse(broker, item, price: float, volume: float, funds: float | None) -> dict[str, Any]:
+    symbol = str(item["symbol"]).upper()
     f = fundamentals(symbol, current_price=price)
     bundle = research_bundle(symbol, f)
     scrap = scrap_analysis(symbol, f)
+    sector_name = _source_sector(item, f)
     base: dict[str, Any] = {
         "symbol": symbol,
-        "sector": sector(symbol),
+        "sector": sector_name,
         "theme": "UNKNOWN",
         "price": price,
         "decision": "NO TRADE",
@@ -20818,6 +20856,8 @@ def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str
         "framework_agreement": bundle["frameworks"]["agreement"],
         "frameworks": bundle["frameworks"]["frameworks"],
         "derivatives": bundle.get("derivatives", {}),
+        "market_context": bundle.get("market_context", {}),
+        "preopen_market_context": bundle.get("preopen_market_context", {}),
         "liquidity_score": 5.0,
         "volume_score": min(10.0, volume / 1e6),
         "market_score": 5.0,
@@ -20828,6 +20868,13 @@ def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str
     if scrap.rejection_reason:
         base.update(reason="SCRAP rejection", rejection_reason=scrap.rejection_reason, research=bundle)
         return base
+    research_ok, research_why = _research_gate(bundle, f)
+    if not research_ok:
+        base.update(reason="Research/data gate failed", rejection_reason=research_why, research=bundle)
+        return base
+    if funds is None:
+        base.update(reason="Verified broker funds unavailable", rejection_reason="FUNDS_DATA_UNAVAILABLE", research=bundle)
+        return base
     try:
         h = broker.history(str(item["security_id"]), item.get("exchange_segment", "NSE_EQ"), 5)
     except Exception as exc:
@@ -20837,16 +20884,15 @@ def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str
         base.update(reason="DATA UNAVAILABLE", rejection_reason="DATA_ERROR", research=bundle)
         return base
     t = technical_setup(h)
-    base.update(
-        {
-            "entry": t["entry"], "entry_zone": [t["entry_low"], t["entry_high"]],
-            "entry_low": t["entry_low"], "entry_high": t["entry_high"],
-            "max_chase": t["max_chase"], "stop": t["stop"], "target": t["target"],
-            "rr": t["rr"], "trend_score": t["trend_score"],
-            "technical_score": t["technical_score"], "trend_state": t["trend_state"],
-            "research": bundle,
-        }
-    )
+    base.update({
+        "entry": t["entry"], "entry_zone": [t["entry_low"], t["entry_high"]],
+        "entry_low": t["entry_low"], "entry_high": t["entry_high"],
+        "max_chase": t["max_chase"], "stop": t["stop"], "target": t["target"],
+        "rr": t["rr"], "trend_score": t["trend_score"],
+        "technical_score": t["technical_score"], "trend_state": t["trend_state"],
+        "transition": t.get("transition"), "technical_indicators": t.get("indicators", {}),
+        "research": bundle,
+    })
     if t["direction"] == "HOLD":
         base.update(reason="No valid intraday direction", rejection_reason="TECHNICAL_REJECTION")
         return base
@@ -20861,16 +20907,14 @@ def analyse(broker, item, price: float, volume: float, funds: float) -> dict[str
     if not size.quantity:
         base.update(reason="No safe affordable quantity", rejection_reason="INSUFFICIENT_FUNDS")
         return base
-    base.update(
-        {
-            "decision": t["direction"], "quantity": size.quantity,
-            "capital_required": size.capital_required, "max_risk": size.max_risk,
-            "potential_reward": size.potential_reward,
-            "overall_score": t["trend_score"] * .35 + base["fundamental_score"] * .10
-            + base["conviction_score"] * .10 + base["volume_score"] * .10 + 5 * .35,
-            "reason": f"Trend={t['trend_state']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}; OI={bundle.get('derivatives', {}).get('signal', 'UNAVAILABLE')}",
-        }
-    )
+    base.update({
+        "decision": t["direction"], "quantity": size.quantity,
+        "capital_required": size.capital_required, "max_risk": size.max_risk,
+        "potential_reward": size.potential_reward,
+        "overall_score": t["trend_score"] * .35 + base["fundamental_score"] * .10
+        + base["conviction_score"] * .10 + base["volume_score"] * .10 + 5 * .35,
+        "reason": f"Trend={t['trend_state']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}; OI={bundle.get('derivatives', {}).get('signal', 'UNAVAILABLE')}",
+    })
     return base
 
 
@@ -20917,10 +20961,7 @@ def _manage_positions(db: Database, qmap: dict[str, dict[str, Any]], uni: list[d
             net = gross - charges
             trade_id = "TRD-" + uuid.uuid4().hex[:16]
             con.execute("UPDATE positions SET current_price=?,closed_at=?,pnl=? WHERE position_id=?", (price, now_utc, net, p["position_id"]))
-            con.execute(
-                "INSERT INTO trades(trade_id,signal_id,symbol,mode,side,quantity,entry_price,exit_price,gross_pnl,charges,net_pnl,exit_reason,opened_at,closed_at,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (trade_id, None, p["symbol"], p["mode"], side, p["quantity"], p["entry_price"], price, gross, charges, net, reason, p["opened_at"], now_utc, p["payload"]),
-            )
+            con.execute("INSERT INTO trades(trade_id,signal_id,symbol,mode,side,quantity,entry_price,exit_price,gross_pnl,charges,net_pnl,exit_reason,opened_at,closed_at,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (trade_id, None, p["symbol"], p["mode"], side, p["quantity"], p["entry_price"], price, gross, charges, net, reason, p["opened_at"], now_utc, p["payload"]))
             db.event("execution", "INFO", "POSITION_CLOSED", {"trade_id": trade_id, "net_pnl": net, "exit_reason": reason}, p["symbol"], p["mode"])
 
 
@@ -20932,13 +20973,6 @@ def _record_rejection(db: Database, cycle_id: str, candidate: dict[str, Any], mo
 
 
 def _dynamic_analysis_pool(ranked: list[tuple[float, dict[str, Any], float, float]]) -> list[tuple[float, dict[str, Any], float, float]]:
-    """Select a changing analysis pool from the FULL quoted universe.
-
-    No symbol is permanently whitelisted. The pool combines the strongest
-    current movers with a rotating slice of the remainder, allowing every
-    valid market symbol to reach deep analysis over successive cycles without
-    forcing thousands of slow historical API calls into one five-minute run.
-    """
     if not ranked:
         return []
     ranked_count = min(len(ranked), max(20, int(getattr(settings, "deep_analysis_count", 80))))
@@ -20958,48 +20992,26 @@ def _dynamic_analysis_pool(ranked: list[tuple[float, dict[str, Any], float, floa
 
 
 def _portfolio_snapshot(db: Database, capital: float, mode: str) -> dict[str, Any]:
-    """Return current portfolio risk state for the configured mode."""
     with db.connect() as con:
-        rows = con.execute(
-            "SELECT symbol, quantity, entry_price FROM positions WHERE closed_at IS NULL AND mode=?",
-            (mode,),
-        ).fetchall()
+        rows = con.execute("SELECT symbol, quantity, entry_price FROM positions WHERE closed_at IS NULL AND mode=?", (mode,)).fetchall()
         today = datetime.now(IST).date().isoformat()
-        pnl_row = con.execute(
-            "SELECT COALESCE(SUM(net_pnl),0) FROM trades WHERE mode=? AND closed_at IS NOT NULL AND substr(closed_at,1,10)=?",
-            (mode, today),
-        ).fetchone()
+        pnl_row = con.execute("SELECT COALESCE(SUM(net_pnl),0) FROM trades WHERE mode=? AND closed_at IS NOT NULL AND substr(closed_at,1,10)=?", (mode, today)).fetchone()
     exposure = sum(float(r["entry_price"] or 0) * int(r["quantity"] or 0) for r in rows)
     daily_pnl = float(pnl_row[0] or 0) if pnl_row else 0.0
-    return {
-        "open_positions": len(rows),
-        "open_exposure": exposure,
-        "daily_loss": max(0.0, -daily_pnl),
-        "daily_pnl": daily_pnl,
-        "deployment_limit": capital * settings.max_capital_deployment,
-    }
+    return {"open_positions": len(rows), "open_exposure": exposure, "daily_loss": max(0.0, -daily_pnl), "daily_pnl": daily_pnl, "deployment_limit": capital * settings.max_capital_deployment}
 
 
 def _sector_exposure(db: Database, capital: float, mode: str, target_sector: str, extra_notional: float = 0.0) -> float:
-    """Return target-sector exposure including a pending candidate as a capital fraction."""
     if capital <= 0:
         return 1.0
     by_symbol = {x["symbol"]: sector(x["symbol"]) for x in universe()}
     with db.connect() as con:
-        rows = con.execute(
-            "SELECT symbol, quantity, entry_price FROM positions WHERE closed_at IS NULL AND mode=?",
-            (mode,),
-        ).fetchall()
-    total = sum(
-        float(r["entry_price"] or 0) * int(r["quantity"] or 0)
-        for r in rows
-        if by_symbol.get(r["symbol"], "OTHER") == target_sector
-    )
+        rows = con.execute("SELECT symbol, quantity, entry_price FROM positions WHERE closed_at IS NULL AND mode=?", (mode,)).fetchall()
+    total = sum(float(r["entry_price"] or 0) * int(r["quantity"] or 0) for r in rows if by_symbol.get(r["symbol"], "OTHER") == target_sector)
     return (total + extra_notional) / capital
 
 
 def _run_ai_advisory(candidates: list[dict[str, Any]]) -> None:
-    """Attach optional AI evidence to a tiny shortlist; AI cannot change deterministic gates."""
     if not (os.getenv("OPENAI_API_KEY", "").strip() or os.getenv("ANTHROPIC_API_KEY", "").strip()):
         return
     try:
@@ -21007,20 +21019,10 @@ def _run_ai_advisory(candidates: list[dict[str, Any]]) -> None:
     except ValueError:
         limit = 3
     for candidate in candidates[:limit]:
-        context = {k: candidate.get(k) for k in (
-            "symbol", "decision", "price", "entry", "stop", "target", "rr",
-            "trend_score", "technical_score", "fundamental_score", "valuation_score",
-            "framework_agreement", "derivatives"
-        )}
-        result = advisory(
-            "Advisory only. Never override deterministic risk, funds, data, execution or reconciliation gates. "
-            "Return concise JSON with score 0-10, decision BUY/SELL/HOLD/NO TRADE, confidence 0-1, positives, negatives, risks.\n"
-            + json.dumps(context, default=str)
-        )
+        context = {k: candidate.get(k) for k in ("symbol", "decision", "price", "entry", "stop", "target", "rr", "trend_score", "technical_score", "fundamental_score", "valuation_score", "framework_agreement", "derivatives", "market_context")}
+        result = advisory("Advisory only. Never override deterministic risk, funds, data, execution or reconciliation gates. Return concise JSON with score 0-10, decision BUY/SELL/HOLD/NO TRADE, confidence 0-1, positives, negatives, risks.\n" + json.dumps(context, default=str))
         candidate["ai_advisory"] = result
-        candidate["ai_consensus"] = "ADVISORY_AVAILABLE" if result.get("status") == "AVAILABLE" else (
-            "ADVISORY_ERROR" if result.get("status") == "ERROR" else "NOT_CONFIGURED"
-        )
+        candidate["ai_consensus"] = "ADVISORY_AVAILABLE" if result.get("status") == "AVAILABLE" else ("ADVISORY_ERROR" if result.get("status") == "ERROR" else "NOT_CONFIGURED")
         if result.get("text"):
             candidate["ai_advisory_text"] = str(result["text"])[:4000]
 
@@ -21032,14 +21034,7 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     start = time.monotonic()
     db = Database()
     cycle_id = uuid.uuid4().hex
-    result: dict[str, Any] = {
-        "cycle_id": cycle_id, "started_at": datetime.now(timezone.utc).isoformat(),
-        "mode": mode, "market_open": market_open(), "stocks_observed": 0, "quotes": 0,
-        "deep_analysis_pool": 0, "dynamic_pool": True, "fundamentals_cache_hits": 0,
-        "fundamentals_refreshed": 0, "fundamentals_refresh_errors": 0,
-        "candidates": [], "rejections": {}, "rejection_details": [], "orders": [], "errors": [],
-        "suggested_buy_investment": 0.0, "suggested_sell_value": 0.0,
-    }
+    result: dict[str, Any] = {"cycle_id": cycle_id, "started_at": datetime.now(timezone.utc).isoformat(), "mode": mode, "market_open": market_open(), "stocks_observed": 0, "quotes": 0, "deep_analysis_pool": 0, "dynamic_pool": True, "fundamentals_cache_hits": 0, "fundamentals_refreshed": 0, "fundamentals_refresh_errors": 0, "candidates": [], "rejections": {}, "rejection_details": [], "orders": [], "errors": [], "suggested_buy_investment": 0.0, "suggested_sell_value": 0.0}
     db.event("engine", "INFO", "CYCLE_START", result)
     uni = universe()
     result["stocks_observed"] = len(uni)
@@ -21063,11 +21058,6 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     ranked.sort(reverse=True, key=lambda x: x[0])
     analysis_pool = _dynamic_analysis_pool(ranked)
     result["deep_analysis_pool"] = len(analysis_pool)
-
-    # Fundamentals are slow-moving compared with quotes. Refresh only a small
-    # bounded number of stale symbols each cycle, persist the source-backed
-    # snapshots, and use the cache for all analysis-pool symbols. This prevents
-    # the five-minute market loop from issuing hundreds of provider requests.
     refresh_inputs = [(item["symbol"], price) for _, item, price, _ in analysis_pool]
     before_cache = {}
     try:
@@ -21080,45 +21070,45 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
         before_cache = {}
     try:
         cache = refresh_fundamentals_batch(refresh_inputs)
-        result["fundamentals_refreshed"] = sum(
-            1 for symbol, _ in refresh_inputs
-            if symbol.upper() in cache and cache.get(symbol.upper(), {}).get("fetched_at")
-            and cache.get(symbol.upper(), {}).get("fetched_at") != before_cache.get(symbol.upper(), {}).get("fetched_at")
-        )
+        result["fundamentals_refreshed"] = sum(1 for symbol, _ in refresh_inputs if symbol.upper() in cache and cache.get(symbol.upper(), {}).get("fetched_at") and cache.get(symbol.upper(), {}).get("fetched_at") != before_cache.get(symbol.upper(), {}).get("fetched_at"))
         result["fundamentals_cache_hits"] = sum(1 for _, item, _, _ in analysis_pool if item["symbol"].upper() in cache and item["symbol"].upper() in before_cache)
     except Exception as exc:
         result["fundamentals_refresh_errors"] += 1
         result["fundamentals_refresh_error"] = str(exc)
-
-    try:
-        funds = float(broker.funds() or settings.reference_capital)
-    except Exception:
-        funds = settings.reference_capital
-    with ThreadPoolExecutor(max_workers=settings.scan_workers) as ex:
-        futures = [ex.submit(analyse, broker, item, p, v, funds) for _, item, p, v in analysis_pool]
-        for fut in as_completed(futures):
-            try:
-                c = fut.result()
-                db.event("research", "INFO", "FRAMEWORK_ANALYSIS", c.get("research", {}), c.get("symbol"), mode)
-                if c["decision"] in {"BUY", "SELL"}:
-                    result["candidates"].append(c)
-                else:
-                    reason = c.get("rejection_reason") or "NO_TRADE"
-                    result["rejections"][reason] = result["rejections"].get(reason, 0) + 1
-                    result["rejection_details"].append(c)
-                    _record_rejection(db, cycle_id, c, mode)
-            except Exception as exc:
-                result["errors"].append("ANALYSIS_ERROR: " + str(exc))
+    funds, funds_source = _verified_funds(broker)
+    result["verified_funds"] = funds
+    result["funds_source"] = funds_source
+    if funds is None:
+        result["rejections"]["FUNDS_DATA_UNAVAILABLE"] = len(analysis_pool)
+        result["errors"].append("FUNDS_DATA_UNAVAILABLE: broker funds could not be verified")
+    else:
+        with ThreadPoolExecutor(max_workers=settings.scan_workers) as ex:
+            futures = [ex.submit(analyse, broker, item, p, v, funds) for _, item, p, v in analysis_pool]
+            for fut in as_completed(futures):
+                try:
+                    c = fut.result()
+                    db.event("research", "INFO", "FRAMEWORK_ANALYSIS", c.get("research", {}), c.get("symbol"), mode)
+                    if c["decision"] in {"BUY", "SELL"}:
+                        result["candidates"].append(c)
+                    else:
+                        reason = c.get("rejection_reason") or "NO_TRADE"
+                        result["rejections"][reason] = result["rejections"].get(reason, 0) + 1
+                        result["rejection_details"].append(c)
+                        _record_rejection(db, cycle_id, c, mode)
+                except Exception as exc:
+                    result["errors"].append("ANALYSIS_ERROR: " + str(exc))
     result["candidates"].sort(key=lambda x: x.get("overall_score", 0), reverse=True)
     _run_ai_advisory(result["candidates"])
     _manage_positions(db, qmap, uni)
-    result["suggested_buy_investment"] = 0.0
-    result["suggested_sell_value"] = 0.0
     if result["market_open"]:
         capital = float(settings.reference_capital)
-        open_symbols = {r["symbol"] for r in db.recent("positions", 100) if not r.get("closed_at")}
+        open_symbols = set()
+        with db.connect() as con:
+            rows = con.execute("SELECT symbol FROM positions WHERE closed_at IS NULL AND mode=?", (mode,)).fetchall()
+            open_symbols = {r["symbol"] for r in rows}
         for c in result["candidates"]:
             if c["symbol"] in open_symbols:
+                c["decision"] = "NO TRADE"
                 c["rejection_reason"] = "DUPLICATE_ORDER"
                 c["reason"] = "Position already open"
                 result["rejections"]["DUPLICATE_ORDER"] = result["rejections"].get("DUPLICATE_ORDER", 0) + 1
@@ -21128,6 +21118,13 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
                 c["decision"] = "NO TRADE"
                 c["rejection_reason"] = "ENTRY_EXPIRED"
                 c["reason"] = "BUY entry exceeded max-chase price"
+                result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1
+                _record_rejection(db, cycle_id, c, mode)
+                continue
+            if c["decision"] == "SELL" and c["price"] < c["max_chase"]:
+                c["decision"] = "NO TRADE"
+                c["rejection_reason"] = "ENTRY_EXPIRED"
+                c["reason"] = "SELL entry exceeded max-chase distance"
                 result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1
                 _record_rejection(db, cycle_id, c, mode)
                 continue
@@ -21162,22 +21159,9 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     result["suggested_buy_investment"] = round(result["suggested_buy_investment"], 2)
     result["suggested_sell_value"] = round(result["suggested_sell_value"], 2)
     result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"
-    try:
-        broker_funds = float(funds)
-    except Exception:
-        broker_funds = float(settings.reference_capital)
+    broker_funds = funds
     if settings.telegram_token and settings.telegram_chat_id:
-        lines = [
-            "📊 STOCKMARKET BOT — PAPER CYCLE",
-            f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M:%S')} IST",
-            f"Universe: {result['stocks_observed']} | Quotes: {result['quotes']} | Deep analysis: {result['deep_analysis_pool']}",
-            f"Candidates: {len(result['candidates'])} | Orders: {len(result['orders'])}",
-            f"Fundamentals refreshed: {result['fundamentals_refreshed']} | cache hits: {result['fundamentals_cache_hits']}",
-            f"Dhan available funds: ₹{broker_funds:,.2f}",
-            f"Paper reference capital: ₹{settings.reference_capital:,.2f}",
-            f"Paper buy investment: ₹{result['suggested_buy_investment']:,.2f}",
-            f"Open positions: {result.get('positions_open', 0)}",
-        ]
+        lines = ["📊 STOCKMARKET BOT — PAPER CYCLE", f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M:%S')} IST", f"Universe: {result['stocks_observed']} | Quotes: {result['quotes']} | Deep analysis: {result['deep_analysis_pool']}", f"Candidates: {len(result['candidates'])} | Orders: {len(result['orders'])}", f"Fundamentals refreshed: {result['fundamentals_refreshed']} | cache hits: {result['fundamentals_cache_hits']}", f"Dhan verified available funds: {'UNAVAILABLE' if broker_funds is None else f'₹{broker_funds:,.2f}'}", f"Paper reference capital: ₹{settings.reference_capital:,.2f}", f"Paper buy investment: ₹{result['suggested_buy_investment']:,.2f}", f"Open positions: {result.get('positions_open', 0)}"]
         if result["candidates"]:
             lines.append("Top candidates: " + ", ".join(f"{c['symbol']} {c['decision']}" for c in result["candidates"][:5]))
         if result["rejections"]:
