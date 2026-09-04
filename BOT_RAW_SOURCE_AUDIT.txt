@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 353f9e3175f6f996f583353b4fc1e6015b2c24d5
-Generated UTC: 2026-09-04T05:48:27.051918+00:00
+Commit SHA: ebaabe2d5d67944275e6b637b23723808227648c
+Generated UTC: 2026-09-04T05:55:45.643943+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -15,7 +15,7 @@ FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1058 bytes
-.github/workflows/continuous-monitor.yml	14239 bytes
+.github/workflows/continuous-monitor.yml	14319 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	6958 bytes
 .gitignore	684 bytes
@@ -37,11 +37,11 @@ data/monitor_status.json	920 bytes
 data/paper_trading_journal.jsonl	814 bytes
 data/preflight_status.json	312 bytes
 data/scheduler_heartbeat.json	350 bytes
-data/telegram_preflight_status.json	404 bytes
+data/telegram_preflight_status.json	250 bytes
 data/trading.db	14516224 bytes
 data/universe.json	303881 bytes
 data/watchdog_heartbeat.json	488 bytes
-data/worker_heartbeat.json	448 bytes
+data/worker_heartbeat.json	447 bytes
 deploy/README.md	2755 bytes
 deploy/stockmarket-worker.service	697 bytes
 docker-compose.yml	805 bytes
@@ -229,7 +229,7 @@ SQUARE_OFF_MINUTE=20
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 14239 bytes
+SIZE: 14319 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -310,6 +310,7 @@ jobs:
         run: pip install -r requirements.txt --quiet
 
       - name: Telegram notification preflight
+        continue-on-error: true
         if: steps.market.outputs.run_cycle == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -340,7 +341,7 @@ jobs:
           except Exception as exc:
               result.update(status='FAILED',message=str(exc));print('TELEGRAM_PREFLIGHT_FAILED:',str(exc))
           (d/'telegram_preflight_status.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
-          if result['status']!='PASSED': raise SystemExit(result['message'])
+          if result.get('status') != 'PASSED': print('TELEGRAM_WARNING_NON_BLOCKING:',result.get('message','unknown error'))
           PY
 
       - name: Dhan authentication and market-feed preflight
@@ -1680,9 +1681,9 @@ SIZE: 350 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T11:12:40.189689+05:30",
+  "updated_at": "2026-09-04T11:22:00.437873+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33841498027",
+  "workflow_run_id": "33842079269",
   "event": "schedule",
   "market_open": true,
   "scheduled_interval_seconds": 300,
@@ -1692,15 +1693,15 @@ SIZE: 350 bytes
 
 ====================================================================
 FILE: data/telegram_preflight_status.json
-SIZE: 404 bytes
+SIZE: 250 bytes
 ====================================================================
 {
-  "updated_at": "2026-09-04T11:13:05.458243+05:30",
+  "updated_at": "2026-09-04T11:22:22.189695+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "33841498027",
+  "workflow_run_id": "33842079269",
   "status": "FAILED",
-  "message": "sendMessage HTTP 400: Bad Request: chat not found; TELEGRAM_CHAT_ID is not visible to this bot. Start the bot from the target account/group, add the bot to the target group/channel, and use that chat ID."
+  "message": "sendMessage HTTP 400: Bad Request: chat not found"
 }
 
 ====================================================================
@@ -17565,15 +17566,15 @@ SIZE: 488 bytes
 
 ====================================================================
 FILE: data/worker_heartbeat.json
-SIZE: 448 bytes
+SIZE: 447 bytes
 ====================================================================
 {
   "state": "DEGRADED",
-  "message": "Market-cycle invocation failed; inspect preflight_status or Diagnostics",
-  "updated_at": "2026-09-04T11:13:25.407534+05:30",
+  "message": "Market-cycle invocation failed; inspect preflight_status or cycle logs",
+  "updated_at": "2026-09-04T11:22:23.403422+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "33841498027",
+  "workflow_run_id": "33842079269",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
