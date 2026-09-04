@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 35513f47ab20530e3fc2e262fe789c42cc3c80cf
-Generated UTC: 2026-09-04T04:21:55.330296+00:00
+Commit SHA: e2c01efc01e3e04a1c8cc1eb44ee1102a8cc441f
+Generated UTC: 2026-09-04T04:38:31.355571+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -35,9 +35,9 @@ data/.gitkeep	1 bytes
 data/last_successful_market_status.json	544 bytes
 data/monitor_status.json	645 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/preflight_status.json	504 bytes
+data/preflight_status.json	354 bytes
 data/scheduler_heartbeat.json	350 bytes
-data/telegram_preflight_status.json	116 bytes
+data/telegram_preflight_status.json	221 bytes
 data/trading.db	14508032 bytes
 data/universe.json	303993 bytes
 data/watchdog_heartbeat.json	488 bytes
@@ -52,7 +52,7 @@ intraday_bot/alerts.py	917 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	14014 bytes
-intraday_bot/config.py	5571 bytes
+intraday_bot/config.py	5740 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/dhan_auth.py	5905 bytes
 intraday_bot/engine.py	16163 bytes
@@ -1644,14 +1644,14 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/preflight_status.json
-SIZE: 504 bytes
+SIZE: 354 bytes
 ====================================================================
 {
   "status": "FAILED",
-  "message": "DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_API_KEY_MANUAL; client_id_configured=yes; credential_length=8]",
-  "updated_at": "2026-09-04T09:49:07.708645+05:30",
+  "message": "Dhan requires DHAN_CLIENT_ID, DHAN_API_KEY (API key) and DHAN_ACCESS_TOKEN (user-generated access token)",
+  "updated_at": "2026-09-04T10:02:25.670922+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "33836330309",
+  "workflow_run_id": "33837157263",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
@@ -1664,9 +1664,9 @@ SIZE: 350 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T09:48:42.786048+05:30",
+  "updated_at": "2026-09-04T10:01:59.822036+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33836330309",
+  "workflow_run_id": "33837157263",
   "event": "schedule",
   "market_open": true,
   "scheduled_interval_seconds": 300,
@@ -1676,13 +1676,15 @@ SIZE: 350 bytes
 
 ====================================================================
 FILE: data/telegram_preflight_status.json
-SIZE: 116 bytes
+SIZE: 221 bytes
 ====================================================================
 {
-  "date": "2026-09-04",
+  "updated_at": "2026-09-04T10:02:24.007523+05:30",
   "market_open": true,
+  "source": "github-actions-telegram-preflight",
+  "workflow_run_id": "33837157263",
   "status": "FAILED",
-  "message": "sendMessage failed: HTTP 400"
+  "message": "sendMessage HTTP 400"
 }
 
 ====================================================================
@@ -17558,10 +17560,10 @@ SIZE: 448 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect preflight_status or Diagnostics",
-  "updated_at": "2026-09-04T09:49:07.855868+05:30",
+  "updated_at": "2026-09-04T10:02:25.881259+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmejwal",
-  "workflow_run_id": "33836330309",
+  "hostname": "runnervmgx7h7",
+  "workflow_run_id": "33837157263",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -18207,7 +18209,7 @@ def load_security_map() -> dict[str, dict[str, Any]]:
 
 ====================================================================
 FILE: intraday_bot/config.py
-SIZE: 5571 bytes
+SIZE: 5740 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18287,10 +18289,9 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # Dhan API Key and user-generated Access Token are DIFFERENT credentials.
+    # The manually entered Dhan credential is stored only in DHAN_API_KEY.
+    # It is used as the access-token value for market-data requests.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
-    dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
-    dhan_api_secret: str = _credential("DHAN_API_SECRET", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
     telegram_token: str = _secret_or_env("TELEGRAM_BOT_TOKEN", "")
@@ -18304,15 +18305,25 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        return self.dhan_access_token
+        return self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        return "DHAN_API_KEY_PLUS_ACCESS_TOKEN" if self.dhan_api_key and self.dhan_access_token else "NONE"
+        return "DHAN_API_KEY_MANUAL" if self.dhan_api_key else "NONE"
 
     @property
     def dhan_access_token_configured(self) -> bool:
-        return bool(self.dhan_access_token)
+        return bool(self.dhan_api_key)
+
+    # Legacy compatibility properties intentionally return empty values.
+    # Automatic PIN/TOTP/token generation is disabled.
+    @property
+    def dhan_access_token(self) -> str:
+        return ""
+
+    @property
+    def dhan_api_secret(self) -> str:
+        return ""
 
     @property
     def dhan_pin(self) -> str:
@@ -18341,8 +18352,8 @@ class Settings:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.daily_loss_limit <= 0 or self.max_position_exposure <= 0:
             raise ValueError("Paper risk limits must be positive")
-        if self.live_mode_requested and (not self.dhan_client_id or not self.dhan_access_token):
-            raise ValueError("LIVE requested but Dhan client ID/access token is unavailable")
+        if self.live_mode_requested and (not self.dhan_client_id or not self.dhan_api_key):
+            raise ValueError("LIVE requested but Dhan client ID/manual API key credential is unavailable")
 
 
 settings = Settings()
