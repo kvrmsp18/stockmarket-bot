@@ -1,4 +1,15 @@
-"""Telegram notifications with safe chat-id recovery and diagnostics."""
+"""Legacy Telegram notifications.
+
+The active production monitor uses ``intraday_bot.alerts`` and the current
+GitHub Actions preflight/cycle notifications.  This module is retained only
+for backward compatibility with the older ``src/*`` stack.
+
+Legacy broker-authentication alerts are DISABLED by default.  This prevents an
+obsolete worker/service from sending a misleading Dhan "renewal" alert while
+the active production monitor is using the manually supplied
+DHAN_ACCESS_TOKEN.  Set LEGACY_DHAN_ALERTS_ENABLED=true only when intentionally
+running the legacy stack.
+"""
 
 from __future__ import annotations
 
@@ -19,11 +30,10 @@ class TelegramNotifier:
         self.chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID", "").strip()
         self.timeout = timeout
         self.auto_discover = os.getenv("TELEGRAM_AUTO_DISCOVER_CHAT_ID", "true").strip().lower() == "true"
+        self.legacy_dhan_alerts_enabled = os.getenv("LEGACY_DHAN_ALERTS_ENABLED", "false").strip().lower() == "true"
 
     @property
     def configured(self) -> bool:
-        # A token is sufficient to attempt discovery. This is important because
-        # GitHub/Streamlit may not yet have TELEGRAM_CHAT_ID configured.
         return bool(self.bot_token)
 
     @staticmethod
@@ -59,7 +69,6 @@ class TelegramNotifier:
             payload = response.json()
             if not isinstance(payload, dict) or not payload.get("ok"):
                 return None
-
             chat_ids: set[str] = set()
             for update in payload.get("result", []):
                 if not isinstance(update, dict):
@@ -89,19 +98,16 @@ class TelegramNotifier:
             return False
         if not message.strip():
             raise ValueError("Telegram message cannot be empty.")
-
         chat_id = self._resolve_chat_id()
         if not chat_id:
             raise TelegramNotificationError(
                 "Telegram bot token is configured, but no unique chat ID was discovered. "
                 "Send /start to the bot and ensure getUpdates contains your message."
             )
-
         try:
             response = self._send_once(message, chat_id)
         except requests.RequestException as exc:
             raise TelegramNotificationError(f"Telegram network error: {exc}") from exc
-
         if response.ok:
             try:
                 payload = response.json()
@@ -109,7 +115,6 @@ class TelegramNotifier:
                 raise TelegramNotificationError("Telegram returned a non-JSON response.") from exc
             if payload.get("ok", False):
                 return True
-
         detail = self._telegram_detail(response)
         if response.status_code == 400 and detail.lower() == "bad request: chat not found":
             discovered = self._discover_unique_chat_id()
@@ -132,11 +137,14 @@ class TelegramNotifier:
         )
 
     def authentication_problem(self, detail: str) -> bool:
+        """Suppress legacy auth alerts unless the legacy stack is explicitly enabled."""
+        if not self.legacy_dhan_alerts_enabled:
+            return False
         return self.send(
-            "🔐 Dhan authentication alert\n"
-            "The Bot could not authenticate/renew the Dhan access token.\n"
+            "🔐 Dhan authentication alert — LEGACY STACK\n"
+            "The legacy bot could not authenticate the Dhan access token.\n"
             f"Detail: {detail}\n"
-            "Research can continue, but broker balance and real execution are unavailable until authentication recovers."
+            "This notification is from the legacy src/* stack, not the active intraday_bot runtime."
         )
 
     def order_event(self, message: str) -> bool:
