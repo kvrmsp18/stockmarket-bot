@@ -25,3 +25,7 @@ venv/
 # (and reports/) at the end of every run specifically so the validation
 # record persists. If you later move to a real database, delete this
 # block and add data/ above.
+
+# --- Audit refresh trigger ---
+# This comment intentionally triggers Export Source Audit when a manual
+# refresh is needed without changing runtime behavior.
