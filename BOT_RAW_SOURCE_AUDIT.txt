@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 9f62ea423c267135bcb2a42a558ed337dd2a0c69
-Generated UTC: 2026-09-04T04:21:49.642563+00:00
+Commit SHA: 35513f47ab20530e3fc2e262fe789c42cc3c80cf
+Generated UTC: 2026-09-04T04:21:55.330296+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -14,7 +14,7 @@ but their raw bytes are not embedded.
 FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
-.env.example	1097 bytes
+.env.example	1182 bytes
 .github/workflows/continuous-monitor.yml	13699 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	6958 bytes
@@ -183,7 +183,7 @@ SIZE: 1034 bytes
 
 ====================================================================
 FILE: .env.example
-SIZE: 1097 bytes
+SIZE: 1182 bytes
 ====================================================================
 # NEVER put real credentials in GitHub. Use local .env or GitHub/Streamlit secrets.
 BOT_MODE=PAPER
@@ -193,13 +193,14 @@ MAX_CONSECUTIVE_LOSSES=3
 MAX_TRADES_PER_DAY=2
 USE_DHAN_DATA=true
 
-# Dhan application credentials and unattended authentication.
-# API Key is an application credential; it is NOT an Access Token.
+# Dhan credentials: these are DIFFERENT values.
+# DHAN_API_KEY is the short application API key (the user's 8-character key).
+# DHAN_ACCESS_TOKEN is the longer user-generated Access Token entered manually.
+# No automatic token generation is used.
 DHAN_CLIENT_ID=
 DHAN_API_KEY=
+DHAN_ACCESS_TOKEN=
 DHAN_API_SECRET=
-DHAN_PIN=
-DHAN_TOTP_SECRET=
 DHAN_API_BASE_URL=https://api.dhan.co
 DHAN_SECURITY_IDS_JSON=
 BSE_SCRIP_CODES_JSON=
@@ -214,7 +215,6 @@ TWELVEDATA_API_KEY=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 
-# Virtual paper account
 BOT_RESEARCH_REFERENCE_CAPITAL=1000
 RISK_PER_TRADE_PCT=0.5
 MAX_DAILY_LOSS=20
