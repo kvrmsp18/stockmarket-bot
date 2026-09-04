@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: c5b2aa2835aec6740132d692c2399c7659c964b4
-Generated UTC: 2026-09-04T11:10:57.333731+00:00
+Commit SHA: 3e9710bb9e183150821fc34716ba90feee2c450f
+Generated UTC: 2026-09-04T11:46:39.004161+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -128,7 +128,7 @@ src/stock_monitor.py	10372 bytes
 src/stock_universe.py	2242 bytes
 src/strategy_backtest.py	1647 bytes
 src/technical_analysis.py	13311 bytes
-src/telegram_notify.py	6010 bytes
+src/telegram_notify.py	6628 bytes
 src/trading_engine.py	8069 bytes
 src/twelve_data_market_data.py	5577 bytes
 src/validation.py	1077 bytes
@@ -38096,9 +38096,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T16:39:59.281492+05:30",
+  "updated_at": "2026-09-04T17:15:09.270224+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33866635959",
+  "workflow_run_id": "33869410022",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -55182,10 +55182,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-04T16:39:59.366900+05:30",
+  "updated_at": "2026-09-04T17:15:09.313747+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33866635959",
+  "hostname": "runnervmejwal",
+  "workflow_run_id": "33869410022",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -67535,9 +67535,20 @@ def analyze_multi_timeframe_rsi(monthly_bars: Sequence[ResearchBar], weekly_bars
 
 ====================================================================
 FILE: src/telegram_notify.py
-SIZE: 6010 bytes
+SIZE: 6628 bytes
 ====================================================================
-"""Telegram notifications with safe chat-id recovery and diagnostics."""
+"""Legacy Telegram notifications.
+
+The active production monitor uses ``intraday_bot.alerts`` and the current
+GitHub Actions preflight/cycle notifications.  This module is retained only
+for backward compatibility with the older ``src/*`` stack.
+
+Legacy broker-authentication alerts are DISABLED by default.  This prevents an
+obsolete worker/service from sending a misleading Dhan "renewal" alert while
+the active production monitor is using the manually supplied
+DHAN_ACCESS_TOKEN.  Set LEGACY_DHAN_ALERTS_ENABLED=true only when intentionally
+running the legacy stack.
+"""
 
 from __future__ import annotations
 
@@ -67558,11 +67569,10 @@ class TelegramNotifier:
         self.chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID", "").strip()
         self.timeout = timeout
         self.auto_discover = os.getenv("TELEGRAM_AUTO_DISCOVER_CHAT_ID", "true").strip().lower() == "true"
+        self.legacy_dhan_alerts_enabled = os.getenv("LEGACY_DHAN_ALERTS_ENABLED", "false").strip().lower() == "true"
 
     @property
     def configured(self) -> bool:
-        # A token is sufficient to attempt discovery. This is important because
-        # GitHub/Streamlit may not yet have TELEGRAM_CHAT_ID configured.
         return bool(self.bot_token)
 
     @staticmethod
@@ -67598,7 +67608,6 @@ class TelegramNotifier:
             payload = response.json()
             if not isinstance(payload, dict) or not payload.get("ok"):
                 return None
-
             chat_ids: set[str] = set()
             for update in payload.get("result", []):
                 if not isinstance(update, dict):
@@ -67628,19 +67637,16 @@ class TelegramNotifier:
             return False
         if not message.strip():
             raise ValueError("Telegram message cannot be empty.")
-
         chat_id = self._resolve_chat_id()
         if not chat_id:
             raise TelegramNotificationError(
                 "Telegram bot token is configured, but no unique chat ID was discovered. "
                 "Send /start to the bot and ensure getUpdates contains your message."
             )
-
         try:
             response = self._send_once(message, chat_id)
         except requests.RequestException as exc:
             raise TelegramNotificationError(f"Telegram network error: {exc}") from exc
-
         if response.ok:
             try:
                 payload = response.json()
@@ -67648,7 +67654,6 @@ class TelegramNotifier:
                 raise TelegramNotificationError("Telegram returned a non-JSON response.") from exc
             if payload.get("ok", False):
                 return True
-
         detail = self._telegram_detail(response)
         if response.status_code == 400 and detail.lower() == "bad request: chat not found":
             discovered = self._discover_unique_chat_id()
@@ -67671,11 +67676,14 @@ class TelegramNotifier:
         )
 
     def authentication_problem(self, detail: str) -> bool:
+        """Suppress legacy auth alerts unless the legacy stack is explicitly enabled."""
+        if not self.legacy_dhan_alerts_enabled:
+            return False
         return self.send(
-            "🔐 Dhan authentication alert\n"
-            "The Bot could not authenticate/renew the Dhan access token.\n"
+            "🔐 Dhan authentication alert — LEGACY STACK\n"
+            "The legacy bot could not authenticate the Dhan access token.\n"
             f"Detail: {detail}\n"
-            "Research can continue, but broker balance and real execution are unavailable until authentication recovers."
+            "This notification is from the legacy src/* stack, not the active intraday_bot runtime."
         )
 
     def order_event(self, message: str) -> bool:
