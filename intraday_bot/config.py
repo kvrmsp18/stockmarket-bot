@@ -94,17 +94,18 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Return the configured Dhan API credential for the active paper path.
+        """Use the explicitly configured long-lived Dhan access token first.
 
-        The current paper deployment intentionally uses DHAN_API_KEY, the
-        longer-valid credential configured for the repository. The short-lived
-        DHAN_ACCESS_TOKEN and PIN/TOTP auto-generation path are not selected by
-        the active market-data configuration.
+        DHAN_API_KEY remains a legacy fallback only when no access token is
+        configured. PIN/TOTP generation is used only after an explicit token
+        is rejected and no manual access token exists.
         """
-        return self.dhan_api_key
+        return self.dhan_access_token or self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
+        if self.dhan_access_token:
+            return "DHAN_ACCESS_TOKEN"
         if self.dhan_api_key:
             return "DHAN_API_KEY"
         return "NONE"
