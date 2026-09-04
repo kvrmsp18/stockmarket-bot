@@ -1,0 +1,6 @@
+{
+  "date": "2026-09-04",
+  "market_open": true,
+  "status": "FAILED",
+  "message": "sendMessage failed: HTTP 400"
+}
