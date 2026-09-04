@@ -1,5 +1,5 @@
 from intraday_bot import research
-from intraday_bot.research import framework_analysis, research_bundle, scrap_analysis, source_valuation, source_roce
+from intraday_bot.research import framework_analysis, research_bundle, scrap_analysis, source_valuation, source_roce, valuation_analysis
 
 
 def test_all_five_frameworks_are_exposed():
@@ -31,6 +31,28 @@ def test_source_scoring_is_nonzero_for_valid_data():
     assert score > 0
     assert score <= 10
     assert research.valuation_score(data) > 0
+
+
+def test_loss_making_company_uses_alternative_valuation_instead_of_zero():
+    data = {
+        "eps": -14.78,
+        "pe": -18.68,
+        "price_to_sales": 4.0,
+        "enterprise_to_revenue": 4.2,
+        "enterprise_to_ebitda": 25.0,
+    }
+    valuation = valuation_analysis(data)
+    assert valuation["status"] == "AVAILABLE"
+    assert valuation["score"] > 0
+    assert "P/S" in valuation["method"]
+    assert all(item["value"] > 0 for item in valuation["components"])
+
+
+def test_invalid_negative_pe_is_not_scored_as_a_valid_multiple():
+    valuation = valuation_analysis({"pe": -18.68})
+    assert valuation["score"] == 0.0
+    assert valuation["status"] == "DATA UNAVAILABLE"
+    assert "not meaningful" in valuation["reason"]
 
 
 def test_financial_sector_does_not_overweight_leverage():
