@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import os
-
 import requests
 
 from .config import settings
 
 
 def telegram(message: str) -> bool:
-    """Deliver a Telegram alert using environment or Streamlit-secret configuration."""
-    token = settings.telegram_token.strip() or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat = settings.telegram_chat_id.strip() or os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    """Send a Telegram message using the configured GitHub/Streamlit secrets."""
+    token = settings.telegram_token.strip()
+    chat = settings.telegram_chat_id.strip()
     if not token or not chat:
         return False
     try:
@@ -19,8 +17,11 @@ def telegram(message: str) -> bool:
             json={"chat_id": chat, "text": message, "disable_web_page_preview": True},
             timeout=10,
         )
-        return response.ok
-    except Exception:
+        if not response.ok:
+            return False
+        payload = response.json()
+        return bool(isinstance(payload, dict) and payload.get("ok") is True)
+    except (requests.RequestException, ValueError):
         return False
 
 
