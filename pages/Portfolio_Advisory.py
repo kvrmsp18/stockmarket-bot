@@ -87,6 +87,11 @@ def _record_rebalance_history(result: dict[str, Any]) -> None:
     history = _load_json(REBALANCE_HISTORY_PATH)
     if not isinstance(history, list):
         history = []
+    signature = json.dumps(result, sort_keys=True, default=str)
+    if history:
+        previous = history[-1].get("result", {}) if isinstance(history[-1], dict) else {}
+        if json.dumps(previous, sort_keys=True, default=str) == signature:
+            return
     history.append({"timestamp": datetime.now(timezone.utc).isoformat(), "result": result})
     _save_json(REBALANCE_HISTORY_PATH, history[-200:])
 
@@ -106,7 +111,20 @@ def _source_price_history(symbol: str, period: str = "1mo") -> list[float]:
 
 
 def _benchmark_history(benchmark: str, period: str = "1mo") -> list[float]:
-    return _source_price_history(benchmark, period=period)
+    # Accept a Yahoo-compatible benchmark ticker; ^NSEI is used only when the user explicitly supplies it.
+    if benchmark.startswith("^"):
+        ticker_name = benchmark
+    else:
+        ticker_name = benchmark
+    try:
+        import yfinance as yf
+        frame = yf.Ticker(ticker_name).history(period=period, auto_adjust=False, actions=False)
+        if frame is None or frame.empty or "Close" not in frame:
+            return []
+        values = pd.to_numeric(frame["Close"], errors="coerce").dropna()
+        return [float(x) for x in values.tolist() if float(x) > 0]
+    except Exception:
+        return []
 
 
 def _basket_section() -> None:
