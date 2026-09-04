@@ -129,7 +129,6 @@ def heartbeat_age_seconds(payload):
 
 
 def verified_candidates(status: dict, heartbeat: dict) -> pd.DataFrame:
-    """Return candidates only from a recent, verified successful market cycle."""
     if heartbeat.get("cycle_success") is not True:
         return pd.DataFrame()
     if heartbeat.get("market_open") is not True:
@@ -143,7 +142,6 @@ def verified_candidates(status: dict, heartbeat: dict) -> pd.DataFrame:
 
 
 def rejection_breakdown(status: dict) -> pd.DataFrame:
-    """Expose the runtime's deterministic gate rejection counts on the dashboard."""
     raw = status.get("rejections") or {}
     rows = []
     if isinstance(raw, dict):
@@ -207,12 +205,7 @@ def _display_score(value, available=True):
 
 
 def _research_screener_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize raw research events into one latest, human-readable row per symbol.
-
-    Zero is not used as a substitute for unavailable research. The underlying
-    ResearchResult dataclass has numeric defaults of 0, so availability is
-    determined from the persisted status/source fields before displaying scores.
-    """
+    """Normalize raw research events into one latest, human-readable row per symbol."""
     if df.empty:
         return pd.DataFrame()
 
@@ -239,7 +232,6 @@ def _research_screener_rows(df: pd.DataFrame) -> pd.DataFrame:
         trend = _first_value(merged, "trend_score", "score")
         price = _first_value(merged, "price", "ltp", "last_price", "close")
 
-        # Some runtime payloads keep SCRAP details in a nested object.
         scrap = _as_payload(merged.get("scrap"))
         scrap_status = str(_first_value(scrap, "status") or "").upper()
         scrap_score = _first_value(merged, "scrap_score")
@@ -257,12 +249,11 @@ def _research_screener_rows(df: pd.DataFrame) -> pd.DataFrame:
         if valuation_score is None:
             valuation_score = _first_value(valuation, "valuation_score", "score")
 
-        # ResearchResult PASS/REJECTED is available research evidence. A plain
-        # numeric zero without a positive availability/status signal is not.
         score_available = status not in {"DATA UNAVAILABLE", "UNKNOWN", ""}
         if not score_available:
             fundamental = valuation_score = scrap_score = None
 
+        conviction = _first_value(merged, "conviction_score")
         rows.append({
             "Symbol": symbol,
             "Price": _display_score(price, price is not None),
@@ -273,7 +264,7 @@ def _research_screener_rows(df: pd.DataFrame) -> pd.DataFrame:
             "SCRAP Score": _display_score(scrap_score, score_available and scrap_score is not None),
             "Fundamental Score": _display_score(fundamental, score_available and fundamental is not None),
             "Valuation Score": _display_score(valuation_score, score_available and valuation_score is not None),
-            "Conviction": _display_score(_first_value(merged, "conviction_score"), score_available and _first_value(merged, "conviction_score") is not None),
+            "Conviction": _display_score(conviction, score_available and conviction is not None),
             "Research Status": status,
             "Provider": source or "DATA UNAVAILABLE",
             "Rejection Reason": str(rejection) if rejection is not None else "—",
@@ -285,15 +276,13 @@ def _research_screener_rows(df: pd.DataFrame) -> pd.DataFrame:
     if result.empty:
         return result
     result["_sort_status"] = result["Research Status"].map({"PASS": 0, "AVAILABLE": 0, "PARTIAL": 1, "REJECTED": 2, "DATA UNAVAILABLE": 3}).fillna(4)
-    result = result.sort_values(["_sort_status", "Symbol"]).drop(columns=["_sort_status"])
-    return result
+    return result.sort_values(["_sort_status", "Symbol"]).drop(columns=["_sort_status"])
 
 
 def stock_screener():
     header("Stock Screener", "Latest persisted source-backed research, normalized to one row per stock. Missing research stays DATA UNAVAILABLE; no generic or fake stock data is substituted.")
     raw = events(component="research", limit=3000)
     table = _research_screener_rows(raw)
-
     if table.empty:
         st.info("No persisted research records are available yet.")
         return
@@ -328,13 +317,11 @@ def stock_screener():
 
     display = view.drop(columns=["_raw_payload"], errors="ignore")
     st.dataframe(display, use_container_width=True, hide_index=True)
-
     if not view.empty:
         with st.expander("Source evidence for selected row"):
             selected = st.selectbox("Stock", view["Symbol"].tolist(), key="screener_evidence_symbol")
             row = view[view["Symbol"] == selected].iloc[0]
             st.json(row["_raw_payload"])
-
     st.caption("The screener is a research view, not an order list. A BUY/SELL can still be rejected by market, risk, execution, sector-exposure, capital, or event/news gates.")
 
 
@@ -543,13 +530,14 @@ def frameworks():
 
 
 def research_page(page):
-    header(page, f"{page} — persisted Bot results only; no generic/fake stock data is substituted.")
     if page == "Deep Research":
         frameworks()
         return
     if page == "Stock Screener":
         stock_screener()
         return
+
+    header(page, f"{page} — persisted Bot results only; no generic/fake stock data is substituted.")
     s = j(STATUS)
     h = j(HB)
     c = verified_candidates(s, h)
