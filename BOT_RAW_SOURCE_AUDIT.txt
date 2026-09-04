@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 348ab1c81f9cc53393c0e9c8c8a38a2abdc1bd47
-Generated UTC: 2026-09-04T08:58:32.540736+00:00
+Commit SHA: 537aa67718ed8cbdb3d42ab687634409a0e81f79
+Generated UTC: 2026-09-04T09:16:43.792797+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -38,7 +38,9 @@ data/market_regime.json	933 bytes
 data/monitor_status.json	1215018 bytes
 data/paper_trading_journal.jsonl	814 bytes
 data/preflight_status.json	312 bytes
-data/scheduler_heartbeat.json	359 bytes
+data/scheduler_heartbeat.json	350 bytes
+data/sector_intelligence.json	5368 bytes
+data/sector_membership.json	17000 bytes
 data/telegram_preflight_status.json	250 bytes
 data/trading.db	28905472 bytes
 data/universe.json	303881 bytes
@@ -94,7 +96,7 @@ scripts/eod_report.py	3477 bytes
 scripts/load_universe.py	2260 bytes
 scripts/run_daily_cycle.py	3428 bytes
 scripts/run_eod_close.py	3034 bytes
-scripts/run_sector_intelligence.py	2146 bytes
+scripts/run_sector_intelligence.py	2520 bytes
 scripts/worker.py	6600 bytes
 src/__init__.py	1376 bytes
 src/adapters.py	3391 bytes
@@ -38501,9 +38503,9 @@ SIZE: 312 bytes
 {
   "status": "PASSED",
   "message": "Dhan client ID + access token and market-feed preflight passed",
-  "updated_at": "2026-09-04T14:17:40.475021+05:30",
+  "updated_at": "2026-09-04T14:40:41.959454+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "33855109244",
+  "workflow_run_id": "33856985020",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
@@ -38511,15 +38513,15 @@ SIZE: 312 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 359 bytes
+SIZE: 350 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T14:17:16.214568+05:30",
+  "updated_at": "2026-09-04T14:40:15.430249+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33855109244",
-  "event": "workflow_dispatch",
+  "workflow_run_id": "33856985020",
+  "event": "schedule",
   "market_open": true,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -38527,14 +38529,1210 @@ SIZE: 359 bytes
 }
 
 ====================================================================
+FILE: data/sector_intelligence.json
+SIZE: 5368 bytes
+====================================================================
+{
+  "status": "PARTIAL",
+  "source": "NSE_OFFICIAL_SECTOR_INDICES",
+  "source_by_sector": {
+    "BANKING": "NSE_ARCHIVE_CSV",
+    "IT": "NSE_ARCHIVE_CSV",
+    "AUTO": "NSE_ARCHIVE_CSV",
+    "PHARMA": "NSE_ARCHIVE_CSV",
+    "FMCG": "NSE_ARCHIVE_CSV",
+    "METALS": "NSE_ARCHIVE_CSV",
+    "REALTY": "NSE_ARCHIVE_CSV",
+    "MEDIA": "NSE_ARCHIVE_CSV",
+    "PRIVATE_BANK": "NSE_ARCHIVE_CSV",
+    "PSU_BANK": "NSE_ARCHIVE_CSV",
+    "HEALTHCARE": "NSE_ARCHIVE_CSV",
+    "OIL_GAS": "NSE_ARCHIVE_CSV",
+    "CONSUMER_DURABLES": "NSE_ARCHIVE_CSV",
+    "CONSUMPTION": "NSE_ARCHIVE_CSV"
+  },
+  "errors_by_sector": {
+    "FINANCIAL_SERVICES": "404 Client Error: Not Found for url: https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20FINANCIAL%20SERVICES"
+  },
+  "membership_fetched_at": "2026-09-04T09:10:59.720733+00:00",
+  "as_of": "2026-09-04T09:10:59.722459+00:00",
+  "classified_symbols": 160,
+  "unclassified_universe_symbols": 2478,
+  "sectors": {
+    "BANKING": {
+      "index": "NIFTY BANK",
+      "members": 14,
+      "quoted": 14,
+      "advancing": 6,
+      "declining": 7,
+      "unchanged": 1,
+      "breadth_pct": 46.15,
+      "average_change_pct": 0.1149,
+      "median_change_pct": -0.0466,
+      "strength": 4.98,
+      "state": "NEUTRAL"
+    },
+    "PRIVATE_BANK": {
+      "index": "NIFTY PRIVATE BANK",
+      "members": 10,
+      "quoted": 10,
+      "advancing": 6,
+      "declining": 4,
+      "unchanged": 0,
+      "breadth_pct": 60.0,
+      "average_change_pct": 0.3643,
+      "median_change_pct": 0.2504,
+      "strength": 6.046,
+      "state": "NEUTRAL"
+    },
+    "PSU_BANK": {
+      "index": "NIFTY PSU BANK",
+      "members": 12,
+      "quoted": 12,
+      "advancing": 6,
+      "declining": 6,
+      "unchanged": 0,
+      "breadth_pct": 50.0,
+      "average_change_pct": 0.297,
+      "median_change_pct": 0.212,
+      "strength": 5.445,
+      "state": "NEUTRAL"
+    },
+    "IT": {
+      "index": "NIFTY IT",
+      "members": 10,
+      "quoted": 10,
+      "advancing": 2,
+      "declining": 6,
+      "unchanged": 2,
+      "breadth_pct": 25.0,
+      "average_change_pct": -0.3286,
+      "median_change_pct": -0.2683,
+      "strength": 3.257,
+      "state": "WEAK"
+    },
+    "AUTO": {
+      "index": "NIFTY AUTO",
+      "members": 15,
+      "quoted": 15,
+      "advancing": 4,
+      "declining": 11,
+      "unchanged": 0,
+      "breadth_pct": 26.67,
+      "average_change_pct": -0.6217,
+      "median_change_pct": -0.7152,
+      "strength": 2.901,
+      "state": "WEAK"
+    },
+    "PHARMA": {
+      "index": "NIFTY PHARMA",
+      "members": 20,
+      "quoted": 20,
+      "advancing": 7,
+      "declining": 12,
+      "unchanged": 1,
+      "breadth_pct": 36.84,
+      "average_change_pct": -0.0321,
+      "median_change_pct": -0.8202,
+      "strength": 4.294,
+      "state": "NEUTRAL"
+    },
+    "FMCG": {
+      "index": "NIFTY FMCG",
+      "members": 15,
+      "quoted": 15,
+      "advancing": 2,
+      "declining": 11,
+      "unchanged": 2,
+      "breadth_pct": 15.38,
+      "average_change_pct": -0.5301,
+      "median_change_pct": -0.3348,
+      "strength": 2.705,
+      "state": "WEAK"
+    },
+    "METALS": {
+      "index": "NIFTY METAL",
+      "members": 15,
+      "quoted": 15,
+      "advancing": 13,
+      "declining": 2,
+      "unchanged": 0,
+      "breadth_pct": 86.67,
+      "average_change_pct": 1.013,
+      "median_change_pct": 1.0351,
+      "strength": 8.019,
+      "state": "STRONG"
+    },
+    "REALTY": {
+      "index": "NIFTY REALTY",
+      "members": 10,
+      "quoted": 10,
+      "advancing": 1,
+      "declining": 9,
+      "unchanged": 0,
+      "breadth_pct": 10.0,
+      "average_change_pct": -1.0731,
+      "median_change_pct": -0.9663,
+      "strength": 1.89,
+      "state": "WEAK"
+    },
+    "MEDIA": {
+      "index": "NIFTY MEDIA",
+      "members": 10,
+      "quoted": 10,
+      "advancing": 5,
+      "declining": 4,
+      "unchanged": 1,
+      "breadth_pct": 55.56,
+      "average_change_pct": 0.6728,
+      "median_change_pct": 0.4825,
+      "strength": 6.287,
+      "state": "NEUTRAL"
+    },
+    "HEALTHCARE": {
+      "index": "NIFTY HEALTHCARE INDEX",
+      "members": 20,
+      "quoted": 20,
+      "advancing": 4,
+      "declining": 15,
+      "unchanged": 1,
+      "breadth_pct": 21.05,
+      "average_change_pct": -0.6508,
+      "median_change_pct": -0.9076,
+      "strength": 2.576,
+      "state": "WEAK"
+    },
+    "OIL_GAS": {
+      "index": "NIFTY OIL & GAS",
+      "members": 15,
+      "quoted": 15,
+      "advancing": 7,
+      "declining": 8,
+      "unchanged": 0,
+      "breadth_pct": 46.67,
+      "average_change_pct": 0.6188,
+      "median_change_pct": -0.3048,
+      "strength": 5.762,
+      "state": "NEUTRAL"
+    },
+    "CONSUMER_DURABLES": {
+      "index": "NIFTY CONSUMER DURABLES",
+      "members": 13,
+      "quoted": 13,
+      "advancing": 5,
+      "declining": 8,
+      "unchanged": 0,
+      "breadth_pct": 38.46,
+      "average_change_pct": -0.0623,
+      "median_change_pct": -0.3735,
+      "strength": 4.33,
+      "state": "NEUTRAL"
+    },
+    "CONSUMPTION": {
+      "index": "NIFTY INDIA CONSUMPTION",
+      "members": 30,
+      "quoted": 30,
+      "advancing": 8,
+      "declining": 21,
+      "unchanged": 1,
+      "breadth_pct": 27.59,
+      "average_change_pct": -0.4686,
+      "median_change_pct": -0.5494,
+      "strength": 3.176,
+      "state": "WEAK"
+    }
+  },
+  "cache_warning": null
+}
+
+====================================================================
+FILE: data/sector_membership.json
+SIZE: 17000 bytes
+====================================================================
+{
+  "status": "PARTIAL",
+  "source": "NSE_OFFICIAL_SECTOR_INDICES",
+  "source_by_sector": {
+    "BANKING": "NSE_ARCHIVE_CSV",
+    "IT": "NSE_ARCHIVE_CSV",
+    "AUTO": "NSE_ARCHIVE_CSV",
+    "PHARMA": "NSE_ARCHIVE_CSV",
+    "FMCG": "NSE_ARCHIVE_CSV",
+    "METALS": "NSE_ARCHIVE_CSV",
+    "REALTY": "NSE_ARCHIVE_CSV",
+    "MEDIA": "NSE_ARCHIVE_CSV",
+    "PRIVATE_BANK": "NSE_ARCHIVE_CSV",
+    "PSU_BANK": "NSE_ARCHIVE_CSV",
+    "HEALTHCARE": "NSE_ARCHIVE_CSV",
+    "OIL_GAS": "NSE_ARCHIVE_CSV",
+    "CONSUMER_DURABLES": "NSE_ARCHIVE_CSV",
+    "CONSUMPTION": "NSE_ARCHIVE_CSV"
+  },
+  "errors_by_sector": {
+    "FINANCIAL_SERVICES": "404 Client Error: Not Found for url: https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20FINANCIAL%20SERVICES"
+  },
+  "fetched_at": "2026-09-04T09:10:59.720733+00:00",
+  "sector_indices": {
+    "BANKING": "NIFTY BANK",
+    "IT": "NIFTY IT",
+    "AUTO": "NIFTY AUTO",
+    "PHARMA": "NIFTY PHARMA",
+    "FMCG": "NIFTY FMCG",
+    "METALS": "NIFTY METAL",
+    "REALTY": "NIFTY REALTY",
+    "MEDIA": "NIFTY MEDIA",
+    "PRIVATE_BANK": "NIFTY PRIVATE BANK",
+    "PSU_BANK": "NIFTY PSU BANK",
+    "FINANCIAL_SERVICES": "NIFTY FINANCIAL SERVICES",
+    "HEALTHCARE": "NIFTY HEALTHCARE INDEX",
+    "OIL_GAS": "NIFTY OIL & GAS",
+    "CONSUMER_DURABLES": "NIFTY CONSUMER DURABLES",
+    "CONSUMPTION": "NIFTY INDIA CONSUMPTION"
+  },
+  "sectors": {
+    "BANKING": [
+      "AUBANK",
+      "AXISBANK",
+      "BANKBARODA",
+      "CANBK",
+      "FEDERALBNK",
+      "HDFCBANK",
+      "ICICIBANK",
+      "IDFCFIRSTB",
+      "INDUSINDBK",
+      "KOTAKBANK",
+      "PNB",
+      "SBIN",
+      "UNIONBANK",
+      "YESBANK"
+    ],
+    "IT": [
+      "COFORGE",
+      "HCLTECH",
+      "INFY",
+      "LTM",
+      "MPHASIS",
+      "OFSS",
+      "PERSISTENT",
+      "TCS",
+      "TECHM",
+      "WIPRO"
+    ],
+    "AUTO": [
+      "ASHOKLEY",
+      "BAJAJ-AUTO",
+      "BHARATFORG",
+      "BOSCHLTD",
+      "EICHERMOT",
+      "EXIDEIND",
+      "HEROMOTOCO",
+      "M&M",
+      "MARUTI",
+      "MOTHERSON",
+      "SONACOMS",
+      "TVSMOTOR",
+      "TMPV",
+      "TIINDIA",
+      "UNOMINDA"
+    ],
+    "PHARMA": [
+      "ABBOTINDIA",
+      "AJANTPHARM",
+      "ALKEM",
+      "AUROPHARMA",
+      "BIOCON",
+      "CIPLA",
+      "DIVISLAB",
+      "DRREDDY",
+      "GLAND",
+      "GLENMARK",
+      "IPCALAB",
+      "LAURUSLABS",
+      "LUPIN",
+      "MANKIND",
+      "PPLPHARMA",
+      "SAILIFE",
+      "SUNPHARMA",
+      "TORNTPHARM",
+      "WOCKPHARMA",
+      "ZYDUSLIFE"
+    ],
+    "FMCG": [
+      "BRITANNIA",
+      "COLPAL",
+      "DABUR",
+      "EMAMILTD",
+      "GODREJCP",
+      "HINDUNILVR",
+      "ITC",
+      "MARICO",
+      "NESTLEIND",
+      "PATANJALI",
+      "RADICO",
+      "TATACONSUM",
+      "UBL",
+      "UNITDSPR",
+      "VBL"
+    ],
+    "METALS": [
+      "APLAPOLLO",
+      "ADANIENT",
+      "HINDALCO",
+      "HINDCOPPER",
+      "HINDZINC",
+      "JSWSTEEL",
+      "JSL",
+      "JINDALSTEL",
+      "LLOYDSME",
+      "NMDC",
+      "NATIONALUM",
+      "SAIL",
+      "TATASTEEL",
+      "VEDL",
+      "WELCORP"
+    ],
+    "REALTY": [
+      "ABREL",
+      "ANANTRAJ",
+      "BRIGADE",
+      "DLF",
+      "GODREJPROP",
+      "LODHA",
+      "OBEROIRLTY",
+      "PHOENIXLTD",
+      "PRESTIGE",
+      "SOBHA"
+    ],
+    "MEDIA": [
+      "DBCORP",
+      "HATHWAY",
+      "NAZARA",
+      "NETWORK18",
+      "PVRINOX",
+      "PFOCUS",
+      "SAREGAMA",
+      "SUNTV",
+      "TIPSMUSIC",
+      "ZEEL"
+    ],
+    "PRIVATE_BANK": [
+      "AXISBANK",
+      "BANDHANBNK",
+      "FEDERALBNK",
+      "HDFCBANK",
+      "ICICIBANK",
+      "IDFCFIRSTB",
+      "INDUSINDBK",
+      "KOTAKBANK",
+      "RBLBANK",
+      "YESBANK"
+    ],
+    "PSU_BANK": [
+      "BANKBARODA",
+      "BANKINDIA",
+      "MAHABANK",
+      "CANBK",
+      "CENTRALBK",
+      "INDIANB",
+      "IOB",
+      "PSB",
+      "PNB",
+      "SBIN",
+      "UCOBANK",
+      "UNIONBANK"
+    ],
+    "HEALTHCARE": [
+      "ABBOTINDIA",
+      "ALKEM",
+      "APOLLOHOSP",
+      "AUROPHARMA",
+      "BIOCON",
+      "CIPLA",
+      "DIVISLAB",
+      "DRREDDY",
+      "FORTIS",
+      "GLENMARK",
+      "IPCALAB",
+      "LAURUSLABS",
+      "LUPIN",
+      "MANKIND",
+      "MAXHEALTH",
+      "PPLPHARMA",
+      "SUNPHARMA",
+      "SYNGENE",
+      "TORNTPHARM",
+      "ZYDUSLIFE"
+    ],
+    "OIL_GAS": [
+      "ATGL",
+      "AEGISLOG",
+      "AEGISVOPAK",
+      "BPCL",
+      "CASTROLIND",
+      "CHENNPETRO",
+      "GAIL",
+      "HINDPETRO",
+      "IOC",
+      "IGL",
+      "MGL",
+      "ONGC",
+      "OIL",
+      "PETRONET",
+      "RELIANCE"
+    ],
+    "CONSUMER_DURABLES": [
+      "AMBER",
+      "BATAINDIA",
+      "BLUESTARCO",
+      "CROMPTON",
+      "DIXON",
+      "HAVELLS",
+      "KAJARIACER",
+      "KALYANKJIL",
+      "LGEINDIA",
+      "PGEL",
+      "TITAN",
+      "VOLTAS",
+      "WHIRLPOOL"
+    ],
+    "CONSUMPTION": [
+      "ADANIPOWER",
+      "APOLLOHOSP",
+      "ASIANPAINT",
+      "DMART",
+      "BAJAJ-AUTO",
+      "BHARTIARTL",
+      "BRITANNIA",
+      "DLF",
+      "DIXON",
+      "EICHERMOT",
+      "ETERNAL",
+      "GODREJCP",
+      "HAVELLS",
+      "HEROMOTOCO",
+      "HINDUNILVR",
+      "ITC",
+      "INDHOTEL",
+      "NAUKRI",
+      "INDIGO",
+      "M&M",
+      "MARUTI",
+      "MAXHEALTH",
+      "NESTLEIND",
+      "TVSMOTOR",
+      "TATACONSUM",
+      "TATAPOWER",
+      "TITAN",
+      "TRENT",
+      "UNITDSPR",
+      "VBL"
+    ]
+  },
+  "symbol_sector": {
+    "AUBANK": "BANKING",
+    "AXISBANK": "BANKING",
+    "BANKBARODA": "BANKING",
+    "CANBK": "BANKING",
+    "FEDERALBNK": "BANKING",
+    "HDFCBANK": "BANKING",
+    "ICICIBANK": "BANKING",
+    "IDFCFIRSTB": "BANKING",
+    "INDUSINDBK": "BANKING",
+    "KOTAKBANK": "BANKING",
+    "PNB": "BANKING",
+    "SBIN": "BANKING",
+    "UNIONBANK": "BANKING",
+    "YESBANK": "BANKING",
+    "BANDHANBNK": "PRIVATE_BANK",
+    "RBLBANK": "PRIVATE_BANK",
+    "BANKINDIA": "PSU_BANK",
+    "MAHABANK": "PSU_BANK",
+    "CENTRALBK": "PSU_BANK",
+    "INDIANB": "PSU_BANK",
+    "IOB": "PSU_BANK",
+    "PSB": "PSU_BANK",
+    "UCOBANK": "PSU_BANK",
+    "COFORGE": "IT",
+    "HCLTECH": "IT",
+    "INFY": "IT",
+    "LTM": "IT",
+    "MPHASIS": "IT",
+    "OFSS": "IT",
+    "PERSISTENT": "IT",
+    "TCS": "IT",
+    "TECHM": "IT",
+    "WIPRO": "IT",
+    "ASHOKLEY": "AUTO",
+    "BAJAJ-AUTO": "AUTO",
+    "BHARATFORG": "AUTO",
+    "BOSCHLTD": "AUTO",
+    "EICHERMOT": "AUTO",
+    "EXIDEIND": "AUTO",
+    "HEROMOTOCO": "AUTO",
+    "M&M": "AUTO",
+    "MARUTI": "AUTO",
+    "MOTHERSON": "AUTO",
+    "SONACOMS": "AUTO",
+    "TVSMOTOR": "AUTO",
+    "TMPV": "AUTO",
+    "TIINDIA": "AUTO",
+    "UNOMINDA": "AUTO",
+    "ABBOTINDIA": "PHARMA",
+    "AJANTPHARM": "PHARMA",
+    "ALKEM": "PHARMA",
+    "AUROPHARMA": "PHARMA",
+    "BIOCON": "PHARMA",
+    "CIPLA": "PHARMA",
+    "DIVISLAB": "PHARMA",
+    "DRREDDY": "PHARMA",
+    "GLAND": "PHARMA",
+    "GLENMARK": "PHARMA",
+    "IPCALAB": "PHARMA",
+    "LAURUSLABS": "PHARMA",
+    "LUPIN": "PHARMA",
+    "MANKIND": "PHARMA",
+    "PPLPHARMA": "PHARMA",
+    "SAILIFE": "PHARMA",
+    "SUNPHARMA": "PHARMA",
+    "TORNTPHARM": "PHARMA",
+    "WOCKPHARMA": "PHARMA",
+    "ZYDUSLIFE": "PHARMA",
+    "BRITANNIA": "FMCG",
+    "COLPAL": "FMCG",
+    "DABUR": "FMCG",
+    "EMAMILTD": "FMCG",
+    "GODREJCP": "FMCG",
+    "HINDUNILVR": "FMCG",
+    "ITC": "FMCG",
+    "MARICO": "FMCG",
+    "NESTLEIND": "FMCG",
+    "PATANJALI": "FMCG",
+    "RADICO": "FMCG",
+    "TATACONSUM": "FMCG",
+    "UBL": "FMCG",
+    "UNITDSPR": "FMCG",
+    "VBL": "FMCG",
+    "APLAPOLLO": "METALS",
+    "ADANIENT": "METALS",
+    "HINDALCO": "METALS",
+    "HINDCOPPER": "METALS",
+    "HINDZINC": "METALS",
+    "JSWSTEEL": "METALS",
+    "JSL": "METALS",
+    "JINDALSTEL": "METALS",
+    "LLOYDSME": "METALS",
+    "NMDC": "METALS",
+    "NATIONALUM": "METALS",
+    "SAIL": "METALS",
+    "TATASTEEL": "METALS",
+    "VEDL": "METALS",
+    "WELCORP": "METALS",
+    "ABREL": "REALTY",
+    "ANANTRAJ": "REALTY",
+    "BRIGADE": "REALTY",
+    "DLF": "REALTY",
+    "GODREJPROP": "REALTY",
+    "LODHA": "REALTY",
+    "OBEROIRLTY": "REALTY",
+    "PHOENIXLTD": "REALTY",
+    "PRESTIGE": "REALTY",
+    "SOBHA": "REALTY",
+    "DBCORP": "MEDIA",
+    "HATHWAY": "MEDIA",
+    "NAZARA": "MEDIA",
+    "NETWORK18": "MEDIA",
+    "PVRINOX": "MEDIA",
+    "PFOCUS": "MEDIA",
+    "SAREGAMA": "MEDIA",
+    "SUNTV": "MEDIA",
+    "TIPSMUSIC": "MEDIA",
+    "ZEEL": "MEDIA",
+    "APOLLOHOSP": "HEALTHCARE",
+    "FORTIS": "HEALTHCARE",
+    "MAXHEALTH": "HEALTHCARE",
+    "SYNGENE": "HEALTHCARE",
+    "ATGL": "OIL_GAS",
+    "AEGISLOG": "OIL_GAS",
+    "AEGISVOPAK": "OIL_GAS",
+    "BPCL": "OIL_GAS",
+    "CASTROLIND": "OIL_GAS",
+    "CHENNPETRO": "OIL_GAS",
+    "GAIL": "OIL_GAS",
+    "HINDPETRO": "OIL_GAS",
+    "IOC": "OIL_GAS",
+    "IGL": "OIL_GAS",
+    "MGL": "OIL_GAS",
+    "ONGC": "OIL_GAS",
+    "OIL": "OIL_GAS",
+    "PETRONET": "OIL_GAS",
+    "RELIANCE": "OIL_GAS",
+    "AMBER": "CONSUMER_DURABLES",
+    "BATAINDIA": "CONSUMER_DURABLES",
+    "BLUESTARCO": "CONSUMER_DURABLES",
+    "CROMPTON": "CONSUMER_DURABLES",
+    "DIXON": "CONSUMER_DURABLES",
+    "HAVELLS": "CONSUMER_DURABLES",
+    "KAJARIACER": "CONSUMER_DURABLES",
+    "KALYANKJIL": "CONSUMER_DURABLES",
+    "LGEINDIA": "CONSUMER_DURABLES",
+    "PGEL": "CONSUMER_DURABLES",
+    "TITAN": "CONSUMER_DURABLES",
+    "VOLTAS": "CONSUMER_DURABLES",
+    "WHIRLPOOL": "CONSUMER_DURABLES",
+    "ADANIPOWER": "CONSUMPTION",
+    "ASIANPAINT": "CONSUMPTION",
+    "DMART": "CONSUMPTION",
+    "BHARTIARTL": "CONSUMPTION",
+    "ETERNAL": "CONSUMPTION",
+    "INDHOTEL": "CONSUMPTION",
+    "NAUKRI": "CONSUMPTION",
+    "INDIGO": "CONSUMPTION",
+    "TATAPOWER": "CONSUMPTION",
+    "TRENT": "CONSUMPTION"
+  },
+  "symbol_sources": {
+    "AUBANK": [
+      "BANKING"
+    ],
+    "AXISBANK": [
+      "BANKING",
+      "PRIVATE_BANK"
+    ],
+    "BANKBARODA": [
+      "BANKING",
+      "PSU_BANK"
+    ],
+    "CANBK": [
+      "BANKING",
+      "PSU_BANK"
+    ],
+    "FEDERALBNK": [
+      "BANKING",
+      "PRIVATE_BANK"
+    ],
+    "HDFCBANK": [
+      "BANKING",
+      "PRIVATE_BANK"
+    ],
+    "ICICIBANK": [
+      "BANKING",
+      "PRIVATE_BANK"
+    ],
+    "IDFCFIRSTB": [
+      "BANKING",
+      "PRIVATE_BANK"
+    ],
+    "INDUSINDBK": [
+      "BANKING",
+      "PRIVATE_BANK"
+    ],
+    "KOTAKBANK": [
+      "BANKING",
+      "PRIVATE_BANK"
+    ],
+    "PNB": [
+      "BANKING",
+      "PSU_BANK"
+    ],
+    "SBIN": [
+      "BANKING",
+      "PSU_BANK"
+    ],
+    "UNIONBANK": [
+      "BANKING",
+      "PSU_BANK"
+    ],
+    "YESBANK": [
+      "BANKING",
+      "PRIVATE_BANK"
+    ],
+    "BANDHANBNK": [
+      "PRIVATE_BANK"
+    ],
+    "RBLBANK": [
+      "PRIVATE_BANK"
+    ],
+    "BANKINDIA": [
+      "PSU_BANK"
+    ],
+    "MAHABANK": [
+      "PSU_BANK"
+    ],
+    "CENTRALBK": [
+      "PSU_BANK"
+    ],
+    "INDIANB": [
+      "PSU_BANK"
+    ],
+    "IOB": [
+      "PSU_BANK"
+    ],
+    "PSB": [
+      "PSU_BANK"
+    ],
+    "UCOBANK": [
+      "PSU_BANK"
+    ],
+    "COFORGE": [
+      "IT"
+    ],
+    "HCLTECH": [
+      "IT"
+    ],
+    "INFY": [
+      "IT"
+    ],
+    "LTM": [
+      "IT"
+    ],
+    "MPHASIS": [
+      "IT"
+    ],
+    "OFSS": [
+      "IT"
+    ],
+    "PERSISTENT": [
+      "IT"
+    ],
+    "TCS": [
+      "IT"
+    ],
+    "TECHM": [
+      "IT"
+    ],
+    "WIPRO": [
+      "IT"
+    ],
+    "ASHOKLEY": [
+      "AUTO"
+    ],
+    "BAJAJ-AUTO": [
+      "AUTO",
+      "CONSUMPTION"
+    ],
+    "BHARATFORG": [
+      "AUTO"
+    ],
+    "BOSCHLTD": [
+      "AUTO"
+    ],
+    "EICHERMOT": [
+      "AUTO",
+      "CONSUMPTION"
+    ],
+    "EXIDEIND": [
+      "AUTO"
+    ],
+    "HEROMOTOCO": [
+      "AUTO",
+      "CONSUMPTION"
+    ],
+    "M&M": [
+      "AUTO",
+      "CONSUMPTION"
+    ],
+    "MARUTI": [
+      "AUTO",
+      "CONSUMPTION"
+    ],
+    "MOTHERSON": [
+      "AUTO"
+    ],
+    "SONACOMS": [
+      "AUTO"
+    ],
+    "TVSMOTOR": [
+      "AUTO",
+      "CONSUMPTION"
+    ],
+    "TMPV": [
+      "AUTO"
+    ],
+    "TIINDIA": [
+      "AUTO"
+    ],
+    "UNOMINDA": [
+      "AUTO"
+    ],
+    "ABBOTINDIA": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "AJANTPHARM": [
+      "PHARMA"
+    ],
+    "ALKEM": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "AUROPHARMA": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "BIOCON": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "CIPLA": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "DIVISLAB": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "DRREDDY": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "GLAND": [
+      "PHARMA"
+    ],
+    "GLENMARK": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "IPCALAB": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "LAURUSLABS": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "LUPIN": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "MANKIND": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "PPLPHARMA": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "SAILIFE": [
+      "PHARMA"
+    ],
+    "SUNPHARMA": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "TORNTPHARM": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "WOCKPHARMA": [
+      "PHARMA"
+    ],
+    "ZYDUSLIFE": [
+      "PHARMA",
+      "HEALTHCARE"
+    ],
+    "BRITANNIA": [
+      "FMCG",
+      "CONSUMPTION"
+    ],
+    "COLPAL": [
+      "FMCG"
+    ],
+    "DABUR": [
+      "FMCG"
+    ],
+    "EMAMILTD": [
+      "FMCG"
+    ],
+    "GODREJCP": [
+      "FMCG",
+      "CONSUMPTION"
+    ],
+    "HINDUNILVR": [
+      "FMCG",
+      "CONSUMPTION"
+    ],
+    "ITC": [
+      "FMCG",
+      "CONSUMPTION"
+    ],
+    "MARICO": [
+      "FMCG"
+    ],
+    "NESTLEIND": [
+      "FMCG",
+      "CONSUMPTION"
+    ],
+    "PATANJALI": [
+      "FMCG"
+    ],
+    "RADICO": [
+      "FMCG"
+    ],
+    "TATACONSUM": [
+      "FMCG",
+      "CONSUMPTION"
+    ],
+    "UBL": [
+      "FMCG"
+    ],
+    "UNITDSPR": [
+      "FMCG",
+      "CONSUMPTION"
+    ],
+    "VBL": [
+      "FMCG",
+      "CONSUMPTION"
+    ],
+    "APLAPOLLO": [
+      "METALS"
+    ],
+    "ADANIENT": [
+      "METALS"
+    ],
+    "HINDALCO": [
+      "METALS"
+    ],
+    "HINDCOPPER": [
+      "METALS"
+    ],
+    "HINDZINC": [
+      "METALS"
+    ],
+    "JSWSTEEL": [
+      "METALS"
+    ],
+    "JSL": [
+      "METALS"
+    ],
+    "JINDALSTEL": [
+      "METALS"
+    ],
+    "LLOYDSME": [
+      "METALS"
+    ],
+    "NMDC": [
+      "METALS"
+    ],
+    "NATIONALUM": [
+      "METALS"
+    ],
+    "SAIL": [
+      "METALS"
+    ],
+    "TATASTEEL": [
+      "METALS"
+    ],
+    "VEDL": [
+      "METALS"
+    ],
+    "WELCORP": [
+      "METALS"
+    ],
+    "ABREL": [
+      "REALTY"
+    ],
+    "ANANTRAJ": [
+      "REALTY"
+    ],
+    "BRIGADE": [
+      "REALTY"
+    ],
+    "DLF": [
+      "REALTY",
+      "CONSUMPTION"
+    ],
+    "GODREJPROP": [
+      "REALTY"
+    ],
+    "LODHA": [
+      "REALTY"
+    ],
+    "OBEROIRLTY": [
+      "REALTY"
+    ],
+    "PHOENIXLTD": [
+      "REALTY"
+    ],
+    "PRESTIGE": [
+      "REALTY"
+    ],
+    "SOBHA": [
+      "REALTY"
+    ],
+    "DBCORP": [
+      "MEDIA"
+    ],
+    "HATHWAY": [
+      "MEDIA"
+    ],
+    "NAZARA": [
+      "MEDIA"
+    ],
+    "NETWORK18": [
+      "MEDIA"
+    ],
+    "PVRINOX": [
+      "MEDIA"
+    ],
+    "PFOCUS": [
+      "MEDIA"
+    ],
+    "SAREGAMA": [
+      "MEDIA"
+    ],
+    "SUNTV": [
+      "MEDIA"
+    ],
+    "TIPSMUSIC": [
+      "MEDIA"
+    ],
+    "ZEEL": [
+      "MEDIA"
+    ],
+    "APOLLOHOSP": [
+      "HEALTHCARE",
+      "CONSUMPTION"
+    ],
+    "FORTIS": [
+      "HEALTHCARE"
+    ],
+    "MAXHEALTH": [
+      "HEALTHCARE",
+      "CONSUMPTION"
+    ],
+    "SYNGENE": [
+      "HEALTHCARE"
+    ],
+    "ATGL": [
+      "OIL_GAS"
+    ],
+    "AEGISLOG": [
+      "OIL_GAS"
+    ],
+    "AEGISVOPAK": [
+      "OIL_GAS"
+    ],
+    "BPCL": [
+      "OIL_GAS"
+    ],
+    "CASTROLIND": [
+      "OIL_GAS"
+    ],
+    "CHENNPETRO": [
+      "OIL_GAS"
+    ],
+    "GAIL": [
+      "OIL_GAS"
+    ],
+    "HINDPETRO": [
+      "OIL_GAS"
+    ],
+    "IOC": [
+      "OIL_GAS"
+    ],
+    "IGL": [
+      "OIL_GAS"
+    ],
+    "MGL": [
+      "OIL_GAS"
+    ],
+    "ONGC": [
+      "OIL_GAS"
+    ],
+    "OIL": [
+      "OIL_GAS"
+    ],
+    "PETRONET": [
+      "OIL_GAS"
+    ],
+    "RELIANCE": [
+      "OIL_GAS"
+    ],
+    "AMBER": [
+      "CONSUMER_DURABLES"
+    ],
+    "BATAINDIA": [
+      "CONSUMER_DURABLES"
+    ],
+    "BLUESTARCO": [
+      "CONSUMER_DURABLES"
+    ],
+    "CROMPTON": [
+      "CONSUMER_DURABLES"
+    ],
+    "DIXON": [
+      "CONSUMER_DURABLES",
+      "CONSUMPTION"
+    ],
+    "HAVELLS": [
+      "CONSUMER_DURABLES",
+      "CONSUMPTION"
+    ],
+    "KAJARIACER": [
+      "CONSUMER_DURABLES"
+    ],
+    "KALYANKJIL": [
+      "CONSUMER_DURABLES"
+    ],
+    "LGEINDIA": [
+      "CONSUMER_DURABLES"
+    ],
+    "PGEL": [
+      "CONSUMER_DURABLES"
+    ],
+    "TITAN": [
+      "CONSUMER_DURABLES",
+      "CONSUMPTION"
+    ],
+    "VOLTAS": [
+      "CONSUMER_DURABLES"
+    ],
+    "WHIRLPOOL": [
+      "CONSUMER_DURABLES"
+    ],
+    "ADANIPOWER": [
+      "CONSUMPTION"
+    ],
+    "ASIANPAINT": [
+      "CONSUMPTION"
+    ],
+    "DMART": [
+      "CONSUMPTION"
+    ],
+    "BHARTIARTL": [
+      "CONSUMPTION"
+    ],
+    "ETERNAL": [
+      "CONSUMPTION"
+    ],
+    "INDHOTEL": [
+      "CONSUMPTION"
+    ],
+    "NAUKRI": [
+      "CONSUMPTION"
+    ],
+    "INDIGO": [
+      "CONSUMPTION"
+    ],
+    "TATAPOWER": [
+      "CONSUMPTION"
+    ],
+    "TRENT": [
+      "CONSUMPTION"
+    ]
+  },
+  "classified_symbols": 160
+}
+
+====================================================================
 FILE: data/telegram_preflight_status.json
 SIZE: 250 bytes
 ====================================================================
 {
-  "updated_at": "2026-09-04T14:17:38.277842+05:30",
+  "updated_at": "2026-09-04T14:40:39.498653+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "33855109244",
+  "workflow_run_id": "33856985020",
   "status": "PASSED",
   "message": "Telegram authenticated and test message delivered"
 }
@@ -54406,10 +55604,10 @@ SIZE: 447 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect preflight_status or cycle logs",
-  "updated_at": "2026-09-04T14:17:57.282516+05:30",
+  "updated_at": "2026-09-04T14:40:59.890964+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmejwal",
-  "workflow_run_id": "33855109244",
+  "hostname": "runnervmgx7h7",
+  "workflow_run_id": "33856985020",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -59775,7 +60973,7 @@ if __name__ == "__main__":
 
 ====================================================================
 FILE: scripts/run_sector_intelligence.py
-SIZE: 2146 bytes
+SIZE: 2520 bytes
 ====================================================================
 """Build live NSE sector intelligence for the production paper-trading cycle."""
 from __future__ import annotations
@@ -59785,7 +60983,7 @@ import sys
 from pathlib import Path
 
 # When a file under scripts/ is executed directly (``python scripts/foo.py``),
-# Python puts scripts/ on sys.path rather than the repository root.  Explicitly
+# Python puts scripts/ on sys.path rather than the repository root. Explicitly
 # add the root so the production intraday_bot package is always importable in
 # GitHub Actions and local validation.
 ROOT = Path(__file__).resolve().parent.parent
@@ -59808,12 +61006,21 @@ def main() -> None:
         raise SystemExit("SECTOR_INTELLIGENCE_FAILED: Dhan returned zero quotes")
 
     result = build(universe, quotes)
-    if result.get("status") != "AVAILABLE":
-        raise SystemExit("SECTOR_INTELLIGENCE_FAILED: sector source unavailable")
+    status = str(result.get("status") or "UNAVAILABLE").upper()
+    if status not in {"AVAILABLE", "PARTIAL"}:
+        raise SystemExit(
+            "SECTOR_INTELLIGENCE_FAILED: no official sector membership available"
+        )
 
-    print("SECTOR_INTELLIGENCE_AVAILABLE")
+    print(f"SECTOR_INTELLIGENCE_{status}")
     print("Classified symbols:", result.get("classified_symbols"))
     print("Unclassified universe symbols:", result.get("unclassified_universe_symbols"))
+
+    errors = result.get("errors_by_sector") or {}
+    if errors:
+        print("Official sector sources unavailable:", ", ".join(sorted(errors)))
+        for sector_name, error in sorted(errors.items()):
+            print(f"SECTOR_SOURCE_WARNING {sector_name}: {error}")
 
     ranked = sorted(
         (dict(value, sector=key) for key, value in (result.get("sectors") or {}).items()),
