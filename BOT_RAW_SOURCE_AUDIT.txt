@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 90b9655b4d2536fd1fd98849a2873b08a18e27eb
-Generated UTC: 2026-09-04T05:59:50.406787+00:00
+Commit SHA: f2391ef960807a1abb1f3ce63ac31f7c8247de61
+Generated UTC: 2026-09-04T06:09:21.740582+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -38,7 +38,7 @@ data/paper_trading_journal.jsonl	814 bytes
 data/preflight_status.json	312 bytes
 data/scheduler_heartbeat.json	359 bytes
 data/telegram_preflight_status.json	250 bytes
-data/trading.db	14516224 bytes
+data/trading.db	14524416 bytes
 data/universe.json	303881 bytes
 data/watchdog_heartbeat.json	488 bytes
 data/worker_heartbeat.json	447 bytes
@@ -51,7 +51,7 @@ intraday_bot/ai_advisor.py	2731 bytes
 intraday_bot/alerts.py	917 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
-intraday_bot/brokers.py	14900 bytes
+intraday_bot/brokers.py	15639 bytes
 intraday_bot/config.py	5955 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/engine.py	16163 bytes
@@ -1618,8 +1618,8 @@ FILE: data/monitor_status.json
 SIZE: 1164 bytes
 ====================================================================
 {
-  "cycle_id": "178d94f2d0004f56b5b9114e930c14e0",
-  "started_at": "2026-09-04T05:57:12.136387+00:00",
+  "cycle_id": "0cf49f039f0447dfa5710e24e1ce9ae4",
+  "started_at": "2026-09-04T06:06:21.965392+00:00",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 2638,
@@ -1645,8 +1645,8 @@ SIZE: 1164 bytes
     "sell_allowed": false,
     "error": "DHAN_HTTP_400: {\"errorType\":\"Input_Exception\",\"errorCode\":\"DH-905\",\"errorMessage\":\"Missing required fields, bad values for parameters etc.\"}"
   },
-  "duration_seconds": 10.417,
-  "ended_at": "2026-09-04T11:27:22.551183+05:30",
+  "duration_seconds": 10.425,
+  "ended_at": "2026-09-04T11:36:32.389464+05:30",
   "positions_open": 1,
   "realized_pnl": 0.0,
   "today_realized_pnl": 0.0
@@ -1666,9 +1666,9 @@ SIZE: 312 bytes
 {
   "status": "PASSED",
   "message": "Dhan client ID + access token and market-feed preflight passed",
-  "updated_at": "2026-09-04T11:27:05.748827+05:30",
+  "updated_at": "2026-09-04T11:36:15.635266+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "33842367117",
+  "workflow_run_id": "33842954972",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
@@ -1681,9 +1681,9 @@ SIZE: 359 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T11:26:39.148204+05:30",
+  "updated_at": "2026-09-04T11:35:51.720142+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33842367117",
+  "workflow_run_id": "33842954972",
   "event": "workflow_dispatch",
   "market_open": true,
   "scheduled_interval_seconds": 300,
@@ -1696,17 +1696,17 @@ FILE: data/telegram_preflight_status.json
 SIZE: 250 bytes
 ====================================================================
 {
-  "updated_at": "2026-09-04T11:27:03.685151+05:30",
+  "updated_at": "2026-09-04T11:36:13.483141+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "33842367117",
-  "status": "FAILED",
-  "message": "sendMessage HTTP 400: Bad Request: chat not found"
+  "workflow_run_id": "33842954972",
+  "status": "PASSED",
+  "message": "Telegram authenticated and test message delivered"
 }
 
 ====================================================================
 FILE: data/trading.db
-SIZE: 14516224 bytes
+SIZE: 14524416 bytes
 ====================================================================
 [BINARY/GENERATED FILE — CONTENT NOT EMBEDDED]
 
@@ -17571,10 +17571,10 @@ SIZE: 447 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect preflight_status or cycle logs",
-  "updated_at": "2026-09-04T11:27:22.752419+05:30",
+  "updated_at": "2026-09-04T11:36:32.581136+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33842367117",
+  "hostname": "runnervmejwal",
+  "workflow_run_id": "33842954972",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -17965,7 +17965,7 @@ def run(df:pd.DataFrame, capital:float=100000)->dict:
 
 ====================================================================
 FILE: intraday_bot/brokers.py
-SIZE: 14900 bytes
+SIZE: 15639 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18028,7 +18028,7 @@ class PaperTradingBroker(BrokerInterface):
 
 
 class DhanBroker(BrokerInterface):
-    """Dhan read/data adapter using the single manually entered DHAN_API_KEY credential."""
+    """Dhan read/data adapter using the manually entered Dhan Access Token."""
 
     _rate_lock = threading.Lock()
     _last_quote_call = 0.0
@@ -18219,6 +18219,26 @@ class DhanBroker(BrokerInterface):
         return (today.date() - timedelta(days=420)).isoformat()
 
     @staticmethod
+    def _daily_history_payload(security_id: str, exchange_segment: str, instrument: str, from_date: str, to_date: str) -> dict[str, Any]:
+        """Build a Dhan historical-chart payload.
+
+        Dhan's historical endpoint uses derivative-only fields such as
+        expiryCode/oi for contracts.  They are deliberately omitted for INDEX
+        and EQUITY instruments so the request matches the instrument contract.
+        """
+        payload: dict[str, Any] = {
+            "securityId": str(DhanBroker._security_id(security_id)),
+            "exchangeSegment": str(exchange_segment).strip().upper(),
+            "instrument": str(instrument).strip().upper(),
+            "fromDate": from_date,
+            "toDate": to_date,
+        }
+        if payload["instrument"] not in {"INDEX", "EQUITY"}:
+            payload["expiryCode"] = 0
+            payload["oi"] = False
+        return payload
+
+    @staticmethod
     def _frame(body: Any) -> pd.DataFrame:
         keys = ["timestamp", "open", "high", "low", "close", "volume"]
         if not isinstance(body, dict) or not all(k in body for k in keys):
@@ -18247,15 +18267,13 @@ class DhanBroker(BrokerInterface):
 
     def daily_history(self, security_id: str, exchange_segment: str = "NSE_EQ", instrument: str = "EQUITY") -> pd.DataFrame:
         now = datetime.now(ZoneInfo("Asia/Kolkata"))
-        payload = {
-            "securityId": str(self._security_id(security_id)),
-            "exchangeSegment": str(exchange_segment).strip().upper(),
-            "instrument": str(instrument).strip().upper(),
-            "expiryCode": 0,
-            "oi": False,
-            "fromDate": self._daily_start_date(now),
-            "toDate": now.date().isoformat(),
-        }
+        payload = self._daily_history_payload(
+            security_id,
+            exchange_segment,
+            instrument,
+            self._daily_start_date(now),
+            now.date().isoformat(),
+        )
         data = self._request("POST", "/v2/charts/historical", json=payload)
         return self._frame(data.get("data", data) if isinstance(data, dict) else {})
 
