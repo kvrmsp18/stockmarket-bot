@@ -127,6 +127,25 @@ def heartbeat_age_seconds(payload):
         return float("inf")
 
 
+def verified_candidates(status: dict, heartbeat: dict) -> pd.DataFrame:
+    """Return candidates only from a recent, verified successful market cycle.
+
+    Persisted candidates from a failed/old cycle are historical state, not
+    actionable signals.  This prevents the dashboard from showing stale BUY or
+    SELL rows beside a DATA UNAVAILABLE/DEGRADED current cycle.
+    """
+    if heartbeat.get("cycle_success") is not True:
+        return pd.DataFrame()
+    if heartbeat.get("market_open") is not True:
+        return pd.DataFrame()
+    if heartbeat.get("state") != "RUNNING":
+        return pd.DataFrame()
+    if heartbeat_age_seconds(heartbeat) > 900:
+        return pd.DataFrame()
+    rows = status.get("candidates", [])
+    return pd.DataFrame(rows) if isinstance(rows, list) else pd.DataFrame()
+
+
 def header(t, d):
     st.title(t)
     st.info(d)
@@ -137,11 +156,12 @@ def dashboard():
     h = j(HB)
     sh = j(SHB)
     header("📈 NSE/BSE Intraday AI Trading Desk", "Observe → Analyse → Filter → Rank → Decide → Validate → Size → Execute → Monitor → Exit → Reconcile. Paper mode is default; AI is advisory only.")
+    live_candidates = verified_candidates(s, h)
     a, b, c, d, e, f, g = st.columns(7)
     a.metric("Mode", s.get("mode", "PAPER"))
     b.metric("Universe", s.get("stocks_observed", 0))
     c.metric("Quotes", s.get("quotes", 0))
-    d.metric("Candidates", len(s.get("candidates", [])))
+    d.metric("Candidates", len(live_candidates))
     e.metric("Open Positions", s.get("positions_open", 0))
     f.metric("Today's P&L", f"₹{float(s.get('today_realized_pnl', 0) or 0):,.2f}")
     g.metric("Capital", f"₹{settings.reference_capital:,.0f}")
@@ -164,15 +184,19 @@ def dashboard():
     st.caption(f"Data sync: {'OK' if st.session_state.get('sync_ok', True) else 'FAILED'} · {st.session_state.get('sync_at', '—')}")
     if not st.session_state.get("sync_ok", True):
         st.error(f"Dashboard refresh could not retrieve latest persisted state: {st.session_state.get('sync_error', 'unknown error')}")
-    cdf = pd.DataFrame(s.get("candidates", []))
     st.subheader("Actionable candidates")
-    if cdf.empty:
-        if cycle_errors:
-            st.error(f"Latest cycle failed before producing candidates: {cycle_errors[0]}")
+    if live_candidates.empty:
+        if cycle_success is not True:
+            reason = cycle_errors[0] if cycle_errors else h.get("message", "No verified successful market cycle")
+            st.error(f"No actionable candidates: current market cycle is not verified successful. {reason}")
+        elif not market_open:
+            st.info("No actionable candidates while the NSE market is closed. Previous-cycle candidates are hidden to prevent stale signals.")
+        elif age_seconds > 900:
+            st.error("No actionable candidates: the last successful cycle is stale (>15 minutes).")
         else:
             st.warning("No actionable candidates persisted. Rejected Signals contains the exact reason.")
     else:
-        st.dataframe(cdf, use_container_width=True, hide_index=True)
+        st.dataframe(live_candidates, use_container_width=True, hide_index=True)
 
 
 def prompt():
@@ -274,11 +298,12 @@ def research_page(page):
         frameworks()
         return
     s = j(STATUS)
-    c = pd.DataFrame(s.get("candidates", []))
+    h = j(HB)
+    c = verified_candidates(s, h)
     r = flat(events(component="research"))
     if page in {"Trend Scanner", "Top Bullish", "Top Bearish"}:
         if c.empty:
-            st.warning("No actionable candidates in latest cycle.")
+            st.warning("No verified actionable candidates in the latest successful market cycle.")
             return
         x = c.copy()
         x["_trend"] = pd.to_numeric(x.get("trend_score", 0), errors="coerce").fillna(0)
