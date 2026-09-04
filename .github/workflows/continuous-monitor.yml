@@ -92,6 +92,71 @@ jobs:
         if: steps.market.outputs.run_cycle == 'true'
         run: pip install -r requirements.txt --quiet
 
+      - name: Telegram notification preflight
+        if: steps.market.outputs.run_cycle == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MARKET_OPEN: ${{ steps.market.outputs.market_open }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          import requests
+
+          data_dir = Path('data')
+          data_dir.mkdir(parents=True, exist_ok=True)
+          today = datetime.now(ZoneInfo('Asia/Kolkata')).date().isoformat()
+          marker = data_dir / f'telegram_preflight_{today}.json'
+          if marker.exists():
+              print('Telegram preflight already passed today.')
+              raise SystemExit(0)
+
+          token = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+          chat = os.getenv('TELEGRAM_CHAT_ID', '').strip()
+          result = {'date': today, 'market_open': os.getenv('MARKET_OPEN') == 'true'}
+          if not token or not chat:
+              result.update({'status': 'FAILED', 'message': 'Telegram secrets are unavailable'})
+              (data_dir / 'telegram_preflight_status.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
+              print('TELEGRAM_PREFLIGHT_FAILED: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID unavailable')
+              raise SystemExit(0)
+
+          try:
+              get_me = requests.get(f'https://api.telegram.org/bot{token}/getMe', timeout=10)
+              get_payload = get_me.json()
+              if not get_me.ok or not get_payload.get('ok'):
+                  raise RuntimeError(f'getMe failed: HTTP {get_me.status_code}')
+
+              text = (
+                  '🟢 STOCKMARKET BOT — Telegram preflight OK\n'
+                  f'Market: {"OPEN" if os.getenv("MARKET_OPEN") == "true" else "CLOSED"}\n'
+                  'Mode: PAPER\n'
+                  'Live orders: DISABLED\n'
+                  f'Time: {datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()}'
+              )
+              sent = requests.post(
+                  f'https://api.telegram.org/bot{token}/sendMessage',
+                  json={'chat_id': chat, 'text': text, 'disable_web_page_preview': True},
+                  timeout=10,
+              )
+              payload = sent.json()
+              if not sent.ok or not payload.get('ok'):
+                  raise RuntimeError(f'sendMessage failed: HTTP {sent.status_code}')
+
+              result.update({'status': 'PASSED', 'message': 'Telegram bot authenticated and test message delivered'})
+              (data_dir / 'telegram_preflight_status.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
+              marker.write_text(json.dumps(result, indent=2), encoding='utf-8')
+              print('TELEGRAM_PREFLIGHT_PASSED')
+          except Exception as exc:
+              result.update({'status': 'FAILED', 'message': str(exc)})
+              (data_dir / 'telegram_preflight_status.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
+              print('TELEGRAM_PREFLIGHT_FAILED:', str(exc))
+          PY
+
       - name: Dhan manual-token market-feed preflight
         if: steps.market.outputs.run_cycle == 'true'
         env:
