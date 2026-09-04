@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 3e9710bb9e183150821fc34716ba90feee2c450f
-Generated UTC: 2026-09-04T11:46:39.004161+00:00
+Commit SHA: c4d6b1975620d9dfdb03a4e396f763eda8dd8579
+Generated UTC: 2026-09-04T12:05:08.703490+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -18,7 +18,7 @@ FILE INVENTORY
 .github/workflows/continuous-monitor.yml	14720 bytes
 .github/workflows/eod-close.yml	4948 bytes
 .github/workflows/export-source-audit.yml	6958 bytes
-.gitignore	684 bytes
+.gitignore	844 bytes
 .streamlit/config.toml	199 bytes
 .streamlit/secrets.toml.example	555 bytes
 Dockerfile	229 bytes
@@ -829,7 +829,7 @@ jobs:
 
 ====================================================================
 FILE: .gitignore
-SIZE: 684 bytes
+SIZE: 844 bytes
 ====================================================================
 # --- Secrets: never commit these ---
 .env
@@ -858,6 +858,10 @@ venv/
 # (and reports/) at the end of every run specifically so the validation
 # record persists. If you later move to a real database, delete this
 # block and add data/ above.
+
+# --- Audit refresh trigger ---
+# This comment intentionally triggers Export Source Audit when a manual
+# refresh is needed without changing runtime behavior.
 
 ====================================================================
 FILE: .streamlit/config.toml
@@ -38096,9 +38100,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T17:15:09.270224+05:30",
+  "updated_at": "2026-09-04T17:34:07.074284+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33869410022",
+  "workflow_run_id": "33870911535",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -55182,10 +55186,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-04T17:15:09.313747+05:30",
+  "updated_at": "2026-09-04T17:34:07.132388+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "33869410022",
+  "workflow_run_id": "33870911535",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
