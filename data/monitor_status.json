@@ -1,6 +1,6 @@
 {
-  "cycle_id": "e951ce6207ea4f83af23ab674c8ec2d8",
-  "started_at": "2026-09-04T06:15:41.574387+00:00",
+  "cycle_id": "ebd15ff438754ed387813732b512a424",
+  "started_at": "2026-09-04T06:21:30.734992+00:00",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 2638,
@@ -26,8 +26,8 @@
     "sell_allowed": false,
     "error": "DHAN_HTTP_400: {\"errorType\":\"Input_Exception\",\"errorCode\":\"DH-905\",\"errorMessage\":\"Missing required fields, bad values for parameters etc.\"}"
   },
-  "duration_seconds": 11.489,
-  "ended_at": "2026-09-04T11:45:53.061106+05:30",
+  "duration_seconds": 10.952,
+  "ended_at": "2026-09-04T11:51:41.686297+05:30",
   "positions_open": 1,
   "realized_pnl": 0.0,
   "today_realized_pnl": 0.0
