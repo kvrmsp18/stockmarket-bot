@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 5dfb71ecb4adb8ed8484b5ce528542f0edbf1931
-Generated UTC: 2026-09-04T19:01:21.163939+00:00
+Commit SHA: 773941fb7eb9e13d01b5fc95eabbf13fcae3447a
+Generated UTC: 2026-09-04T19:01:44.517166+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -83,7 +83,7 @@ pages/04_Dhan_JSON_Body_Auth_Diagnostic.py	1790 bytes
 pages/04_Dhan_Official_SDK_Auth_Diagnostic.py	2154 bytes
 pages/05_Dhan_API_Key_Consent_Diagnostic.py	3753 bytes
 pages/06_Dhan_OAuth_Browser_Login_Diagnostic.py	5985 bytes
-pages/Portfolio_Advisory.py	9550 bytes
+pages/Portfolio_Advisory.py	10372 bytes
 reports/.gitkeep	0 bytes
 reports/daily/.gitkeep	1 bytes
 reports/daily/2026-08-29.md	428 bytes
@@ -60498,7 +60498,7 @@ st.caption("Security: API credentials and temporary tokenId remain in memory onl
 
 ====================================================================
 FILE: pages/Portfolio_Advisory.py
-SIZE: 9550 bytes
+SIZE: 10372 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -60589,6 +60589,11 @@ def _record_rebalance_history(result: dict[str, Any]) -> None:
     history = _load_json(REBALANCE_HISTORY_PATH)
     if not isinstance(history, list):
         history = []
+    signature = json.dumps(result, sort_keys=True, default=str)
+    if history:
+        previous = history[-1].get("result", {}) if isinstance(history[-1], dict) else {}
+        if json.dumps(previous, sort_keys=True, default=str) == signature:
+            return
     history.append({"timestamp": datetime.now(timezone.utc).isoformat(), "result": result})
     _save_json(REBALANCE_HISTORY_PATH, history[-200:])
 
@@ -60608,7 +60613,20 @@ def _source_price_history(symbol: str, period: str = "1mo") -> list[float]:
 
 
 def _benchmark_history(benchmark: str, period: str = "1mo") -> list[float]:
-    return _source_price_history(benchmark, period=period)
+    # Accept a Yahoo-compatible benchmark ticker; ^NSEI is used only when the user explicitly supplies it.
+    if benchmark.startswith("^"):
+        ticker_name = benchmark
+    else:
+        ticker_name = benchmark
+    try:
+        import yfinance as yf
+        frame = yf.Ticker(ticker_name).history(period=period, auto_adjust=False, actions=False)
+        if frame is None or frame.empty or "Close" not in frame:
+            return []
+        values = pd.to_numeric(frame["Close"], errors="coerce").dropna()
+        return [float(x) for x in values.tolist() if float(x) > 0]
+    except Exception:
+        return []
 
 
 def _basket_section() -> None:
