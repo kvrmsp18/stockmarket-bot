@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: db7ec9fcc034c923de9585e7092ad3cceb375ed5
-Generated UTC: 2026-09-04T03:13:45.293201+00:00
+Commit SHA: 2eb4f2c929abd18aa84585db5b37c4d6536f91a3
+Generated UTC: 2026-09-04T04:09:29.571111+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -35,18 +35,19 @@ data/.gitkeep	1 bytes
 data/last_successful_market_status.json	544 bytes
 data/monitor_status.json	645 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/scheduler_heartbeat.json	351 bytes
+data/preflight_status.json	504 bytes
+data/scheduler_heartbeat.json	350 bytes
 data/trading.db	14508032 bytes
 data/universe.json	303993 bytes
 data/watchdog_heartbeat.json	488 bytes
-data/worker_heartbeat.json	461 bytes
+data/worker_heartbeat.json	448 bytes
 deploy/README.md	2755 bytes
 deploy/stockmarket-worker.service	697 bytes
 docker-compose.yml	805 bytes
 intraday_bot/__init__.py	87 bytes
 intraday_bot/ai.py	1952 bytes
 intraday_bot/ai_advisor.py	2731 bytes
-intraday_bot/alerts.py	860 bytes
+intraday_bot/alerts.py	917 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	17242 bytes
@@ -1689,17 +1690,32 @@ SIZE: 814 bytes
 {"payload": {"ambiguous_count": 0, "average_loser": null, "average_winner": null, "eod_close_count": 0, "gross_loss": 0, "gross_profit": 0, "max_drawdown": 0.0, "net_pnl": 0, "no_data_count": 0, "open_count": 0, "period_end": "2026-08-31", "period_start": "2026-08-31", "profit_factor": null, "resolved_count": 0, "signals": 0, "stop_count": 0, "target_count": 0, "win_rate_percent": 0.0}, "type": "daily"}
 
 ====================================================================
+FILE: data/preflight_status.json
+SIZE: 504 bytes
+====================================================================
+{
+  "status": "FAILED",
+  "message": "DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_API_KEY_MANUAL; client_id_configured=yes; credential_length=8]",
+  "updated_at": "2026-09-04T09:33:03.409625+05:30",
+  "source": "github-actions-dhan-preflight",
+  "workflow_run_id": "33835343380",
+  "mode": "PAPER",
+  "market_open": true,
+  "live_order_submission": false
+}
+
+====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 351 bytes
+SIZE: 350 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T08:37:18.906476+05:30",
+  "updated_at": "2026-09-04T09:32:35.080034+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33832032611",
+  "workflow_run_id": "33835343380",
   "event": "schedule",
-  "market_open": false,
+  "market_open": true,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
   "live_order_submission": false
@@ -17573,20 +17589,20 @@ SIZE: 488 bytes
 
 ====================================================================
 FILE: data/worker_heartbeat.json
-SIZE: 461 bytes
+SIZE: 448 bytes
 ====================================================================
 {
-  "state": "HEARTBEAT_ONLY",
-  "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-04T08:37:18.971964+05:30",
+  "state": "DEGRADED",
+  "message": "Market-cycle invocation failed; inspect preflight_status or Diagnostics",
+  "updated_at": "2026-09-04T09:33:03.598823+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "33832032611",
+  "workflow_run_id": "33835343380",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
-  "market_open": false,
-  "market_cycle": false,
-  "cycle_success": null,
+  "market_open": true,
+  "market_cycle": true,
+  "cycle_success": false,
   "scheduler_based_monitor": true
 }
 
@@ -17854,11 +17870,9 @@ def advisory(prompt: str) -> dict[str, Any]:
 
 ====================================================================
 FILE: intraday_bot/alerts.py
-SIZE: 860 bytes
+SIZE: 917 bytes
 ====================================================================
 from __future__ import annotations
-
-import os
 
 import requests
 
@@ -17866,9 +17880,9 @@ from .config import settings
 
 
 def telegram(message: str) -> bool:
-    """Deliver a Telegram alert using environment or Streamlit-secret configuration."""
-    token = settings.telegram_token.strip() or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat = settings.telegram_chat_id.strip() or os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    """Send a Telegram message using the configured GitHub/Streamlit secrets."""
+    token = settings.telegram_token.strip()
+    chat = settings.telegram_chat_id.strip()
     if not token or not chat:
         return False
     try:
@@ -17877,8 +17891,11 @@ def telegram(message: str) -> bool:
             json={"chat_id": chat, "text": message, "disable_web_page_preview": True},
             timeout=10,
         )
-        return response.ok
-    except Exception:
+        if not response.ok:
+            return False
+        payload = response.json()
+        return bool(isinstance(payload, dict) and payload.get("ok") is True)
+    except (requests.RequestException, ValueError):
         return False
 
 
