@@ -1,7 +1,8 @@
 name: EOD Paper Trading Close
 
-# Close open paper signals after the NSE cash market session and publish
-# daily/weekly validation reports. 15:35 IST = 10:05 UTC.
+# Close open paper positions after the NSE cash session and publish the daily
+# P&L plus the complete morning-recommendation reconciliation.
+# 15:35 IST = 10:05 UTC.
 "on":
   schedule:
     - cron: '5 10 * * 1-5'
@@ -14,42 +15,113 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  PYTHONUNBUFFERED: '1'
+  DHAN_LIVE_TRADING_ENABLED: 'false'
+
 jobs:
   eod-close:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v6
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+          cache: pip
 
-      - run: pip install -r requirements.txt --quiet
+      - name: Install dependencies
+        run: pip install -r requirements.txt --quiet
 
-      - name: Close paper signals and build reports
+      - name: Dhan EOD market-data preflight
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
-          DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
-          DHAN_PIN: ${{ secrets.DHAN_PIN }}
-          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from intraday_bot.brokers import DhanBroker
+          from intraday_bot.config import settings
+          if not settings.dhan_client_id or not settings.dhan_access_token_configured:
+              raise SystemExit('EOD_DHAN_PREFLIGHT_FAILED: DHAN_CLIENT_ID or DHAN_ACCESS_TOKEN is not configured')
+          health=DhanBroker().health()
+          print(health.message)
+          if not health.authenticated:
+              raise SystemExit('EOD_DHAN_PREFLIGHT_FAILED: '+health.message)
+          raw=settings.dhan_security_ids_json.strip()
+          if raw:
+              mapping=json.loads(raw)
+              sample=[]
+              for symbol,value in mapping.items():
+                  item=value if isinstance(value,dict) else {'security_id':value,'exchange_segment':'NSE_EQ'}
+                  if item.get('security_id'):
+                      sample.append({'symbol':str(symbol),'security_id':item['security_id'],'exchange_segment':item.get('exchange_segment','NSE_EQ')})
+                  if sample: break
+              if sample:
+                  quotes=DhanBroker().bulk_quotes(sample)
+                  if not quotes:
+                      raise SystemExit('EOD_DHAN_PREFLIGHT_FAILED: zero market quotes')
+          print('EOD_DHAN_PREFLIGHT_PASSED')
+          PY
+
+      - name: Close paper positions and build EOD report
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          DHAN_LIVE_TRADING_ENABLED: "false"
+          DHAN_LIVE_TRADING_ENABLED: 'false'
+          BOT_MODE: PAPER
         run: python -m scripts.run_eod_close
 
       - name: Commit EOD outcomes and reports
         run: |
+          set -euo pipefail
           git config user.name "stockmarket-bot"
           git config user.email "actions@users.noreply.github.com"
           git add data/ reports/
-          if ! git diff --cached --quiet; then
-            git pull --rebase --autostash
-            git commit -m "Record EOD paper-trading results [skip ci]"
-            git push
-          else
+          if git diff --cached --quiet; then
             echo "No new EOD records to commit."
+            exit 0
           fi
+          git commit -m "Record EOD paper-trading results [skip ci]"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main; then
+              if git push origin HEAD:main; then
+                echo "EOD state persisted on attempt ${attempt}."
+                exit 0
+              fi
+            else
+              conflicts=$(git diff --name-only --diff-filter=U || true)
+              non_state=$(printf '%s\n' "$conflicts" | grep -Ev '^(data/|reports/)' || true)
+              if [ -n "$non_state" ]; then
+                echo "Unexpected non-state merge conflict:"; echo "$non_state"; git rebase --abort; exit 1
+              fi
+              if [ -n "$conflicts" ]; then
+                printf '%s\n' "$conflicts" | while IFS= read -r file; do [ -n "$file" ] && git checkout --ours -- "$file"; done
+                git add $conflicts
+                GIT_EDITOR=true git -c core.editor=true rebase --continue
+              fi
+              if git push origin HEAD:main; then
+                echo "EOD state persisted after state-conflict resolution on attempt ${attempt}."
+                exit 0
+              fi
+            fi
+            git rebase --abort || true
+            git reset --soft origin/main
+            git add data/ reports/
+            git commit -m "Record EOD paper-trading results [skip ci]" || true
+            sleep 2
+          done
+          echo "Unable to persist EOD state after 5 attempts."
+          exit 1
