@@ -13,40 +13,81 @@ import requests
 
 DHAN_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master.csv"
 INDEX_NAMES = {
-    "NIFTY_50": {"NIFTY 50", "NIFTY50"},
-    "BANK_NIFTY": {"NIFTY BANK", "BANKNIFTY"},
+    "NIFTY_50": {
+        "NIFTY 50", "NIFTY50", "NIFTY", "NIFTY_50", "NIFTY-50",
+    },
+    "BANK_NIFTY": {
+        "NIFTY BANK", "BANKNIFTY", "NIFTYBANK", "BANK NIFTY", "NIFTY_BANK",
+    },
 }
 
 
+def _normalise(value: Any) -> str:
+    return " ".join(str(value or "").strip().upper().replace("_", " ").split())
+
+
 def _resolve_indices(timeout: int = 30) -> dict[str, dict[str, str]]:
-    """Resolve current NSE index IDs from Dhan's official scrip master."""
-    response = requests.get(DHAN_MASTER_URL, timeout=timeout, headers={"User-Agent": "stockmarket-bot/1.0"})
+    """Resolve current NSE index IDs from Dhan's official scrip master.
+
+    Dhan's master can represent an index name in either SEM_TRADING_SYMBOL or
+    SEM_CUSTOM_SYMBOL, and NIFTY 50 has appeared with short aliases such as
+    NIFTY.  We inspect both fields and only accept genuine NSE INDEX rows.
+    """
+    response = requests.get(
+        DHAN_MASTER_URL,
+        timeout=timeout,
+        headers={"User-Agent": "stockmarket-bot/1.0"},
+    )
     response.raise_for_status()
     reader = csv.DictReader(io.StringIO(response.content.decode("utf-8-sig", errors="replace")))
-    fields = {str(x).strip().upper(): x for x in (reader.fieldnames or []) if x}
-    required = ("SEM_EXM_EXCH_ID", "SEM_SEGMENT", "SEM_INSTRUMENT_NAME", "SEM_TRADING_SYMBOL", "SEM_SMST_SECURITY_ID")
+    fieldnames = reader.fieldnames or []
+    fields = {_normalise(x): x for x in fieldnames if x}
+
+    required = (
+        "SEM EXM EXCH ID",
+        "SEM SEGMENT",
+        "SEM INSTRUMENT NAME",
+        "SEM TRADING SYMBOL",
+        "SEM SMST SECURITY ID",
+    )
     missing = [x for x in required if x not in fields]
     if missing:
         raise RuntimeError("DHAN_INDEX_MASTER_INVALID: " + ",".join(missing))
 
+    custom_field = fields.get("SEM CUSTOM SYMBOL")
     out: dict[str, dict[str, str]] = {}
-    wanted = {symbol for names in INDEX_NAMES.values() for symbol in names}
+
     for row in reader:
-        exchange = str(row.get(fields["SEM_EXM_EXCH_ID"], "")).strip().upper()
-        segment = str(row.get(fields["SEM_SEGMENT"], "")).strip().upper()
-        instrument = str(row.get(fields["SEM_INSTRUMENT_NAME"], "")).strip().upper()
-        symbol = str(row.get(fields["SEM_TRADING_SYMBOL"], "")).strip().upper()
-        security_id = str(row.get(fields["SEM_SMST_SECURITY_ID"], "")).strip()
-        if exchange != "NSE" or not symbol or not security_id:
+        exchange = _normalise(row.get(fields["SEM EXM EXCH ID"], ""))
+        segment = _normalise(row.get(fields["SEM SEGMENT"], ""))
+        instrument = _normalise(row.get(fields["SEM INSTRUMENT NAME"], ""))
+        trading_symbol = _normalise(row.get(fields["SEM TRADING SYMBOL"], ""))
+        custom_symbol = _normalise(row.get(custom_field, "")) if custom_field else ""
+        security_id = str(row.get(fields["SEM SMST SECURITY ID"], "")).strip()
+
+        if exchange != "NSE" or not security_id:
             continue
         if segment not in {"I", "INDEX"} and "INDEX" not in instrument:
             continue
-        if instrument and "INDEX" not in instrument:
+        if "INDEX" not in instrument:
             continue
-        if symbol not in wanted:
+
+        names = {trading_symbol, custom_symbol} - {""}
+        key = None
+        for candidate, aliases in INDEX_NAMES.items():
+            if names & {_normalise(x) for x in aliases}:
+                key = candidate
+                break
+        if key is None:
             continue
-        key = "NIFTY_50" if symbol in INDEX_NAMES["NIFTY_50"] else "BANK_NIFTY"
-        out[key] = {"symbol": symbol, "security_id": security_id, "exchange_segment": "NSE_IDX"}
+
+        out[key] = {
+            "symbol": custom_symbol or trading_symbol,
+            "trading_symbol": trading_symbol,
+            "security_id": security_id,
+            "exchange_segment": "NSE_IDX",
+            "instrument": "INDEX",
+        }
 
     missing = [key for key in INDEX_NAMES if key not in out]
     if missing:
@@ -80,6 +121,7 @@ def _analyse_index(name: str, frame: pd.DataFrame) -> dict[str, Any]:
         x = x.sort_values("timestamp")
     if len(x) < 50:
         raise RuntimeError(f"INDEX_DATA_INSUFFICIENT:{name}:{len(x)}")
+
     close = x["close"].reset_index(drop=True)
     price = float(close.iloc[-1])
     previous = float(close.iloc[-2])
@@ -98,6 +140,7 @@ def _analyse_index(name: str, frame: pd.DataFrame) -> dict[str, Any]:
         score += 0.8 if rsi >= 55 else -0.8 if rsi <= 45 else 0
     score = max(0.0, min(10.0, score))
     state = "BULLISH" if score >= 6.5 else "BEARISH" if score <= 3.5 else "NEUTRAL"
+
     return {
         "name": name,
         "price": price,
@@ -116,8 +159,14 @@ def _analyse_index(name: str, frame: pd.DataFrame) -> dict[str, Any]:
 
 def build(broker, cache_path: str = "data/market_regime.json") -> dict[str, Any]:
     indices = _resolve_indices()
-    nifty = _analyse_index("NIFTY 50", broker.history(indices["NIFTY_50"]["security_id"], "NSE_IDX", 5, instrument="INDEX"))
-    bank = _analyse_index("BANK NIFTY", broker.history(indices["BANK_NIFTY"]["security_id"], "NSE_IDX", 5, instrument="INDEX"))
+    nifty = _analyse_index(
+        "NIFTY 50",
+        broker.history(indices["NIFTY_50"]["security_id"], "NSE_IDX", 5, instrument="INDEX"),
+    )
+    bank = _analyse_index(
+        "BANK NIFTY",
+        broker.history(indices["BANK_NIFTY"]["security_id"], "NSE_IDX", 5, instrument="INDEX"),
+    )
 
     if nifty["state"] == "BULLISH" and bank["state"] == "BULLISH":
         combined = "BULLISH"
