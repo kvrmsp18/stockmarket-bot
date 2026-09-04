@@ -453,7 +453,8 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
                 try:
                     c = fut.result()
                     db.event("research", "INFO", "FRAMEWORK_ANALYSIS", c.get("research", {}), c.get("symbol"), mode)
-                    if c["decision"] in {"BUY", "SELL"}: result["candidates"].append(c)
+                    if c["decision"] in {"BUY", "SELL"}:
+                        result["candidates"].append(c)
                     else:
                         reason = c.get("rejection_reason") or "NO_TRADE"
                         result["rejections"][reason] = result["rejections"].get(reason, 0) + 1
@@ -469,27 +470,39 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
         with db.connect() as con:
             rows = con.execute("SELECT symbol FROM positions WHERE closed_at IS NULL AND mode=?", (mode,)).fetchall()
             open_symbols = {r["symbol"] for r in rows}
-        for c in result["candidates"]:
+        for c in list(result["candidates"]):
+            why = None
             if c["symbol"] in open_symbols:
-                c["decision"] = "NO TRADE"; c["rejection_reason"] = "DUPLICATE_ORDER"; c["reason"] = "Position already open"
-                result["rejections"]["DUPLICATE_ORDER"] = result["rejections"].get("DUPLICATE_ORDER", 0) + 1; _record_rejection(db, cycle_id, c, mode); continue
-            if c["decision"] == "BUY" and c["price"] > c["max_chase"]:
-                c["decision"] = "NO TRADE"; c["rejection_reason"] = "ENTRY_EXPIRED"; c["reason"] = "BUY entry exceeded max-chase price"
-                result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1; _record_rejection(db, cycle_id, c, mode); continue
-            if c["decision"] == "SELL" and c["price"] < c["max_chase"]:
-                c["decision"] = "NO TRADE"; c["rejection_reason"] = "ENTRY_EXPIRED"; c["reason"] = "SELL entry exceeded max-chase distance"
-                result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1; _record_rejection(db, cycle_id, c, mode); continue
-            state = _portfolio_snapshot(db, capital, mode)
-            notional = float(c.get("capital_required", 0) or 0)
-            if state["open_positions"] >= settings.max_positions: why = "POSITION_LIMIT"
-            elif state["daily_loss"] >= settings.daily_loss_limit: why = "DAILY_LOSS_LIMIT"
-            elif state["open_exposure"] + notional > state["deployment_limit"]: why = "CAPITAL_DEPLOYMENT_LIMIT"
+                why = "DUPLICATE_ORDER"
+                c["reason"] = "Position already open"
+            elif c["decision"] == "BUY" and c["price"] > c["max_chase"]:
+                why = "ENTRY_EXPIRED"
+                c["reason"] = "BUY entry exceeded max-chase price"
+            elif c["decision"] == "SELL" and c["price"] < c["max_chase"]:
+                why = "ENTRY_EXPIRED"
+                c["reason"] = "SELL entry exceeded max-chase distance"
             else:
-                sector_fraction = _sector_exposure(db, capital, mode, c.get("sector", "OTHER"), notional, membership_cache)
-                ok, risk_why = risk_gate(float(c.get("rr", 0) or 0), state["daily_loss"], state["open_positions"], sector_fraction)
-                why = None if ok else risk_why
+                state = _portfolio_snapshot(db, capital, mode)
+                notional = float(c.get("capital_required", 0) or 0)
+                if state["open_positions"] >= settings.max_positions:
+                    why = "POSITION_LIMIT"
+                elif state["daily_loss"] >= settings.daily_loss_limit:
+                    why = "DAILY_LOSS_LIMIT"
+                elif state["open_exposure"] + notional > state["deployment_limit"]:
+                    why = "CAPITAL_DEPLOYMENT_LIMIT"
+                else:
+                    sector_fraction = _sector_exposure(db, capital, mode, c.get("sector", "OTHER"), notional, membership_cache)
+                    ok, risk_why = risk_gate(float(c.get("rr", 0) or 0), state["daily_loss"], state["open_positions"], sector_fraction)
+                    why = None if ok else risk_why
             if why:
-                c["rejection_reason"] = why; c["reason"] = f"Execution risk gate: {why}"; result["rejections"][why] = result["rejections"].get(why, 0) + 1; _record_rejection(db, cycle_id, c, mode); continue
+                c["decision"] = "NO TRADE"
+                c["rejection_reason"] = why
+                if not c.get("reason") or c.get("reason", "").startswith("Market="):
+                    c["reason"] = f"Execution risk gate: {why}"
+                result["rejections"][why] = result["rejections"].get(why, 0) + 1
+                result["rejection_details"].append(c)
+                _record_rejection(db, cycle_id, c, mode)
+                continue
             sid = "SIG-" + uuid.uuid4().hex[:16]
             c["signal_id"] = sid
             db.signal(sid, c["symbol"], c["decision"], c)
@@ -498,6 +511,16 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
             result["orders"].append({"order_id": oid, "signal_id": sid, "status": "FILLED", "mode": mode, "symbol": c["symbol"], "side": c["decision"], "quantity": c["quantity"], "price": c["entry"]})
             if c["decision"] == "BUY": result["suggested_buy_investment"] += notional
             else: result["suggested_sell_value"] += float(c.get("entry", 0) or 0) * int(c.get("quantity", 0) or 0)
+    # Only fully validated, execution-accepted signals may remain actionable.
+    # Execution-rejected signals are preserved in rejection_details/history.
+    result["candidates"] = [
+        c for c in result["candidates"]
+        if c.get("decision") in {"BUY", "SELL"} and not c.get("rejection_reason")
+    ]
+    result["execution_rejected_candidates"] = sum(1 for c in result.get("rejection_details", []) if str(c.get("rejection_reason", "")).upper() in {
+        "DUPLICATE_ORDER", "ENTRY_EXPIRED", "POSITION_LIMIT", "DAILY_LOSS_LIMIT", "CAPITAL_DEPLOYMENT_LIMIT", "SECTOR_EXPOSURE_LIMIT"
+    })
+    result["validated_candidate_count"] = len(result["candidates"])
     result["suggested_buy_investment"] = round(result["suggested_buy_investment"], 2)
     result["suggested_sell_value"] = round(result["suggested_sell_value"], 2)
     result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"
