@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 # When a file under scripts/ is executed directly (``python scripts/foo.py``),
-# Python puts scripts/ on sys.path rather than the repository root.  Explicitly
+# Python puts scripts/ on sys.path rather than the repository root. Explicitly
 # add the root so the production intraday_bot package is always importable in
 # GitHub Actions and local validation.
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,12 +29,21 @@ def main() -> None:
         raise SystemExit("SECTOR_INTELLIGENCE_FAILED: Dhan returned zero quotes")
 
     result = build(universe, quotes)
-    if result.get("status") != "AVAILABLE":
-        raise SystemExit("SECTOR_INTELLIGENCE_FAILED: sector source unavailable")
+    status = str(result.get("status") or "UNAVAILABLE").upper()
+    if status not in {"AVAILABLE", "PARTIAL"}:
+        raise SystemExit(
+            "SECTOR_INTELLIGENCE_FAILED: no official sector membership available"
+        )
 
-    print("SECTOR_INTELLIGENCE_AVAILABLE")
+    print(f"SECTOR_INTELLIGENCE_{status}")
     print("Classified symbols:", result.get("classified_symbols"))
     print("Unclassified universe symbols:", result.get("unclassified_universe_symbols"))
+
+    errors = result.get("errors_by_sector") or {}
+    if errors:
+        print("Official sector sources unavailable:", ", ".join(sorted(errors)))
+        for sector_name, error in sorted(errors.items()):
+            print(f"SECTOR_SOURCE_WARNING {sector_name}: {error}")
 
     ranked = sorted(
         (dict(value, sector=key) for key, value in (result.get("sectors") or {}).items()),
