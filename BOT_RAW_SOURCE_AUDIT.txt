@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: e9eee341841886af04894027807ebbef4686d4e6
-Generated UTC: 2026-09-04T04:38:47.817765+00:00
+Commit SHA: f795552d34627573922ca2073c4309616a519d55
+Generated UTC: 2026-09-04T04:39:12.382131+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -15,7 +15,7 @@ FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1182 bytes
-.github/workflows/continuous-monitor.yml	13699 bytes
+.github/workflows/continuous-monitor.yml	13365 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	6958 bytes
 .gitignore	684 bytes
@@ -234,7 +234,7 @@ SQUARE_OFF_MINUTE=20
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 13699 bytes
+SIZE: 13365 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -357,7 +357,6 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           MARKET_OPEN: ${{ steps.market.outputs.market_open }}
         run: |
@@ -372,12 +371,11 @@ jobs:
           p=Path('data/preflight_status.json'); p.parent.mkdir(parents=True,exist_ok=True)
           def status(msg,ok):
               p.write_text(json.dumps({'status':'PASSED' if ok else 'FAILED','message':msg,'updated_at':datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),'source':'github-actions-dhan-preflight','workflow_run_id':os.getenv('GITHUB_RUN_ID'),'mode':'PAPER','market_open':os.getenv('MARKET_OPEN')=='true','live_order_submission':False},indent=2),encoding='utf-8')
-          print('Dhan API key configured:',bool(settings.dhan_api_key),'length:',len(settings.dhan_api_key))
-          print('Dhan access token configured:',bool(settings.dhan_access_token),'length:',len(settings.dhan_access_token))
+          print('Dhan manual credential configured:',bool(settings.dhan_api_key),'length:',len(settings.dhan_api_key))
           print('Dhan client configured:',bool(settings.dhan_client_id))
-          if not settings.dhan_client_id or not settings.dhan_api_key or not settings.dhan_access_token:
-              status('Dhan requires DHAN_CLIENT_ID, DHAN_API_KEY (API key) and DHAN_ACCESS_TOKEN (user-generated access token)',False)
-              raise SystemExit('DHAN_PREFLIGHT_ERROR: separate API key/access token credentials are required')
+          if not settings.dhan_client_id or not settings.dhan_api_key:
+              status('Dhan requires DHAN_CLIENT_ID and the manually entered DHAN_API_KEY credential',False)
+              raise SystemExit('DHAN_PREFLIGHT_ERROR: DHAN_CLIENT_ID or DHAN_API_KEY is unavailable')
           try: health=DhanBroker().health()
           except Exception as exc: status('Dhan preflight failed: '+str(exc),False); raise SystemExit('DHAN_PREFLIGHT_ERROR: '+str(exc))
           print('Dhan authentication:',health.message)
@@ -390,13 +388,14 @@ jobs:
               instruments=[]
               for symbol,value in mapping.items():
                   item=value if isinstance(value,dict) else {'security_id':value,'exchange_segment':'NSE_EQ'}
-                  if item.get('security_id'): instruments.append({'symbol':str(symbol),'security_id':item['security_id'],'exchange_segment':item.get('exchange_segment','NSE_EQ')})
+                  if item.get('security_id'):
+                      instruments.append({'symbol':str(symbol),'security_id':item['security_id'],'exchange_segment':item.get('exchange_segment','NSE_EQ')})
                   if instruments: break
               if instruments:
                   quotes=DhanBroker().bulk_quotes(instruments)
                   print('Dhan market-feed preflight quotes:',len(quotes))
                   if not quotes: status('Market-feed returned zero quotes',False); raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: zero quotes')
-          status('Dhan API key + user-generated access token and market-feed preflight passed',True)
+          status('Dhan client ID + manually entered DHAN_API_KEY credential and market-feed preflight passed',True)
           print('DHAN_PREFLIGHT_PASSED')
           PY
 
@@ -409,7 +408,6 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
         run: |
           set -euo pipefail
@@ -433,7 +431,6 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
