@@ -31,12 +31,15 @@ class ResearchResult:
     rejection_reason: str | None = None
     metrics: dict[str, Any] | None = None
 
+
 def _numeric(f: dict[str, Any], key: str) -> float | None:
     value = f.get(key)
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
+
 def _clamp(value: float, low: float = 0.0, high: float = 10.0) -> float:
     return max(low, min(high, float(value)))
+
 
 def _band(value: float, points: list[tuple[float, float]]) -> float:
     if value <= points[0][0]:
@@ -46,6 +49,7 @@ def _band(value: float, points: list[tuple[float, float]]) -> float:
             span = x1 - x0
             return y0 if span == 0 else y0 + (value - x0) * (y1 - y0) / span
     return points[-1][1]
+
 
 def scrap_analysis(symbol: str, fundamentals: dict[str, Any] | None) -> ResearchResult:
     """SCRAP and final deterministic event/news pre-entry gate.
@@ -78,6 +82,7 @@ def scrap_analysis(symbol: str, fundamentals: dict[str, Any] | None) -> Research
     score = min(10.0, 5.0 + sum(1.0 for v in present if v > 0)) if present else 0.0
     return ResearchResult(symbol, scrap_score=score, status="PASS" if present else "DATA UNAVAILABLE", metrics={"available_checks": len(present), "total_checks": len(checks), "event_news_gate": event_risk or {"risk_level": "NOT_EVALUATED"}})
 
+
 def _fundamental_component_scores(f: dict[str, Any]) -> tuple[dict[str, float], dict[str, str]]:
     values: dict[str, float] = {}
     notes: dict[str, str] = {}
@@ -97,6 +102,7 @@ def _fundamental_component_scores(f: dict[str, Any]) -> tuple[dict[str, float], 
         notes[key] = note
     return values, notes
 
+
 def fundamental_score(f: dict[str, Any] | None) -> float:
     """Continuous 0-10 fundamental score with sector-aware weighting."""
     d = f or {}
@@ -113,21 +119,89 @@ def fundamental_score(f: dict[str, Any] | None) -> float:
     total_weight = sum(w for _, w in available)
     return round(sum(scores[k] * w for k, w in available) / total_weight, 2)
 
+
+def _valuation_component(value: float, kind: str) -> float:
+    tables = {
+        "pe": [(8.0, 10.0), (12.0, 9.5), (15.0, 8.5), (20.0, 7.5), (25.0, 6.5), (30.0, 5.5), (40.0, 4.0), (60.0, 2.0)],
+        "forward_pe": [(8.0, 10.0), (12.0, 9.5), (15.0, 8.5), (20.0, 7.5), (25.0, 6.5), (30.0, 5.5), (40.0, 4.0), (60.0, 2.0)],
+        "price_to_sales": [(1.0, 9.5), (2.0, 8.5), (3.0, 7.5), (5.0, 6.0), (8.0, 4.5), (12.0, 3.0), (20.0, 1.5)],
+        "enterprise_to_revenue": [(1.0, 9.5), (2.0, 8.5), (3.0, 7.5), (5.0, 6.0), (8.0, 4.5), (12.0, 3.0), (20.0, 1.5)],
+        "enterprise_to_ebitda": [(6.0, 9.5), (8.0, 9.0), (12.0, 8.0), (16.0, 7.0), (20.0, 6.0), (30.0, 4.5), (40.0, 3.0), (60.0, 1.5)],
+        "peg_ratio": [(0.5, 10.0), (1.0, 9.0), (1.5, 8.0), (2.0, 6.5), (3.0, 4.5), (4.0, 3.0), (6.0, 1.5)],
+        "price_to_book": [(0.75, 9.5), (1.0, 9.0), (1.5, 8.0), (2.0, 7.0), (3.0, 5.5), (5.0, 3.5), (8.0, 2.0), (12.0, 1.0)],
+    }
+    return round(_clamp(_band(value, tables[kind])), 2)
+
+
+def valuation_analysis(f: dict[str, Any] | None) -> dict[str, Any]:
+    """Source-backed multi-method valuation.
+
+    P/E is used only when earnings are positive. For loss-making companies,
+    P/E is not treated as a zero valuation score; the model evaluates valid
+    source-backed alternatives such as P/S, EV/Revenue, EV/EBITDA, PEG, and
+    P/B where appropriate. Missing metrics remain unavailable.
+    """
+    d = f or {}
+    sector_name = str(d.get("sector") or "").strip().lower()
+    financial = any(x in sector_name for x in ("financial", "bank", "insurance", "capital markets", "credit"))
+    components: list[dict[str, Any]] = []
+
+    pe = _numeric(d, "pe")
+    if pe is not None and pe > 0:
+        components.append({"metric": "P/E", "value": pe, "score": _valuation_component(pe, "pe"), "basis": "TRAILING_EARNINGS"})
+    else:
+        forward_pe = _numeric(d, "forward_pe")
+        if forward_pe is not None and forward_pe > 0:
+            components.append({"metric": "Forward P/E", "value": forward_pe, "score": _valuation_component(forward_pe, "forward_pe"), "basis": "FORWARD_EARNINGS"})
+
+    ps = _numeric(d, "price_to_sales")
+    ev_revenue = _numeric(d, "enterprise_to_revenue")
+    if ps is not None and ps > 0:
+        components.append({"metric": "P/S", "value": ps, "score": _valuation_component(ps, "price_to_sales"), "basis": "TRAILING_REVENUE"})
+    elif ev_revenue is not None and ev_revenue > 0:
+        components.append({"metric": "EV/Revenue", "value": ev_revenue, "score": _valuation_component(ev_revenue, "enterprise_to_revenue"), "basis": "TRAILING_REVENUE"})
+
+    ev_ebitda = _numeric(d, "enterprise_to_ebitda")
+    if ev_ebitda is not None and ev_ebitda > 0:
+        components.append({"metric": "EV/EBITDA", "value": ev_ebitda, "score": _valuation_component(ev_ebitda, "enterprise_to_ebitda"), "basis": "POSITIVE_EBITDA"})
+
+    peg = _numeric(d, "peg_ratio")
+    if peg is not None and peg > 0:
+        components.append({"metric": "PEG", "value": peg, "score": _valuation_component(peg, "peg_ratio"), "basis": "GROWTH_ADJUSTED"})
+
+    pb = _numeric(d, "price_to_book")
+    if financial and pb is not None and pb > 0:
+        components.append({"metric": "P/B", "value": pb, "score": _valuation_component(pb, "price_to_book"), "basis": "FINANCIAL_SECTOR"})
+
+    if not components:
+        reason = "Trailing P/E is not meaningful because earnings are non-positive and no valid alternative valuation multiple was supplied." if pe is not None and pe <= 0 else "No valid source-backed valuation multiple was supplied."
+        return {"score": 0.0, "status": "DATA UNAVAILABLE", "method": "NONE", "components": [], "reason": reason}
+
+    # Do not let multiple representations of the same sales/earnings concept
+    # dominate. Components are already one-per-method family above.
+    weights = {"P/E": 0.30, "Forward P/E": 0.25, "P/S": 0.25, "EV/Revenue": 0.25, "EV/EBITDA": 0.20, "PEG": 0.15, "P/B": 0.20}
+    weighted = sum(item["score"] * weights.get(item["metric"], 0.15) for item in components)
+    total_weight = sum(weights.get(item["metric"], 0.15) for item in components)
+    score = round(weighted / total_weight, 2) if total_weight else 0.0
+    methods = ", ".join(item["metric"] for item in components)
+    return {"score": score, "status": "AVAILABLE", "method": methods, "components": components, "reason": "Score uses only valid source-backed valuation multiples."}
+
+
 def valuation_score(f: dict[str, Any] | None) -> float:
-    pe = _numeric(f or {}, "pe")
-    if pe is None or pe <= 0:
-        return 0.0
-    return round(_clamp(_band(pe, [(10.0, 9.0), (15.0, 8.0), (20.0, 7.0), (25.0, 6.0), (30.0, 5.0), (40.0, 4.0), (60.0, 2.0)])), 2)
+    return float(valuation_analysis(f)["score"])
+
 
 def source_valuation(eps: float | None, pe: float | None) -> float | None:
     if isinstance(eps, (int, float)) and isinstance(pe, (int, float)):
         return float(eps) * float(pe)
     return None
 
+
 def source_roce(profit: float | None, capital: float | None) -> float | None:
     if isinstance(profit, (int, float)) and isinstance(capital, (int, float)) and capital:
         return float(profit) / float(capital) * 100
     return None
+
 
 def _factor_result(f: dict[str, Any], key: str) -> tuple[str, str]:
     value = _numeric(f, key)
@@ -164,6 +238,7 @@ def _factor_result(f: dict[str, Any], key: str) -> tuple[str, str]:
         return "NEUTRAL", f"{key}={value:g} is positive but below 10%"
     return ("POSITIVE", f"{key}={value:g} is positive") if value > 0 else ("NEGATIVE", f"{key}={value:g} is not positive")
 
+
 def framework_analysis(f: dict[str, Any] | None) -> dict[str, Any]:
     """Auditable five-framework research with positive/neutral/negative/missing states."""
     d = f or {}
@@ -191,8 +266,10 @@ def framework_analysis(f: dict[str, Any] | None) -> dict[str, Any]:
     agreement = "AGREE" if scores and spread <= 2 else ("DISAGREE" if scores else "DATA UNAVAILABLE")
     return {"frameworks": output, "overall": overall, "agreement": agreement, "status": "AVAILABLE" if scores else "DATA UNAVAILABLE"}
 
+
 def conviction(f: dict[str, Any] | None) -> dict[str, Any]:
     return framework_analysis(f)
+
 
 def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
     d = f if isinstance(f, dict) else {}
@@ -205,11 +282,13 @@ def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
     d["event_news_risk"] = news_gate
     scrap = scrap_analysis(symbol, d)
     frameworks = framework_analysis(d)
+    valuation = valuation_analysis(d)
     return {
         "symbol": symbol,
         "scrap": asdict(scrap),
         "fundamental_score": fundamental_score(d),
-        "valuation_score": valuation_score(d),
+        "valuation_score": valuation["score"],
+        "valuation": valuation,
         "frameworks": frameworks,
         "derivatives": derivatives,
         "market_context": market,
@@ -221,6 +300,7 @@ def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
         "roce_from_profit_capital": source_roce(d.get("profit"), d.get("capital")),
         "status": "REJECTED" if scrap.rejection_reason else ("AVAILABLE" if frameworks["status"] == "AVAILABLE" else "DATA UNAVAILABLE"),
     }
+
 
 def research_dict(result: ResearchResult) -> dict[str, Any]:
     return asdict(result)
