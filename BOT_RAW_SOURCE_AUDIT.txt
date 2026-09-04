@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 20efeb6193f67592c91e03d00c808db6ff88acf2
-Generated UTC: 2026-09-04T07:06:51.283724+00:00
+Commit SHA: 3a03d5c1e580610b438d36b29566207518f6ae84
+Generated UTC: 2026-09-04T07:09:15.023328+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -94,6 +94,7 @@ scripts/eod_report.py	3477 bytes
 scripts/load_universe.py	2260 bytes
 scripts/run_daily_cycle.py	3428 bytes
 scripts/run_eod_close.py	3034 bytes
+scripts/run_sector_intelligence.py	1480 bytes
 scripts/worker.py	6600 bytes
 src/__init__.py	1376 bytes
 src/adapters.py	3391 bytes
@@ -59524,6 +59525,47 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+====================================================================
+FILE: scripts/run_sector_intelligence.py
+SIZE: 1480 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from intraday_bot.brokers import DhanBroker
+from intraday_bot.sector_intelligence import build
+
+
+def main() -> None:
+    universe_path = Path("data/universe.json")
+    universe = json.loads(universe_path.read_text(encoding="utf-8")) if universe_path.exists() else []
+    if not universe:
+        raise SystemExit("SECTOR_INTELLIGENCE_FAILED: universe is empty")
+    quotes = DhanBroker().bulk_quotes(universe)
+    if not quotes:
+        raise SystemExit("SECTOR_INTELLIGENCE_FAILED: Dhan returned zero quotes")
+    result = build(universe, quotes)
+    if result.get("status") != "AVAILABLE":
+        raise SystemExit("SECTOR_INTELLIGENCE_FAILED: sector source unavailable")
+    print("SECTOR_INTELLIGENCE_AVAILABLE")
+    print("Classified symbols:", result.get("classified_symbols"))
+    print("Unclassified universe symbols:", result.get("unclassified_universe_symbols"))
+    ranked = sorted(
+        (dict(v, sector=k) for k, v in (result.get("sectors") or {}).items()),
+        key=lambda x: x.get("strength", 0),
+        reverse=True,
+    )
+    for row in ranked[:5]:
+        print(f"STRONGEST {row['sector']}: strength={row['strength']} breadth={row['breadth_pct']}% avg={row['average_change_pct']}")
+    for row in ranked[-5:]:
+        print(f"WEAKEST {row['sector']}: strength={row['strength']} breadth={row['breadth_pct']}% avg={row['average_change_pct']}")
+
+
+if __name__ == "__main__":
+    main()
 
 ====================================================================
 FILE: scripts/worker.py
