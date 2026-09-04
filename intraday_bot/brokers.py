@@ -59,7 +59,7 @@ class PaperTradingBroker(BrokerInterface):
 
 
 class DhanBroker(BrokerInterface):
-    """Dhan read/data adapter using the single manually entered DHAN_API_KEY credential."""
+    """Dhan read/data adapter using the manually entered Dhan Access Token."""
 
     _rate_lock = threading.Lock()
     _last_quote_call = 0.0
@@ -250,6 +250,26 @@ class DhanBroker(BrokerInterface):
         return (today.date() - timedelta(days=420)).isoformat()
 
     @staticmethod
+    def _daily_history_payload(security_id: str, exchange_segment: str, instrument: str, from_date: str, to_date: str) -> dict[str, Any]:
+        """Build a Dhan historical-chart payload.
+
+        Dhan's historical endpoint uses derivative-only fields such as
+        expiryCode/oi for contracts.  They are deliberately omitted for INDEX
+        and EQUITY instruments so the request matches the instrument contract.
+        """
+        payload: dict[str, Any] = {
+            "securityId": str(DhanBroker._security_id(security_id)),
+            "exchangeSegment": str(exchange_segment).strip().upper(),
+            "instrument": str(instrument).strip().upper(),
+            "fromDate": from_date,
+            "toDate": to_date,
+        }
+        if payload["instrument"] not in {"INDEX", "EQUITY"}:
+            payload["expiryCode"] = 0
+            payload["oi"] = False
+        return payload
+
+    @staticmethod
     def _frame(body: Any) -> pd.DataFrame:
         keys = ["timestamp", "open", "high", "low", "close", "volume"]
         if not isinstance(body, dict) or not all(k in body for k in keys):
@@ -278,15 +298,13 @@ class DhanBroker(BrokerInterface):
 
     def daily_history(self, security_id: str, exchange_segment: str = "NSE_EQ", instrument: str = "EQUITY") -> pd.DataFrame:
         now = datetime.now(ZoneInfo("Asia/Kolkata"))
-        payload = {
-            "securityId": str(self._security_id(security_id)),
-            "exchangeSegment": str(exchange_segment).strip().upper(),
-            "instrument": str(instrument).strip().upper(),
-            "expiryCode": 0,
-            "oi": False,
-            "fromDate": self._daily_start_date(now),
-            "toDate": now.date().isoformat(),
-        }
+        payload = self._daily_history_payload(
+            security_id,
+            exchange_segment,
+            instrument,
+            self._daily_start_date(now),
+            now.date().isoformat(),
+        )
         data = self._request("POST", "/v2/charts/historical", json=payload)
         return self._frame(data.get("data", data) if isinstance(data, dict) else {})
 
