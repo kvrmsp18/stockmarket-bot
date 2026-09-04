@@ -1,10 +1,10 @@
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-04T06:00:08.795884+05:30",
+  "updated_at": "2026-09-04T06:16:39.140549+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33822037536",
+  "hostname": "runnervmejwal",
+  "workflow_run_id": "33823147687",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
