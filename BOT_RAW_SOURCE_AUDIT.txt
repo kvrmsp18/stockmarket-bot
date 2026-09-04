@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: cfe85d46d6f7025bccef5d8a2c03b45eaae05df8
-Generated UTC: 2026-09-04T04:39:16.999881+00:00
+Commit SHA: 74da74d3b8f833890313f98bd011f5c4c0c42254
+Generated UTC: 2026-09-04T04:44:46.331089+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -14,13 +14,13 @@ but their raw bytes are not embedded.
 FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
-.env.example	1182 bytes
+.env.example	1058 bytes
 .github/workflows/continuous-monitor.yml	13365 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	6958 bytes
 .gitignore	684 bytes
 .streamlit/config.toml	199 bytes
-.streamlit/secrets.toml.example	541 bytes
+.streamlit/secrets.toml.example	555 bytes
 Dockerfile	229 bytes
 README.md	11801 bytes
 SOURCE_RULES.md	9145 bytes
@@ -182,7 +182,7 @@ SIZE: 1034 bytes
 
 ====================================================================
 FILE: .env.example
-SIZE: 1182 bytes
+SIZE: 1058 bytes
 ====================================================================
 # NEVER put real credentials in GitHub. Use local .env or GitHub/Streamlit secrets.
 BOT_MODE=PAPER
@@ -192,14 +192,10 @@ MAX_CONSECUTIVE_LOSSES=3
 MAX_TRADES_PER_DAY=2
 USE_DHAN_DATA=true
 
-# Dhan credentials: these are DIFFERENT values.
-# DHAN_API_KEY is the short application API key (the user's 8-character key).
-# DHAN_ACCESS_TOKEN is the longer user-generated Access Token entered manually.
-# No automatic token generation is used.
+# Dhan: enter the manually generated long-valid access credential in DHAN_API_KEY.
+# No separate Dhan token, PIN, TOTP, or automatic token generation is used.
 DHAN_CLIENT_ID=
 DHAN_API_KEY=
-DHAN_ACCESS_TOKEN=
-DHAN_API_SECRET=
 DHAN_API_BASE_URL=https://api.dhan.co
 DHAN_SECURITY_IDS_JSON=
 BSE_SCRIP_CODES_JSON=
@@ -779,15 +775,15 @@ level = "info"
 
 ====================================================================
 FILE: .streamlit/secrets.toml.example
-SIZE: 541 bytes
+SIZE: 555 bytes
 ====================================================================
 # Streamlit Community Cloud Secrets
 # Paste the real values into the app's Settings -> Secrets panel.
 # NEVER commit the real secrets to this file or to GitHub.
 
 DHAN_CLIENT_ID = ""
-# Use the user's longer-valid Dhan API credential here.
-# DHAN_ACCESS_TOKEN is the 24-hour credential and is intentionally not used.
+# Enter the manually generated long-valid Dhan access credential here.
+# No separate Dhan token, PIN, TOTP, or automatic token generation is used.
 DHAN_API_KEY = ""
 DHAN_SECURITY_IDS_JSON = "{}"
 BSE_SCRIP_CODES_JSON = "{}"
