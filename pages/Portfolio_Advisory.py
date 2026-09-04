@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from intraday_bot.sector_intelligence import membership
 
 DB = Database()
 BASKET_PATH = Path("data/baskets.json")
+REBALANCE_HISTORY_PATH = Path("data/basket_rebalance_history.json")
 
 
 def _payload(value: Any) -> dict[str, Any]:
@@ -56,31 +58,65 @@ def _positions() -> list[dict[str, Any]]:
     return result
 
 
-def _load_baskets() -> dict[str, Any]:
-    if not BASKET_PATH.exists():
-        return {}
+def _load_json(path: Path) -> Any:
+    if not path.exists():
+        return None
     try:
-        data = json.loads(BASKET_PATH.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {}
+        return None
+
+
+def _save_json(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _load_baskets() -> dict[str, Any]:
+    data = _load_json(BASKET_PATH)
+    return data if isinstance(data, dict) else {}
 
 
 def _save_baskets(data: dict[str, Any]) -> None:
-    BASKET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = BASKET_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    tmp.replace(BASKET_PATH)
+    _save_json(BASKET_PATH, data)
+
+
+def _record_rebalance_history(result: dict[str, Any]) -> None:
+    history = _load_json(REBALANCE_HISTORY_PATH)
+    if not isinstance(history, list):
+        history = []
+    history.append({"timestamp": datetime.now(timezone.utc).isoformat(), "result": result})
+    _save_json(REBALANCE_HISTORY_PATH, history[-200:])
+
+
+def _source_price_history(symbol: str, period: str = "1mo") -> list[float]:
+    """Read a real Yahoo Finance close series; never synthesize missing prices."""
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(f"{symbol}.NS")
+        frame = ticker.history(period=period, auto_adjust=False, actions=False)
+        if frame is None or frame.empty or "Close" not in frame:
+            return []
+        values = pd.to_numeric(frame["Close"], errors="coerce").dropna()
+        return [float(x) for x in values.tolist() if float(x) > 0]
+    except Exception:
+        return []
+
+
+def _benchmark_history(benchmark: str, period: str = "1mo") -> list[float]:
+    return _source_price_history(benchmark, period=period)
 
 
 def _basket_section() -> None:
     st.subheader("Baskets")
-    st.caption("User-defined research baskets only. The Bot does not invent constituents or performance data.")
+    st.caption("User-defined research baskets only. Constituents and performance come from explicit user input or real source data; nothing is invented.")
     saved = _load_baskets()
     with st.form("create_basket"):
         name = st.text_input("Basket name")
         symbols_text = st.text_area("NSE symbols (comma or newline separated)")
-        benchmark = st.text_input("Benchmark symbol / label (optional)")
+        benchmark = st.text_input("Benchmark symbol, e.g. ^NSEI (optional)")
         submitted = st.form_submit_button("Save basket")
     if submitted:
         symbols = [x.strip() for x in symbols_text.replace(",", "\n").splitlines() if x.strip()]
@@ -97,24 +133,56 @@ def _basket_section() -> None:
         return
     selected = st.selectbox("Saved basket", sorted(saved), key="basket_select")
     basket = saved[selected]
-    st.write(f"**Constituents:** {', '.join(basket.get('symbols', []))}")
-    st.write(f"**Benchmark:** {basket.get('benchmark') or 'Not configured'}")
-    st.warning("Historical basket/benchmark performance is shown only when real source price histories are supplied; this page will not synthesize returns.")
+    symbols = [str(x).upper() for x in basket.get("symbols", [])]
+    benchmark = str(basket.get("benchmark") or "").strip().upper() or None
+    st.write(f"**Constituents:** {', '.join(symbols)}")
+    st.write(f"**Benchmark:** {benchmark or 'Not configured'}")
 
-    raw_prices = st.text_area("Optional price histories for audit (JSON: {SYMBOL:[old,...,latest]})", key="basket_prices")
-    if raw_prices.strip():
-        try:
-            prices = json.loads(raw_prices)
-            if not isinstance(prices, dict):
-                raise ValueError("Price history must be a JSON object keyed by symbol.")
-            result = basket_return(prices)
-            st.write(result)
-            bench_text = st.text_input("Optional benchmark return %", key="benchmark_return")
-            if bench_text.strip():
-                relative = benchmark_relative_return(result.get("basket_return_pct"), float(bench_text))
-                st.write(relative)
-        except (ValueError, TypeError, json.JSONDecodeError) as exc:
-            st.error(f"Invalid source price input: {exc}")
+    period = st.selectbox("Performance period", ["1mo", "3mo", "6mo", "1y"], index=0, key="basket_period")
+    if st.button("Refresh real source performance", key="basket_refresh"):
+        histories = {symbol: _source_price_history(symbol, period) for symbol in symbols}
+        result = basket_return(histories)
+        st.session_state["basket_result"] = result
+        if benchmark:
+            bench = _benchmark_history(benchmark, period)
+            bench_result = basket_return({benchmark: bench})
+            st.session_state["basket_benchmark"] = bench_result
+        else:
+            st.session_state["basket_benchmark"] = None
+
+    result = st.session_state.get("basket_result")
+    if not isinstance(result, dict):
+        st.info("Click **Refresh real source performance** to retrieve source-backed price histories.")
+    else:
+        if result.get("status") == "AVAILABLE":
+            st.metric("Equal-weight basket return", f"{float(result['basket_return_pct']):.2f}%")
+            symbol_df = pd.DataFrame([{"Symbol": k, "Return %": v} for k, v in result.get("symbol_returns_pct", {}).items()])
+            st.dataframe(symbol_df, use_container_width=True, hide_index=True)
+        else:
+            st.warning("Basket performance is DATA UNAVAILABLE because insufficient real price history was returned.")
+        unavailable = result.get("unavailable_symbols") or []
+        if unavailable:
+            st.warning("Price history unavailable for: " + ", ".join(unavailable))
+        bench_result = st.session_state.get("basket_benchmark")
+        if benchmark and isinstance(bench_result, dict) and bench_result.get("status") == "AVAILABLE":
+            relative = benchmark_relative_return(result.get("basket_return_pct"), bench_result.get("basket_return_pct"))
+            st.metric("Relative to benchmark", f"{float(relative['relative_return_pct']):.2f}%")
+        elif benchmark:
+            st.info("Benchmark comparison is DATA UNAVAILABLE because the benchmark price history was unavailable.")
+
+    history = _load_json(REBALANCE_HISTORY_PATH)
+    if isinstance(history, list) and history:
+        st.markdown("**Rebalance/advisory history**")
+        rows = []
+        for item in reversed(history[-50:]):
+            r = item.get("result", {})
+            rows.append({
+                "Timestamp": item.get("timestamp"),
+                "Status": r.get("status"),
+                "Advice count": len(r.get("advice") or []),
+                "Reason": r.get("reason"),
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def _portfolio_section() -> None:
@@ -124,11 +192,12 @@ def _portfolio_section() -> None:
         st.info("No open PAPER positions with a valid current price are available. Rebalancing advice is DATA UNAVAILABLE until actual position data exists.")
         return
     result = rebalance_advice(positions)
+    _record_rebalance_history(result)
     st.caption("Advisory only. No order, position or risk setting is changed by this page.")
     a, b, c = st.columns(3)
     a.metric("Open paper positions", len(positions))
-    a_value = sum(x["market_value"] for x in positions)
-    b.metric("Current paper market value", f"₹{a_value:,.2f}")
+    value = sum(x["market_value"] for x in positions)
+    b.metric("Current paper market value", f"₹{value:,.2f}")
     c.metric("Advisory status", result["status"])
     st.write(result["reason"])
 
