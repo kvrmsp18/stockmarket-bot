@@ -251,23 +251,29 @@ class DhanBroker(BrokerInterface):
 
     @staticmethod
     def _daily_history_payload(security_id: str, exchange_segment: str, instrument: str, from_date: str, to_date: str) -> dict[str, Any]:
-        """Build a Dhan historical-chart payload.
+        """Build the Dhan historical-chart payload for daily/index/equity data.
 
-        Dhan's historical endpoint uses derivative-only fields such as
-        expiryCode/oi for contracts.  They are deliberately omitted for INDEX
-        and EQUITY instruments so the request matches the instrument contract.
+        Dhan's historical-chart contract requires ``expiryCode`` and ``oi``
+        fields even for non-derivative instruments.  NSE indices use Dhan's
+        ``IDX_I`` exchange segment (not ``NSE_IDX``).  Keeping these fields in
+        one builder prevents another DH-905 caused by an incomplete payload.
         """
-        payload: dict[str, Any] = {
+        instrument_name = str(instrument).strip().upper()
+        exchange_name = str(exchange_segment).strip().upper()
+        if exchange_name == "NSE_IDX":
+            exchange_name = "IDX_I"
+        elif exchange_name == "BSE_IDX":
+            exchange_name = "IDX_I"
+
+        return {
             "securityId": str(DhanBroker._security_id(security_id)),
-            "exchangeSegment": str(exchange_segment).strip().upper(),
-            "instrument": str(instrument).strip().upper(),
+            "exchangeSegment": exchange_name,
+            "instrument": instrument_name,
             "fromDate": from_date,
             "toDate": to_date,
+            "expiryCode": 0,
+            "oi": False,
         }
-        if payload["instrument"] not in {"INDEX", "EQUITY"}:
-            payload["expiryCode"] = 0
-            payload["oi"] = False
-        return payload
 
     @staticmethod
     def _frame(body: Any) -> pd.DataFrame:
