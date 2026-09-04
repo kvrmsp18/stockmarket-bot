@@ -100,13 +100,19 @@ jobs:
           else:
               try:
                   r=requests.get(f'https://api.telegram.org/bot{token}/getMe',timeout=10); p=r.json()
-                  if not r.ok or p.get('ok') is not True: raise RuntimeError(f'getMe HTTP {r.status_code}')
+                  if not r.ok or p.get('ok') is not True:
+                      detail=p.get('description','unknown getMe error') if isinstance(p,dict) else 'unknown getMe error'
+                      raise RuntimeError(f'getMe HTTP {r.status_code}: {detail}')
                   text=('🟢 STOCKMARKET BOT — Telegram preflight OK\n'
                         f'Market: {"OPEN" if result["market_open"] else "CLOSED"}\n'
                         'Mode: PAPER\nLive orders: DISABLED\n'
                         f'Time: {result["updated_at"]}')
-                  r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json={'chat_id':chat,'text':text,'disable_web_page_preview':True},timeout=10); p=r.json()
-                  if not r.ok or p.get('ok') is not True: raise RuntimeError(f'sendMessage HTTP {r.status_code}')
+                  r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json={'chat_id':chat,'text':text,'disable_web_page_preview':True},timeout=10)
+                  try: p=r.json()
+                  except ValueError: p={}
+                  if not r.ok or p.get('ok') is not True:
+                      detail=p.get('description','unknown sendMessage error') if isinstance(p,dict) else 'unknown sendMessage error'
+                      raise RuntimeError(f'sendMessage HTTP {r.status_code}: {detail}')
                   result.update(status='PASSED',message='Telegram authenticated and test message delivered')
                   print('TELEGRAM_PREFLIGHT_PASSED')
               except Exception as exc:
