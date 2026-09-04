@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 77afccddff4be37ca8c4836db46c1c382a08ad86
-Generated UTC: 2026-09-04T08:45:47.755979+00:00
+Commit SHA: 348ab1c81f9cc53393c0e9c8c8a38a2abdc1bd47
+Generated UTC: 2026-09-04T08:58:32.540736+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -38,7 +38,7 @@ data/market_regime.json	933 bytes
 data/monitor_status.json	1215018 bytes
 data/paper_trading_journal.jsonl	814 bytes
 data/preflight_status.json	312 bytes
-data/scheduler_heartbeat.json	350 bytes
+data/scheduler_heartbeat.json	359 bytes
 data/telegram_preflight_status.json	250 bytes
 data/trading.db	28905472 bytes
 data/universe.json	303881 bytes
@@ -69,7 +69,7 @@ intraday_bot/research.py	13124 bytes
 intraday_bot/risk.py	4581 bytes
 intraday_bot/runtime.py	29994 bytes
 intraday_bot/safety.py	715 bytes
-intraday_bot/sector_intelligence.py	11410 bytes
+intraday_bot/sector_intelligence.py	11429 bytes
 intraday_bot/technical.py	8245 bytes
 pages/00_TOTP_Diagnostic.py	3165 bytes
 pages/01_Dhan_Auth_Request_Diagnostic.py	2126 bytes
@@ -38501,9 +38501,9 @@ SIZE: 312 bytes
 {
   "status": "PASSED",
   "message": "Dhan client ID + access token and market-feed preflight passed",
-  "updated_at": "2026-09-04T14:05:12.650808+05:30",
+  "updated_at": "2026-09-04T14:17:40.475021+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "33854107975",
+  "workflow_run_id": "33855109244",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
@@ -38511,15 +38511,15 @@ SIZE: 312 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 350 bytes
+SIZE: 359 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T14:04:46.039043+05:30",
+  "updated_at": "2026-09-04T14:17:16.214568+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33854107975",
-  "event": "schedule",
+  "workflow_run_id": "33855109244",
+  "event": "workflow_dispatch",
   "market_open": true,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -38531,10 +38531,10 @@ FILE: data/telegram_preflight_status.json
 SIZE: 250 bytes
 ====================================================================
 {
-  "updated_at": "2026-09-04T14:05:10.287283+05:30",
+  "updated_at": "2026-09-04T14:17:38.277842+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "33854107975",
+  "workflow_run_id": "33855109244",
   "status": "PASSED",
   "message": "Telegram authenticated and test message delivered"
 }
@@ -54406,10 +54406,10 @@ SIZE: 447 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect preflight_status or cycle logs",
-  "updated_at": "2026-09-04T14:05:25.477132+05:30",
+  "updated_at": "2026-09-04T14:17:57.282516+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33854107975",
+  "hostname": "runnervmejwal",
+  "workflow_run_id": "33855109244",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -58056,7 +58056,7 @@ def valid_session()->bool:
 
 ====================================================================
 FILE: intraday_bot/sector_intelligence.py
-SIZE: 11410 bytes
+SIZE: 11429 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -58079,9 +58079,6 @@ CACHE_PATH = Path("data/sector_membership.json")
 STATS_PATH = Path("data/sector_intelligence.json")
 CACHE_TTL_HOURS = 24
 
-# Official NSE/Nifty Indices sectoral indices.  The archive CSV is used as the
-# primary constituent source because the live NSE JSON endpoint can return 404
-# to cloud-hosted runners even when the index itself is valid.
 SECTOR_INDICES = {
     "BANKING": "NIFTY BANK",
     "IT": "NIFTY IT",
@@ -58100,7 +58097,6 @@ SECTOR_INDICES = {
     "CONSUMPTION": "NIFTY INDIA CONSUMPTION",
 }
 
-# Known official constituent-file slugs published by NSE/Nifty Indices.
 CONSTITUENT_SLUGS = {
     "BANKING": "ind_niftybanklist.csv",
     "IT": "ind_niftyitlist.csv",
@@ -58138,6 +58134,8 @@ def _load_cache() -> dict[str, Any] | None:
         fetched = datetime.fromisoformat(str(payload.get("fetched_at")).replace("Z", "+00:00"))
         if datetime.now(timezone.utc) - fetched > timedelta(hours=CACHE_TTL_HOURS):
             return None
+        if not isinstance(payload.get("sectors"), dict) or not payload.get("sectors"):
+            return None
         return payload
     except Exception:
         return None
@@ -58155,15 +58153,11 @@ def _session() -> requests.Session:
     try:
         s.get(NSE_BASE, timeout=15)
     except requests.RequestException:
-        # The API/archives may still be reachable even when the NSE landing
-        # page cannot be established from a cloud runner.
         pass
     return s
 
 
 def _symbols_from_csv(text: str) -> list[str]:
-    # Nifty Indices files are CSVs with a Symbol column.  Handle BOMs, quoted
-    # fields, and harmless preamble/whitespace without inventing symbols.
     reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
     if not reader.fieldnames:
         return []
@@ -58180,8 +58174,7 @@ def _symbols_from_csv(text: str) -> list[str]:
 
 
 def _fetch_nse_api(session: requests.Session, index_name: str) -> list[str]:
-    url = NSE_INDEX_URL + quote(index_name, safe="")
-    response = session.get(url, timeout=20)
+    response = session.get(NSE_INDEX_URL + quote(index_name, safe=""), timeout=20)
     response.raise_for_status()
     payload = response.json()
     data = payload.get("data") if isinstance(payload, dict) else None
@@ -58235,7 +58228,10 @@ def _fetch_index_membership() -> tuple[dict[str, list[str]], dict[str, str], dic
         else:
             errors[sector_name] = str(last_error or "unknown error")
 
-    if errors:
+    # One unavailable sector must not disable the complete intelligence layer.
+    # We only fail closed when no official sector membership can be obtained at
+    # all. Unavailable sectors remain explicitly recorded as unavailable.
+    if not memberships:
         details = "; ".join(f"{k}={v}" for k, v in errors.items())
         raise RuntimeError(f"NSE_SECTOR_MEMBERSHIP_UNAVAILABLE:{details}")
     return memberships, sources, errors
@@ -58247,17 +58243,19 @@ def membership(force_refresh: bool = False) -> dict[str, Any]:
         if cached:
             return cached
     try:
-        raw, sources, _ = _fetch_index_membership()
+        raw, sources, errors = _fetch_index_membership()
         symbol_sector: dict[str, str] = {}
         symbol_sources: dict[str, list[str]] = {}
         for sector_name in PRIORITY:
             for symbol in raw.get(sector_name, []):
                 symbol_sources.setdefault(symbol, []).append(sector_name)
                 symbol_sector.setdefault(symbol, sector_name)
+        status = "AVAILABLE" if not errors else "PARTIAL"
         payload = {
-            "status": "AVAILABLE",
+            "status": status,
             "source": "NSE_OFFICIAL_SECTOR_INDICES",
             "source_by_sector": sources,
+            "errors_by_sector": errors,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
             "sector_indices": SECTOR_INDICES,
             "sectors": raw,
@@ -58282,6 +58280,8 @@ def build(universe: list[dict[str, Any]], qmap: dict[str, dict[str, Any]], force
     by_symbol = {str(x.get("symbol", "")).upper(): x for x in universe}
     rows: dict[str, dict[str, Any]] = {}
     for sector_name in PRIORITY:
+        if sector_name not in cache.get("sectors", {}):
+            continue
         members = [s for s in cache.get("sectors", {}).get(sector_name, []) if s in by_symbol]
         changes: list[float] = []
         advancing = declining = unchanged = quoted = 0
@@ -58330,9 +58330,10 @@ def build(universe: list[dict[str, Any]], qmap: dict[str, dict[str, Any]], force
         }
     classified = len(symbol_sector)
     result = {
-        "status": "AVAILABLE",
+        "status": cache.get("status", "AVAILABLE"),
         "source": cache.get("source", "NSE_OFFICIAL_SECTOR_INDICES"),
         "source_by_sector": cache.get("source_by_sector", {}),
+        "errors_by_sector": cache.get("errors_by_sector", {}),
         "membership_fetched_at": cache.get("fetched_at"),
         "as_of": datetime.now(timezone.utc).isoformat(),
         "classified_symbols": classified,
