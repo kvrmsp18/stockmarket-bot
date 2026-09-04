@@ -208,6 +208,28 @@ def _yahoo_fetch(symbol: str, current_price: float | None = None) -> dict[str, A
         if value:
             result[key] = value
 
+    # Valuation fields are kept source-native.  A missing/negative trailing P/E
+    # is not converted into a fake positive number; alternative multiples are
+    # used by the valuation layer when the business is loss-making.
+    yahoo_valuation = {
+        "trailing_pe": ("trailingPE",),
+        "forward_pe": ("forwardPE",),
+        "price_to_sales": ("priceToSalesTrailing12Months",),
+        "price_to_book": ("priceToBook",),
+        "enterprise_to_revenue": ("enterpriseToRevenue",),
+        "enterprise_to_ebitda": ("enterpriseToEbitda",),
+        "peg_ratio": ("trailingPegRatio",),
+        "market_cap": ("marketCap",),
+        "enterprise_value": ("enterpriseValue",),
+    }
+    for key, aliases in yahoo_valuation.items():
+        value = _number(_text(info, aliases)) if key not in {"trailing_pe", "forward_pe", "price_to_sales", "price_to_book", "enterprise_to_revenue", "enterprise_to_ebitda", "peg_ratio", "market_cap", "enterprise_value"} else None
+        if isinstance(info, dict):
+            raw_key = aliases[0]
+            value = _number(info.get(raw_key))
+        if value is not None:
+            result[key] = value
+
     eps_info = _number(info.get("trailingEps")) if isinstance(info, dict) else None
     pe_info = _number(info.get("trailingPE")) if isinstance(info, dict) else None
     roe_info = _number(info.get("returnOnEquity")) if isinstance(info, dict) else None
@@ -263,7 +285,9 @@ def _yahoo_fetch(symbol: str, current_price: float | None = None) -> dict[str, A
         price = _number(info.get("currentPrice")) if isinstance(info, dict) else None
     if price is not None:
         result["current_price"] = price
-        if result.get("eps") not in (None, 0) and not result.get("pe"):
+        # P/E is meaningful only when trailing EPS is positive.  Never persist
+        # a negative P/E as if it were a normal valuation multiple.
+        if result.get("eps") is not None and float(result["eps"]) > 0 and not result.get("pe"):
             result["pe"] = price / float(result["eps"])
 
     if len(income_series) >= 3 and all(v > 0 for v in income_series):
@@ -282,6 +306,10 @@ def _yahoo_fetch(symbol: str, current_price: float | None = None) -> dict[str, A
         "predictability", "earnings_quality", "pe"
     )
     result["missing_provider_fields"] = [key for key in required if key not in result]
+    result["valuation_missing_fields"] = [
+        key for key in ("pe", "forward_pe", "price_to_sales", "price_to_book", "enterprise_to_revenue", "enterprise_to_ebitda", "peg_ratio")
+        if key not in result
+    ]
     return result
 
 
@@ -360,8 +388,9 @@ def _twelve_fetch(symbol: str, current_price: float | None = None) -> dict[str, 
     effective_price = _number(current_price) if current_price is not None else provider_price
     if effective_price is not None:
         result["current_price"] = float(effective_price)
-        if eps not in (None, 0):
+        if eps is not None and float(eps) > 0:
             result["pe"] = float(effective_price) / float(eps)
+
     profit_series = []
     for row in income_rows[:5]:
         value = _walk(row, ("net_income", "net_income_common_stockholders", "net_income_attributable_to_common_shareholders"))
@@ -377,7 +406,12 @@ def _twelve_fetch(symbol: str, current_price: float | None = None) -> dict[str, 
             mean = sum(growths) / len(growths)
             variance = sum((g - mean) ** 2 for g in growths) / len(growths)
             result["predictability"] = max(0.0, min(1.0, 1.0 - variance ** 0.5))
+
     result["missing_provider_fields"] = [k for k in ("profit_growth", "eps_growth", "roce", "roe", "debt_to_equity", "predictability", "earnings_quality", "pe") if k not in result]
+    result["valuation_missing_fields"] = [
+        key for key in ("pe", "forward_pe", "price_to_sales", "price_to_book", "enterprise_to_revenue", "enterprise_to_ebitda", "peg_ratio")
+        if key not in result
+    ]
     return result
 
 
@@ -386,7 +420,7 @@ def fetch_fundamentals(symbol: str, current_price: float | None = None) -> dict[
 
     The provider is recorded in the returned payload. No value is invented:
     unavailable fields remain absent and are surfaced through
-    ``missing_provider_fields``.
+    ``missing_provider_fields`` and ``valuation_missing_fields``.
     """
     symbol = str(symbol).strip().upper()
     if not symbol:
