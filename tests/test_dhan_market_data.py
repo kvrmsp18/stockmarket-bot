@@ -37,22 +37,40 @@ def test_empty_dhan_credential_is_unconfigured():
     assert classify_dhan_manual_credential("") == "NONE"
 
 
-def test_index_historical_payload_omits_derivative_only_fields():
+def test_index_historical_payload_uses_dhan_index_segment_and_required_fields():
     payload = DhanBroker._daily_history_payload(
         "999", "NSE_IDX", "INDEX", "2026-01-01", "2026-09-04"
     )
     assert payload == {
         "securityId": "999",
-        "exchangeSegment": "NSE_IDX",
+        "exchangeSegment": "IDX_I",
         "instrument": "INDEX",
         "fromDate": "2026-01-01",
         "toDate": "2026-09-04",
+        "expiryCode": 0,
+        "oi": False,
     }
 
 
-def test_equity_historical_payload_keeps_derivative_compatibility_fields_out():
+def test_index_segment_is_preserved_when_already_normalized():
+    payload = DhanBroker._daily_history_payload(
+        "999", "IDX_I", "INDEX", "2026-01-01", "2026-09-04"
+    )
+    assert payload["exchangeSegment"] == "IDX_I"
+    assert payload["expiryCode"] == 0
+    assert payload["oi"] is False
+
+
+def test_equity_historical_payload_contains_required_historical_fields():
     payload = DhanBroker._daily_history_payload(
         "1333", "NSE_EQ", "EQUITY", "2026-01-01", "2026-09-04"
     )
-    assert "expiryCode" not in payload
-    assert "oi" not in payload
+    assert payload == {
+        "securityId": "1333",
+        "exchangeSegment": "NSE_EQ",
+        "instrument": "EQUITY",
+        "fromDate": "2026-01-01",
+        "toDate": "2026-09-04",
+        "expiryCode": 0,
+        "oi": False,
+    }
