@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -177,6 +178,166 @@ def near_misses(status: dict) -> pd.DataFrame:
     return df
 
 
+def _as_payload(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _first_value(mapping: dict, *keys):
+    for key in keys:
+        if key in mapping and mapping[key] not in (None, "", []):
+            return mapping[key]
+    return None
+
+
+def _display_score(value, available=True):
+    if not available or value is None:
+        return "DATA UNAVAILABLE"
+    try:
+        return round(float(value), 2)
+    except (TypeError, ValueError):
+        return "DATA UNAVAILABLE"
+
+
+def _research_screener_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize raw research events into one latest, human-readable row per symbol.
+
+    Zero is not used as a substitute for unavailable research. The underlying
+    ResearchResult dataclass has numeric defaults of 0, so availability is
+    determined from the persisted status/source fields before displaying scores.
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    rows = []
+    seen = set()
+    for _, raw in df.sort_values("id", ascending=False).iterrows():
+        payload = _as_payload(raw.get("payload"))
+        merged = dict(payload)
+        for key in ("symbol", "sector", "theme", "scrap_score", "fundamental_score", "valuation_score", "conviction_score", "status", "rejection_reason", "decision", "trend_score", "price", "ltp", "source_status", "provider"):
+            if key not in merged and raw.get(key) not in (None, ""):
+                merged[key] = raw.get(key)
+
+        symbol = str(_first_value(merged, "symbol") or "").strip().upper()
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+
+        status = str(_first_value(merged, "status", "research_status", "source_status") or "DATA UNAVAILABLE").upper()
+        source = str(_first_value(merged, "provider", "source") or "")
+        sector = _first_value(merged, "sector")
+        theme = _first_value(merged, "theme")
+        decision = _first_value(merged, "decision", "action")
+        rejection = _first_value(merged, "rejection_reason", "reason")
+        trend = _first_value(merged, "trend_score", "score")
+        price = _first_value(merged, "price", "ltp", "last_price", "close")
+
+        # Some runtime payloads keep SCRAP details in a nested object.
+        scrap = _as_payload(merged.get("scrap"))
+        scrap_status = str(_first_value(scrap, "status") or "").upper()
+        scrap_score = _first_value(merged, "scrap_score")
+        if scrap_score is None:
+            scrap_score = _first_value(scrap, "scrap_score", "score")
+        if status == "DATA UNAVAILABLE" and scrap_status:
+            status = scrap_status
+
+        fundamentals = _as_payload(merged.get("fundamentals"))
+        valuation = _as_payload(merged.get("valuation"))
+        fundamental = _first_value(merged, "fundamental_score")
+        valuation_score = _first_value(merged, "valuation_score")
+        if fundamental is None:
+            fundamental = _first_value(fundamentals, "fundamental_score", "score")
+        if valuation_score is None:
+            valuation_score = _first_value(valuation, "valuation_score", "score")
+
+        # ResearchResult PASS/REJECTED is available research evidence. A plain
+        # numeric zero without a positive availability/status signal is not.
+        score_available = status not in {"DATA UNAVAILABLE", "UNKNOWN", ""}
+        if not score_available:
+            fundamental = valuation_score = scrap_score = None
+
+        rows.append({
+            "Symbol": symbol,
+            "Price": _display_score(price, price is not None),
+            "Sector": str(sector) if sector not in (None, "", "UNKNOWN") else "DATA UNAVAILABLE",
+            "Theme": str(theme) if theme not in (None, "", "UNKNOWN") else "DATA UNAVAILABLE",
+            "Direction": str(decision).upper() if decision is not None else "DATA UNAVAILABLE",
+            "Trend Score": _display_score(trend, trend is not None),
+            "SCRAP Score": _display_score(scrap_score, score_available and scrap_score is not None),
+            "Fundamental Score": _display_score(fundamental, score_available and fundamental is not None),
+            "Valuation Score": _display_score(valuation_score, score_available and valuation_score is not None),
+            "Conviction": _display_score(_first_value(merged, "conviction_score"), score_available and _first_value(merged, "conviction_score") is not None),
+            "Research Status": status,
+            "Provider": source or "DATA UNAVAILABLE",
+            "Rejection Reason": str(rejection) if rejection is not None else "—",
+            "Last Updated": raw.get("ts"),
+            "_raw_payload": payload,
+        })
+
+    result = pd.DataFrame(rows)
+    if result.empty:
+        return result
+    result["_sort_status"] = result["Research Status"].map({"PASS": 0, "AVAILABLE": 0, "PARTIAL": 1, "REJECTED": 2, "DATA UNAVAILABLE": 3}).fillna(4)
+    result = result.sort_values(["_sort_status", "Symbol"]).drop(columns=["_sort_status"])
+    return result
+
+
+def stock_screener():
+    header("Stock Screener", "Latest persisted source-backed research, normalized to one row per stock. Missing research stays DATA UNAVAILABLE; no generic or fake stock data is substituted.")
+    raw = events(component="research", limit=3000)
+    table = _research_screener_rows(raw)
+
+    if table.empty:
+        st.info("No persisted research records are available yet.")
+        return
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        query = st.text_input("Search symbol / sector", key="screener_filter").strip()
+    with c2:
+        statuses = sorted(table["Research Status"].dropna().astype(str).unique().tolist())
+        status_filter = st.multiselect("Research status", statuses, default=[], key="screener_status")
+    with c3:
+        directions = sorted(table["Direction"].dropna().astype(str).unique().tolist())
+        direction_filter = st.multiselect("Direction", directions, default=[], key="screener_direction")
+    with c4:
+        min_trend = st.number_input("Minimum Trend Score", min_value=-100.0, max_value=100.0, value=-100.0, step=1.0, key="screener_min_trend")
+
+    view = table.copy()
+    if query:
+        mask = view["Symbol"].str.contains(re.escape(query), case=False, na=False) | view["Sector"].str.contains(re.escape(query), case=False, na=False)
+        view = view[mask]
+    if status_filter:
+        view = view[view["Research Status"].isin(status_filter)]
+    if direction_filter:
+        view = view[view["Direction"].isin(direction_filter)]
+    trend_numeric = pd.to_numeric(view["Trend Score"], errors="coerce")
+    view = view[trend_numeric.isna() | (trend_numeric >= min_trend)]
+
+    a, b, c = st.columns(3)
+    a.metric("Latest stocks", len(view))
+    b.metric("Research available / partial", int(view["Research Status"].isin(["PASS", "AVAILABLE", "PARTIAL"]).sum()))
+    c.metric("Research unavailable", int((view["Research Status"] == "DATA UNAVAILABLE").sum()))
+
+    display = view.drop(columns=["_raw_payload"], errors="ignore")
+    st.dataframe(display, use_container_width=True, hide_index=True)
+
+    if not view.empty:
+        with st.expander("Source evidence for selected row"):
+            selected = st.selectbox("Stock", view["Symbol"].tolist(), key="screener_evidence_symbol")
+            row = view[view["Symbol"] == selected].iloc[0]
+            st.json(row["_raw_payload"])
+
+    st.caption("The screener is a research view, not an order list. A BUY/SELL can still be rejected by market, risk, execution, sector-exposure, capital, or event/news gates.")
+
+
 def header(t, d):
     st.title(t)
     st.info(d)
@@ -230,9 +391,6 @@ def dashboard():
     else:
         st.dataframe(live_candidates, use_container_width=True, hide_index=True)
 
-    # Critical diagnostic: SUCCESSFUL CYCLE does not mean a BUY/SELL survived.
-    # The runtime already persists exact gate counts and near-miss details; show
-    # them beside the candidate list so zero candidates is explainable.
     breakdown = rejection_breakdown(s)
     details = near_misses(s)
     st.subheader("Deterministic strategy gate breakdown")
@@ -389,6 +547,9 @@ def research_page(page):
     if page == "Deep Research":
         frameworks()
         return
+    if page == "Stock Screener":
+        stock_screener()
+        return
     s = j(STATUS)
     h = j(HB)
     c = verified_candidates(s, h)
@@ -402,11 +563,6 @@ def research_page(page):
         if page == "Top Bullish": x = x[x._trend >= settings.bullish_threshold]
         if page == "Top Bearish": x = x[x._trend < settings.bearish_threshold]
         st.dataframe(x.sort_values("_trend", ascending=False).drop(columns=["_trend"]), use_container_width=True, hide_index=True)
-        return
-    if page == "Stock Screener":
-        q = st.text_input("Filter", key="screener_filter")
-        x = r if not q else r[r.astype(str).apply(lambda z: z.str.contains(q, case=False, na=False)).any(axis=1)]
-        st.dataframe(x, use_container_width=True, hide_index=True)
         return
     if page == "360° Stock Analysis":
         syms = sorted(set(c.get("symbol", pd.Series(dtype=str)).dropna().astype(str)) | set(r.get("symbol", pd.Series(dtype=str)).dropna().astype(str)))
