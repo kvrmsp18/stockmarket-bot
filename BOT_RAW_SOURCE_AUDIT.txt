@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 7dda3ab20967e81e13defcdab9867a69f5def6bb
-Generated UTC: 2026-09-04T10:17:07.377266+00:00
+Commit SHA: 369d1eaa51c1d45a34de058bdd8eebd0a3b2bfc9
+Generated UTC: 2026-09-04T10:17:44.660978+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -139,7 +139,7 @@ tests/__init__.py	0 bytes
 tests/test_dhan_market_data.py	2391 bytes
 tests/test_event_news_risk.py	1226 bytes
 tests/test_fundamentals_cache.py	1331 bytes
-tests/test_fundamentals_provider.py	5395 bytes
+tests/test_fundamentals_provider.py	6733 bytes
 tests/test_market_regime.py	2435 bytes
 tests/test_nse_fo.py	2538 bytes
 tests/test_nse_preopen.py	2547 bytes
@@ -68195,7 +68195,7 @@ def test_refresh_batch_persists_bounded_source_snapshot(tmp_path, monkeypatch):
 
 ====================================================================
 FILE: tests/test_fundamentals_provider.py
-SIZE: 5395 bytes
+SIZE: 6733 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -68315,6 +68315,33 @@ def test_fetch_fundamentals_retries_qualified_symbol(monkeypatch: pytest.MonkeyP
     assert result["profit"] == 50.0
     assert seen[0] == "ABCAPITAL"
     assert "NSE:ABCAPITAL" in seen
+
+
+def test_negative_trailing_eps_does_not_create_negative_pe(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_get(url: str, params: dict, timeout: int):
+        endpoint = url.rsplit("/", 1)[-1]
+        if endpoint == "income_statement":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "net_income": -100, "operating_income": -120, "diluted_eps": -2.0}]})
+        if endpoint == "balance_sheet":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "total_equity": 500, "total_debt": 50, "cash_and_cash_equivalents": 100}]})
+        if endpoint == "cash_flow":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "operating_cash_flow": -80}]})
+        if endpoint == "earnings":
+            return _Response({"earnings": [{"fiscal_date": "2026-03-31", "eps": -2.0}]})
+        if endpoint == "profile":
+            return _Response({"name": "Loss Corp", "sector": "Consumer Cyclical"})
+        if endpoint == "quote":
+            return _Response({"close": 100})
+        raise AssertionError(endpoint)
+
+    monkeypatch.setenv("TWELVEDATA_API_KEY", "test-key")
+    monkeypatch.setattr(fp.requests, "get", fake_get)
+
+    result = fp.fetch_fundamentals("LOSSCORP")
+
+    assert result["eps"] == -2.0
+    assert "pe" not in result
+    assert "pe" in result["missing_provider_fields"]
 
 ====================================================================
 FILE: tests/test_market_regime.py
