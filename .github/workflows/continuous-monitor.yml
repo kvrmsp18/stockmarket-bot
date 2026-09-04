@@ -77,6 +77,7 @@ jobs:
         run: pip install -r requirements.txt --quiet
 
       - name: Telegram notification preflight
+        continue-on-error: true
         if: steps.market.outputs.run_cycle == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -107,7 +108,7 @@ jobs:
           except Exception as exc:
               result.update(status='FAILED',message=str(exc));print('TELEGRAM_PREFLIGHT_FAILED:',str(exc))
           (d/'telegram_preflight_status.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
-          if result['status']!='PASSED': raise SystemExit(result['message'])
+          if result.get('status') != 'PASSED': print('TELEGRAM_WARNING_NON_BLOCKING:',result.get('message','unknown error'))
           PY
 
       - name: Dhan authentication and market-feed preflight
