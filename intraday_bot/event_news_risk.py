@@ -144,8 +144,6 @@ def fetch_event_news(symbol: str, limit: int = 12) -> dict[str, Any]:
         age_minutes = None
         if published is not None:
             age_minutes = max(0.0, (now - published).total_seconds() / 60.0)
-        # Intraday relevance is freshness + materiality. Old stories remain
-        # visible as evidence but do not become a fresh-event warning.
         fresh = age_minutes is not None and age_minutes <= 24 * 60
         item_out = {
             "title": title,
@@ -172,7 +170,11 @@ def fetch_event_news(symbol: str, limit: int = 12) -> dict[str, Any]:
 
 
 def event_news_gate(news: dict[str, Any] | None) -> dict[str, Any]:
-    """Convert news evidence into a risk flag, never an entry signal."""
+    """Convert news evidence into a risk flag, never an entry signal.
+
+    Crucial policy: unavailable news is a missing-data condition, not a trade
+    veto. Only verified high-impact evidence may block an entry.
+    """
     n = news or {}
     items = n.get("items") or []
     high = n.get("material_high_impact") or []
@@ -180,8 +182,8 @@ def event_news_gate(news: dict[str, Any] | None) -> dict[str, Any]:
         return {
             "status": "DATA UNAVAILABLE",
             "action": "NO_NEWS_DECISION",
-            "risk_level": "UNKNOWN",
-            "reason": "No verified news evidence available.",
+            "risk_level": "LOW",
+            "reason": "No verified news evidence available; event/news layer did not veto the trade.",
             "fresh_high_impact_count": 0,
         }
     if not high:
