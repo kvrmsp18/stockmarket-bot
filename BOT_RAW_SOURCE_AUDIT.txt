@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 244f870905cc180037f4dde6383b889a7974bd21
-Generated UTC: 2026-09-04T10:30:36.672819+00:00
+Commit SHA: ce2aae0d59b3346dc9474a10982deca1c5bf231a
+Generated UTC: 2026-09-04T10:34:05.659749+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -24,7 +24,7 @@ FILE INVENTORY
 Dockerfile	229 bytes
 README.md	11801 bytes
 SOURCE_RULES.md	9145 bytes
-app.py	22383 bytes
+app.py	24891 bytes
 config/risk.yaml	244 bytes
 config/settings.yaml	303 bytes
 config/strategy.yaml	451 bytes
@@ -1186,7 +1186,7 @@ If a supplied screenshot/video/formula is unreadable, preserve the observed word
 
 ====================================================================
 FILE: app.py
-SIZE: 22383 bytes
+SIZE: 24891 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -1206,7 +1206,7 @@ from intraday_bot.brokers import DhanBroker
 from intraday_bot.config import settings
 from intraday_bot.database import Database
 from intraday_bot.fundamentals_provider import fetch_fundamentals
-from intraday_bot.research import FRAMEWORK_RULES, framework_analysis, fundamental_score, valuation_analysis, valuation_score
+from intraday_bot.research import FRAMEWORK_RULES, framework_analysis, fundamental_score, valuation_analysis
 from intraday_bot.runtime import PAPER_MODE, run_cycle
 
 
@@ -1318,12 +1318,7 @@ def heartbeat_age_seconds(payload):
 
 
 def verified_candidates(status: dict, heartbeat: dict) -> pd.DataFrame:
-    """Return candidates only from a recent, verified successful market cycle.
-
-    Persisted candidates from a failed/old cycle are historical state, not
-    actionable signals.  This prevents the dashboard from showing stale BUY or
-    SELL rows beside a DATA UNAVAILABLE/DEGRADED current cycle.
-    """
+    """Return candidates only from a recent, verified successful market cycle."""
     if heartbeat.get("cycle_success") is not True:
         return pd.DataFrame()
     if heartbeat.get("market_open") is not True:
@@ -1334,6 +1329,42 @@ def verified_candidates(status: dict, heartbeat: dict) -> pd.DataFrame:
         return pd.DataFrame()
     rows = status.get("candidates", [])
     return pd.DataFrame(rows) if isinstance(rows, list) else pd.DataFrame()
+
+
+def rejection_breakdown(status: dict) -> pd.DataFrame:
+    """Expose the runtime's deterministic gate rejection counts on the dashboard."""
+    raw = status.get("rejections") or {}
+    rows = []
+    if isinstance(raw, dict):
+        for reason, count in raw.items():
+            try:
+                n = int(count)
+            except (TypeError, ValueError):
+                n = 0
+            rows.append({"Gate / rejection reason": str(reason), "Count": n})
+    return pd.DataFrame(rows).sort_values("Count", ascending=False) if rows else pd.DataFrame(columns=["Gate / rejection reason", "Count"])
+
+
+def near_misses(status: dict) -> pd.DataFrame:
+    rows = status.get("rejection_details") or []
+    if not isinstance(rows, list):
+        return pd.DataFrame()
+    out = []
+    for x in rows:
+        if not isinstance(x, dict):
+            continue
+        out.append({
+            "Symbol": x.get("symbol"),
+            "Decision": x.get("decision"),
+            "Rejection": x.get("rejection_reason"),
+            "Trend": x.get("trend_score"),
+            "Reason": x.get("reason"),
+        })
+    df = pd.DataFrame(out)
+    if not df.empty:
+        df["Trend"] = pd.to_numeric(df["Trend"], errors="coerce")
+        df = df.sort_values("Trend", ascending=False, na_position="last")
+    return df
 
 
 def header(t, d):
@@ -1357,16 +1388,16 @@ def dashboard():
     g.metric("Capital", f"₹{settings.reference_capital:,.0f}")
     cycle_errors = s.get("errors") or []
     age_seconds = heartbeat_age_seconds(h)
-    market_open = bool(h.get("market_open", s.get("market_open", False)))
+    market_is_open = bool(h.get("market_open", s.get("market_open", False)))
     cycle_success = h.get("cycle_success")
     if age_seconds > 900:
         st.error(f"TRADING MONITOR: OFFLINE · last heartbeat {h.get('updated_at', '—')} ({age_seconds / 60:.1f} min ago)")
-    elif market_open and h.get("state") == "DEGRADED":
+    elif market_is_open and h.get("state") == "DEGRADED":
         detail = f" — {cycle_errors[0]}" if cycle_errors else f" — {h.get('message', 'cycle completed with errors')}"
         st.warning(f"TRADING ENGINE: DEGRADED · last cycle attempt {h.get('updated_at', '—')}{detail}")
-    elif market_open and cycle_success is True:
+    elif market_is_open and cycle_success is True:
         st.success(f"TRADING ENGINE: ONLINE · last successful market cycle {h.get('updated_at', '—')}")
-    elif market_open:
+    elif market_is_open:
         st.warning(f"TRADING ENGINE: NO VERIFIED SUCCESSFUL CYCLE · heartbeat {h.get('updated_at', '—')}")
     else:
         st.info(f"24/7 MONITOR: ACTIVE · NSE MARKET CLOSED · scheduler heartbeat {sh.get('updated_at', '—')}")
@@ -1374,19 +1405,40 @@ def dashboard():
     st.caption(f"Data sync: {'OK' if st.session_state.get('sync_ok', True) else 'FAILED'} · {st.session_state.get('sync_at', '—')}")
     if not st.session_state.get("sync_ok", True):
         st.error(f"Dashboard refresh could not retrieve latest persisted state: {st.session_state.get('sync_error', 'unknown error')}")
+
     st.subheader("Actionable candidates")
     if live_candidates.empty:
         if cycle_success is not True:
             reason = cycle_errors[0] if cycle_errors else h.get("message", "No verified successful market cycle")
             st.error(f"No actionable candidates: current market cycle is not verified successful. {reason}")
-        elif not market_open:
+        elif not market_is_open:
             st.info("No actionable candidates while the NSE market is closed. Previous-cycle candidates are hidden to prevent stale signals.")
         elif age_seconds > 900:
             st.error("No actionable candidates: the last successful cycle is stale (>15 minutes).")
         else:
-            st.warning("No actionable candidates persisted. Rejected Signals contains the exact reason.")
+            st.warning("No actionable candidates persisted. See the gate breakdown below for the exact deterministic reason.")
     else:
         st.dataframe(live_candidates, use_container_width=True, hide_index=True)
+
+    # Critical diagnostic: SUCCESSFUL CYCLE does not mean a BUY/SELL survived.
+    # The runtime already persists exact gate counts and near-miss details; show
+    # them beside the candidate list so zero candidates is explainable.
+    breakdown = rejection_breakdown(s)
+    details = near_misses(s)
+    st.subheader("Deterministic strategy gate breakdown")
+    total_rejected = int(breakdown["Count"].sum()) if not breakdown.empty else 0
+    analysed_estimate = total_rejected + len(live_candidates)
+    x, y, z = st.columns(3)
+    x.metric("Analysed / rejected + accepted", analysed_estimate)
+    y.metric("Rejected by gates", total_rejected)
+    z.metric("Validated candidates", len(live_candidates))
+    if breakdown.empty:
+        st.info("No persisted rejection breakdown is available for the displayed cycle yet.")
+    else:
+        st.dataframe(breakdown, use_container_width=True, hide_index=True)
+    if not details.empty:
+        with st.expander("Near-miss candidates — why each one failed"):
+            st.dataframe(details.head(25), use_container_width=True, hide_index=True)
 
 
 def prompt():
@@ -1552,8 +1604,10 @@ def research_page(page):
             st.info("No stock records yet.")
             return
         sym = st.selectbox("Stock", syms, key="stock_360")
-        if not c.empty and sym in set(c.symbol.astype(str)): st.json(c[c.symbol.astype(str) == sym].iloc[0].to_dict())
-        if not r.empty: st.dataframe(r[r.symbol.astype(str) == sym], use_container_width=True, hide_index=True)
+        if not c.empty and sym in set(c.symbol.astype(str)):
+            st.json(c[c.symbol.astype(str) == sym].iloc[0].to_dict())
+        if not r.empty:
+            st.dataframe(r[r.symbol.astype(str) == sym], use_container_width=True, hide_index=True)
         frameworks()
         return
     st.info("No dedicated persisted dataset has been written for this view yet.")
@@ -1563,14 +1617,18 @@ def ledger(page):
     table = {"Orders": "orders", "Positions": "positions", "Trade Journal": "trades"}[page]
     df = sql(f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT 1000")
     header(page, f"Persisted {table} ledger.")
-    if not df.empty: st.dataframe(df, use_container_width=True, hide_index=True)
-    else: st.info(f"No {table} records yet.")
+    if not df.empty:
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info(f"No {table} records yet.")
 
 
 def pnl():
     df = sql("SELECT * FROM trades WHERE mode IN ('PAPER','LIVE_TEST') AND closed_at IS NOT NULL ORDER BY closed_at")
     header("💰 P&L", "Realized simulated-trade P&L including persisted charges.")
-    if df.empty: st.info("No completed trades yet."); return
+    if df.empty:
+        st.info("No completed trades yet.")
+        return
     df["net_pnl"] = pd.to_numeric(df["net_pnl"], errors="coerce").fillna(0)
     st.metric("Net P&L", f"₹{df.net_pnl.sum():,.2f}")
     st.dataframe(df, use_container_width=True, hide_index=True)
@@ -1578,46 +1636,73 @@ def pnl():
 
 def charts():
     header("📉 Live Charts", "Real Dhan chart data only. Authentication uses the configured Dhan market-data credential.")
-    try: m = json.loads(settings.dhan_security_ids_json or "{}")
-    except Exception: m = {}
+    try:
+        m = json.loads(settings.dhan_security_ids_json or "{}")
+    except Exception:
+        m = {}
     if not m:
-        st.warning("DHAN_SECURITY_IDS_JSON is not configured."); return
+        st.warning("DHAN_SECURITY_IDS_JSON is not configured.")
+        return
     sym = st.selectbox("Symbol", sorted(m), key="chart_symbol")
     tf = st.selectbox("Minutes", [1, 3, 5, 15, 30, 60], index=2, key="chart_tf")
     if st.button("Refresh live chart", key="chart_refresh"):
         try:
-            i = m[sym]; sid = i.get("security_id", i) if isinstance(i, dict) else i; ex = i.get("exchange_segment", "NSE_EQ") if isinstance(i, dict) else "NSE_EQ"
+            i = m[sym]
+            sid = i.get("security_id", i) if isinstance(i, dict) else i
+            ex = i.get("exchange_segment", "NSE_EQ") if isinstance(i, dict) else "NSE_EQ"
             df = DhanBroker().history(str(sid), ex, tf)
-            if df.empty: st.warning("DATA UNAVAILABLE"); return
-            fig = go.Figure(go.Candlestick(x=df.timestamp, open=df.open, high=df.high, low=df.low, close=df.close)); fig.update_layout(xaxis_rangeslider_visible=False); st.plotly_chart(fig, use_container_width=True)
-        except Exception as e: st.error(f"LIVE DATA ERROR: {e}")
+            if df.empty:
+                st.warning("DATA UNAVAILABLE")
+                return
+            fig = go.Figure(go.Candlestick(x=df.timestamp, open=df.open, high=df.high, low=df.low, close=df.close))
+            fig.update_layout(xaxis_rangeslider_visible=False)
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"LIVE DATA ERROR: {e}")
 
 
 def main():
-    sync(); st.session_state.mode = PAPER_MODE; st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS")
-    if st.sidebar.button("🔄 Refresh Dashboard", key="refresh_button"): sync(force=True); st.rerun()
-    if not st.session_state.get("sync_ok", True): st.sidebar.error("State sync failed — dashboard may be stale")
-    else: st.sidebar.caption(f"State sync OK · {st.session_state.get('sync_at', '—')}")
+    sync()
+    st.session_state.mode = PAPER_MODE
+    st.sidebar.success("🟢 PAPER MODE — SIMULATED ORDERS")
+    if st.sidebar.button("🔄 Refresh Dashboard", key="refresh_button"):
+        sync(force=True)
+        st.rerun()
+    if not st.session_state.get("sync_ok", True):
+        st.sidebar.error("State sync failed — dashboard may be stale")
+    else:
+        st.sidebar.caption(f"State sync OK · {st.session_state.get('sync_at', '—')}")
     if st.sidebar.button("▶ Run Analysis", type="primary", key="run_analysis"):
-        current = datetime.now(timezone.utc); ist_now = current.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
+        current = datetime.now(timezone.utc)
+        ist_now = current.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
         is_market_open = ist_now.weekday() < 5 and (ist_now.hour, ist_now.minute, ist_now.second) >= (9, 15, 0) and (ist_now.hour, ist_now.minute, ist_now.second) <= (15, 30, 0)
         if not is_market_open:
             x = {"mode": PAPER_MODE, "market_open": False, "stocks_observed": j(STATUS).get("stocks_observed", 0), "quotes": j(STATUS).get("quotes", 0), "candidates": [], "orders": [], "errors": [], "execution_gate": "MARKET_CLOSED", "message": "NSE market is closed. Manual analysis is available during market hours; the 24/7 monitor remains active outside market hours."}
-            st.session_state.last_manual_cycle = x; st.info(x["message"])
+            st.session_state.last_manual_cycle = x
+            st.info(x["message"])
         else:
             with st.spinner("Running full deterministic paper cycle…"):
                 try:
-                    x = run_cycle(); st.session_state.last_manual_cycle = x
-                except Exception as e: st.error(f"RUN ERROR: {e}")
+                    x = run_cycle()
+                    st.session_state.last_manual_cycle = x
+                except Exception as e:
+                    st.error(f"RUN ERROR: {e}")
     nav = st.sidebar.selectbox("Desk", PAGES, index=PAGES.index(st.session_state.get("page", "Dashboard")))
     st.session_state.page = nav
-    if nav == "Dashboard": dashboard()
-    elif nav == "AI Prompt Guide": prompt()
-    elif nav in {"Deep Research", "Stock Screener", "360° Stock Analysis", "Trend Scanner", "Top Bullish", "Top Bearish"}: research_page(nav)
-    elif nav in {"Orders", "Positions", "Trade Journal"}: ledger(nav)
-    elif nav == "P&L": pnl()
-    elif nav == "Live Charts": charts()
-    else: st.info(f"{nav} view is available for the persisted paper-trading system.")
+    if nav == "Dashboard":
+        dashboard()
+    elif nav == "AI Prompt Guide":
+        prompt()
+    elif nav in {"Deep Research", "Stock Screener", "360° Stock Analysis", "Trend Scanner", "Top Bullish", "Top Bearish"}:
+        research_page(nav)
+    elif nav in {"Orders", "Positions", "Trade Journal"}:
+        ledger(nav)
+    elif nav == "P&L":
+        pnl()
+    elif nav == "Live Charts":
+        charts()
+    else:
+        st.info(f"{nav} view is available for the persisted paper-trading system.")
 
 
 main()
