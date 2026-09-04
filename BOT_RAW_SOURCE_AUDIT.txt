@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: d9ef9cffdd0730dbdb512dbb1136d272718b4504
-Generated UTC: 2026-09-04T03:09:02.266361+00:00
+Commit SHA: 2ca78ac252df91a1efed819f8b3e5f4d3472a22e
+Generated UTC: 2026-09-04T03:09:15.171773+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -50,7 +50,7 @@ intraday_bot/alerts.py	860 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	16531 bytes
-intraday_bot/config.py	5700 bytes
+intraday_bot/config.py	5726 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/dhan_auth.py	5905 bytes
 intraday_bot/engine.py	16163 bytes
@@ -18431,7 +18431,7 @@ def load_security_map() -> dict[str, dict[str, Any]]:
 
 ====================================================================
 FILE: intraday_bot/config.py
-SIZE: 5700 bytes
+SIZE: 5726 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18529,17 +18529,18 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        """Return the configured Dhan API credential for the active paper path.
+        """Use the explicitly configured long-lived Dhan access token first.
 
-        The current paper deployment intentionally uses DHAN_API_KEY, the
-        longer-valid credential configured for the repository. The short-lived
-        DHAN_ACCESS_TOKEN and PIN/TOTP auto-generation path are not selected by
-        the active market-data configuration.
+        DHAN_API_KEY remains a legacy fallback only when no access token is
+        configured. PIN/TOTP generation is used only after an explicit token
+        is rejected and no manual access token exists.
         """
-        return self.dhan_api_key
+        return self.dhan_access_token or self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
+        if self.dhan_access_token:
+            return "DHAN_ACCESS_TOKEN"
         if self.dhan_api_key:
             return "DHAN_API_KEY"
         return "NONE"
