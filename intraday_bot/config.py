@@ -76,9 +76,9 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # IMPORTANT: DHAN_API_KEY is the manually generated long-lived Dhan
-    # Access Token entered by the user. No DHAN_ACCESS_TOKEN is read.
+    # Dhan API Key and user-generated Access Token are DIFFERENT credentials.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
+    dhan_access_token: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_api_secret: str = _credential("DHAN_API_SECRET", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
@@ -93,25 +93,22 @@ class Settings:
 
     @property
     def dhan_market_data_token(self) -> str:
-        return self.dhan_api_key
+        return self.dhan_access_token
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        return "DHAN_API_KEY_MANUAL" if self.dhan_api_key else "NONE"
+        return "DHAN_API_KEY_PLUS_ACCESS_TOKEN" if self.dhan_api_key and self.dhan_access_token else "NONE"
 
     @property
-    def dhan_access_token(self) -> str:
-        """Compatibility-only empty value; no environment variable is read."""
-        return ""
+    def dhan_access_token_configured(self) -> bool:
+        return bool(self.dhan_access_token)
 
     @property
     def dhan_pin(self) -> str:
-        """Automatic Dhan token generation is intentionally disabled."""
         return ""
 
     @property
     def dhan_totp_secret(self) -> str:
-        """Automatic Dhan token generation is intentionally disabled."""
         return ""
 
     @property
@@ -133,8 +130,8 @@ class Settings:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.daily_loss_limit <= 0 or self.max_position_exposure <= 0:
             raise ValueError("Paper risk limits must be positive")
-        if self.live_mode_requested and (not self.dhan_client_id or not self.dhan_market_data_token):
-            raise ValueError("LIVE requested but manually entered Dhan authentication is unavailable")
+        if self.live_mode_requested and (not self.dhan_client_id or not self.dhan_access_token):
+            raise ValueError("LIVE requested but Dhan client ID/access token is unavailable")
 
 
 settings = Settings()
