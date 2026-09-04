@@ -19,9 +19,6 @@ CACHE_PATH = Path("data/sector_membership.json")
 STATS_PATH = Path("data/sector_intelligence.json")
 CACHE_TTL_HOURS = 24
 
-# Official NSE/Nifty Indices sectoral indices.  The archive CSV is used as the
-# primary constituent source because the live NSE JSON endpoint can return 404
-# to cloud-hosted runners even when the index itself is valid.
 SECTOR_INDICES = {
     "BANKING": "NIFTY BANK",
     "IT": "NIFTY IT",
@@ -40,7 +37,6 @@ SECTOR_INDICES = {
     "CONSUMPTION": "NIFTY INDIA CONSUMPTION",
 }
 
-# Known official constituent-file slugs published by NSE/Nifty Indices.
 CONSTITUENT_SLUGS = {
     "BANKING": "ind_niftybanklist.csv",
     "IT": "ind_niftyitlist.csv",
@@ -78,6 +74,8 @@ def _load_cache() -> dict[str, Any] | None:
         fetched = datetime.fromisoformat(str(payload.get("fetched_at")).replace("Z", "+00:00"))
         if datetime.now(timezone.utc) - fetched > timedelta(hours=CACHE_TTL_HOURS):
             return None
+        if not isinstance(payload.get("sectors"), dict) or not payload.get("sectors"):
+            return None
         return payload
     except Exception:
         return None
@@ -95,15 +93,11 @@ def _session() -> requests.Session:
     try:
         s.get(NSE_BASE, timeout=15)
     except requests.RequestException:
-        # The API/archives may still be reachable even when the NSE landing
-        # page cannot be established from a cloud runner.
         pass
     return s
 
 
 def _symbols_from_csv(text: str) -> list[str]:
-    # Nifty Indices files are CSVs with a Symbol column.  Handle BOMs, quoted
-    # fields, and harmless preamble/whitespace without inventing symbols.
     reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
     if not reader.fieldnames:
         return []
@@ -120,8 +114,7 @@ def _symbols_from_csv(text: str) -> list[str]:
 
 
 def _fetch_nse_api(session: requests.Session, index_name: str) -> list[str]:
-    url = NSE_INDEX_URL + quote(index_name, safe="")
-    response = session.get(url, timeout=20)
+    response = session.get(NSE_INDEX_URL + quote(index_name, safe=""), timeout=20)
     response.raise_for_status()
     payload = response.json()
     data = payload.get("data") if isinstance(payload, dict) else None
@@ -175,7 +168,10 @@ def _fetch_index_membership() -> tuple[dict[str, list[str]], dict[str, str], dic
         else:
             errors[sector_name] = str(last_error or "unknown error")
 
-    if errors:
+    # One unavailable sector must not disable the complete intelligence layer.
+    # We only fail closed when no official sector membership can be obtained at
+    # all. Unavailable sectors remain explicitly recorded as unavailable.
+    if not memberships:
         details = "; ".join(f"{k}={v}" for k, v in errors.items())
         raise RuntimeError(f"NSE_SECTOR_MEMBERSHIP_UNAVAILABLE:{details}")
     return memberships, sources, errors
@@ -187,17 +183,19 @@ def membership(force_refresh: bool = False) -> dict[str, Any]:
         if cached:
             return cached
     try:
-        raw, sources, _ = _fetch_index_membership()
+        raw, sources, errors = _fetch_index_membership()
         symbol_sector: dict[str, str] = {}
         symbol_sources: dict[str, list[str]] = {}
         for sector_name in PRIORITY:
             for symbol in raw.get(sector_name, []):
                 symbol_sources.setdefault(symbol, []).append(sector_name)
                 symbol_sector.setdefault(symbol, sector_name)
+        status = "AVAILABLE" if not errors else "PARTIAL"
         payload = {
-            "status": "AVAILABLE",
+            "status": status,
             "source": "NSE_OFFICIAL_SECTOR_INDICES",
             "source_by_sector": sources,
+            "errors_by_sector": errors,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
             "sector_indices": SECTOR_INDICES,
             "sectors": raw,
@@ -222,6 +220,8 @@ def build(universe: list[dict[str, Any]], qmap: dict[str, dict[str, Any]], force
     by_symbol = {str(x.get("symbol", "")).upper(): x for x in universe}
     rows: dict[str, dict[str, Any]] = {}
     for sector_name in PRIORITY:
+        if sector_name not in cache.get("sectors", {}):
+            continue
         members = [s for s in cache.get("sectors", {}).get(sector_name, []) if s in by_symbol]
         changes: list[float] = []
         advancing = declining = unchanged = quoted = 0
@@ -270,9 +270,10 @@ def build(universe: list[dict[str, Any]], qmap: dict[str, dict[str, Any]], force
         }
     classified = len(symbol_sector)
     result = {
-        "status": "AVAILABLE",
+        "status": cache.get("status", "AVAILABLE"),
         "source": cache.get("source", "NSE_OFFICIAL_SECTOR_INDICES"),
         "source_by_sector": cache.get("source_by_sector", {}),
+        "errors_by_sector": cache.get("errors_by_sector", {}),
         "membership_fetched_at": cache.get("fetched_at"),
         "as_of": datetime.now(timezone.utc).isoformat(),
         "classified_symbols": classified,
