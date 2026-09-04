@@ -1,6 +1,6 @@
 {
-  "cycle_id": "29fe5a8005084dd08b060d5c73f267df",
-  "started_at": "2026-09-04T05:43:14.601971+00:00",
+  "cycle_id": "178d94f2d0004f56b5b9114e930c14e0",
+  "started_at": "2026-09-04T05:57:12.136387+00:00",
   "mode": "PAPER",
   "market_open": true,
   "stocks_observed": 2638,
@@ -15,7 +15,7 @@
   "rejection_details": [],
   "orders": [],
   "errors": [
-    "MARKET_REGIME_UNAVAILABLE: DHAN_INDEX_NOT_FOUND: NIFTY_50"
+    "MARKET_REGIME_UNAVAILABLE: DHAN_HTTP_400: {\"errorType\":\"Input_Exception\",\"errorCode\":\"DH-905\",\"errorMessage\":\"Missing required fields, bad values for parameters etc.\"}"
   ],
   "suggested_buy_investment": 0.0,
   "suggested_sell_value": 0.0,
@@ -24,10 +24,10 @@
     "combined_regime": "UNAVAILABLE",
     "buy_allowed": false,
     "sell_allowed": false,
-    "error": "DHAN_INDEX_NOT_FOUND: NIFTY_50"
+    "error": "DHAN_HTTP_400: {\"errorType\":\"Input_Exception\",\"errorCode\":\"DH-905\",\"errorMessage\":\"Missing required fields, bad values for parameters etc.\"}"
   },
-  "duration_seconds": 10.606,
-  "ended_at": "2026-09-04T11:13:25.207362+05:30",
+  "duration_seconds": 10.417,
+  "ended_at": "2026-09-04T11:27:22.551183+05:30",
   "positions_open": 1,
   "realized_pnl": 0.0,
   "today_realized_pnl": 0.0
