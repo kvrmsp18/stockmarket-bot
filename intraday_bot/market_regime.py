@@ -27,7 +27,7 @@ def _normalise(value: Any) -> str:
 
 
 def _resolve_indices(timeout: int = 30) -> dict[str, dict[str, str]]:
-    """Resolve current NSE index IDs from Dhan's official scrip master."""
+    """Resolve current NSE index security IDs from Dhan's official scrip master."""
     response = requests.get(
         DHAN_MASTER_URL,
         timeout=timeout,
@@ -80,7 +80,7 @@ def _resolve_indices(timeout: int = 30) -> dict[str, dict[str, str]]:
             "symbol": custom_symbol or trading_symbol,
             "trading_symbol": trading_symbol,
             "security_id": security_id,
-            "exchange_segment": "NSE_IDX",
+            "exchange_segment": "IDX_I",
             "instrument": "INDEX",
         }
 
@@ -153,16 +153,16 @@ def _analyse_index(name: str, frame: pd.DataFrame) -> dict[str, Any]:
 
 
 def _index_history(broker, security_id: str) -> pd.DataFrame:
-    """Use Dhan's daily historical endpoint for index regime analysis.
+    """Fetch genuine daily index history through Dhan's historical-chart API.
 
-    The regime needs multi-day trend/RSI context, not 5-minute candles.  More
-    importantly, Dhan's intraday chart endpoint rejects the INDEX request shape
-    with DH-905, while the historical endpoint explicitly supports INDEX data
-    through exchange segment NSE_IDX and instrument INDEX.
+    Dhan's index segment is ``IDX_I``.  The broker's historical payload builder
+    also supplies the required ``expiryCode=0`` and ``oi=false`` fields.  This
+    avoids the DH-905 caused by the previous ``NSE_IDX``/incomplete-payload
+    combination.
     """
     return broker.daily_history(
         security_id,
-        exchange_segment="NSE_IDX",
+        exchange_segment="IDX_I",
         instrument="INDEX",
     )
 
