@@ -247,7 +247,9 @@ class DhanBroker(BrokerInterface):
 
     @staticmethod
     def _daily_start_date(today: datetime) -> str:
-        return (today.date() - timedelta(days=420)).isoformat()
+        # Keep enough genuine daily candles for 14-period monthly RSI plus warm-up.
+        # 540 calendar days is intentionally above the runtime's 300-candle floor.
+        return (today.date() - timedelta(days=540)).isoformat()
 
     @staticmethod
     def _daily_history_payload(security_id: str, exchange_segment: str, instrument: str, from_date: str, to_date: str) -> dict[str, Any]:
