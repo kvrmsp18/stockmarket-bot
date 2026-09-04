@@ -112,6 +112,8 @@ jobs:
                   except ValueError: p={}
                   if not r.ok or p.get('ok') is not True:
                       detail=p.get('description','unknown sendMessage error') if isinstance(p,dict) else 'unknown sendMessage error'
+                      if 'chat not found' in detail.lower():
+                          detail += '; TELEGRAM_CHAT_ID is not visible to this bot. Start the bot from the target account/group, add the bot to the target group/channel, and use that chat ID.'
                       raise RuntimeError(f'sendMessage HTTP {r.status_code}: {detail}')
                   result.update(status='PASSED',message='Telegram authenticated and test message delivered')
                   print('TELEGRAM_PREFLIGHT_PASSED')
@@ -139,11 +141,17 @@ jobs:
           p=Path('data/preflight_status.json'); p.parent.mkdir(parents=True,exist_ok=True)
           def status(msg,ok):
               p.write_text(json.dumps({'status':'PASSED' if ok else 'FAILED','message':msg,'updated_at':datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),'source':'github-actions-dhan-preflight','workflow_run_id':os.getenv('GITHUB_RUN_ID'),'mode':'PAPER','market_open':os.getenv('MARKET_OPEN')=='true','live_order_submission':False},indent=2),encoding='utf-8')
+          print('Dhan credential kind:',settings.dhan_manual_credential_kind)
           print('Dhan manual credential configured:',bool(settings.dhan_api_key),'length:',len(settings.dhan_api_key))
           print('Dhan client configured:',bool(settings.dhan_client_id))
-          if not settings.dhan_client_id or not settings.dhan_api_key:
-              status('Dhan requires DHAN_CLIENT_ID and the manually entered DHAN_API_KEY credential',False)
-              raise SystemExit('DHAN_PREFLIGHT_ERROR: DHAN_CLIENT_ID or DHAN_API_KEY is unavailable')
+          if settings.dhan_manual_credential_kind == 'APP_KEY_NOT_ACCESS_TOKEN':
+              message='DHAN_API_KEY contains an 8-character Dhan application/API key, not a bearer access credential. It will not be sent as the access-token header. Keep the secret name DHAN_API_KEY, but the value must be the manually generated access credential intended by this project.'
+              status(message,False)
+              raise SystemExit('DHAN_PREFLIGHT_ERROR: '+message)
+          if not settings.dhan_client_id or not settings.dhan_access_token_configured:
+              message='Dhan requires DHAN_CLIENT_ID and a valid manually entered access credential in DHAN_API_KEY; automatic PIN/TOTP/token generation is disabled.'
+              status(message,False)
+              raise SystemExit('DHAN_PREFLIGHT_ERROR: '+message)
           try: health=DhanBroker().health()
           except Exception as exc: status('Dhan preflight failed: '+str(exc),False); raise SystemExit('DHAN_PREFLIGHT_ERROR: '+str(exc))
           print('Dhan authentication:',health.message)
@@ -163,7 +171,7 @@ jobs:
                   quotes=DhanBroker().bulk_quotes(instruments)
                   print('Dhan market-feed preflight quotes:',len(quotes))
                   if not quotes: status('Market-feed returned zero quotes',False); raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: zero quotes')
-          status('Dhan client ID + manually entered DHAN_API_KEY credential and market-feed preflight passed',True)
+          status('Dhan client ID + manually entered access credential and market-feed preflight passed',True)
           print('DHAN_PREFLIGHT_PASSED')
           PY
 
