@@ -27,12 +27,7 @@ def _normalise(value: Any) -> str:
 
 
 def _resolve_indices(timeout: int = 30) -> dict[str, dict[str, str]]:
-    """Resolve current NSE index IDs from Dhan's official scrip master.
-
-    Dhan's master can represent an index name in either SEM_TRADING_SYMBOL or
-    SEM_CUSTOM_SYMBOL, and NIFTY 50 has appeared with short aliases such as
-    NIFTY.  We inspect both fields and only accept genuine NSE INDEX rows.
-    """
+    """Resolve current NSE index IDs from Dhan's official scrip master."""
     response = requests.get(
         DHAN_MASTER_URL,
         timeout=timeout,
@@ -157,15 +152,30 @@ def _analyse_index(name: str, frame: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def _index_history(broker, security_id: str) -> pd.DataFrame:
+    """Use Dhan's daily historical endpoint for index regime analysis.
+
+    The regime needs multi-day trend/RSI context, not 5-minute candles.  More
+    importantly, Dhan's intraday chart endpoint rejects the INDEX request shape
+    with DH-905, while the historical endpoint explicitly supports INDEX data
+    through exchange segment NSE_IDX and instrument INDEX.
+    """
+    return broker.daily_history(
+        security_id,
+        exchange_segment="NSE_IDX",
+        instrument="INDEX",
+    )
+
+
 def build(broker, cache_path: str = "data/market_regime.json") -> dict[str, Any]:
     indices = _resolve_indices()
     nifty = _analyse_index(
         "NIFTY 50",
-        broker.history(indices["NIFTY_50"]["security_id"], "NSE_IDX", 5, instrument="INDEX"),
+        _index_history(broker, indices["NIFTY_50"]["security_id"]),
     )
     bank = _analyse_index(
         "BANK NIFTY",
-        broker.history(indices["BANK_NIFTY"]["security_id"], "NSE_IDX", 5, instrument="INDEX"),
+        _index_history(broker, indices["BANK_NIFTY"]["security_id"]),
     )
 
     if nifty["state"] == "BULLISH" and bank["state"] == "BULLISH":
