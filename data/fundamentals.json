@@ -269,5 +269,61 @@
     "fallback_reason": "TWELVEDATA_FUNDAMENTALS_FAILED: TWELVEDATA_INCOME_STATEMENT_FAILED: 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_BALANCE_SHEET_FAILED: 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_CASH_FLOW_FAILED: 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_EARNINGS_FAILED: 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_PROFILE_FAILED: 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_QUOTE_FAILED: 404: This symbol is available starting with the Grow or Venture plan. Consider upgrading now at https://twelvedata.com/pricing | 404: **symbol** or **figi** parameter is missing or invalid. Please provide a valid symbol according to API documentation: https://twelvedata.com/docs#reference-data",
     "fetched_at": "2026-09-04T07:17:45.103993+00:00",
     "cache_source": "yahoo_finance"
+  },
+  "RML": {
+    "symbol": "RML",
+    "source": "Yahoo Finance",
+    "provider": "yahoo_finance",
+    "source_status": "PARTIAL",
+    "source_symbol": "RML.NS",
+    "endpoint_errors": [],
+    "company_name": "RANE (MADRAS) LIMITED",
+    "sector": "Consumer Cyclical",
+    "industry": "Auto Parts",
+    "eps": 42.93,
+    "pe": 30.675518,
+    "debt_to_equity": 1.00193,
+    "profit": 1074800000.0,
+    "profit_growth": 185.4714475431607,
+    "eps_growth": 215.19823788546256,
+    "roe": 15.122586091666959,
+    "capital": 14517900000.0,
+    "roce": 13.982738550341303,
+    "earnings_quality": 2.038239672497209,
+    "current_price": 1317.1,
+    "missing_provider_fields": [
+      "predictability"
+    ],
+    "fallback_reason": "TWELVEDATA_FUNDAMENTALS_FAILED: TWELVEDATA_INCOME_STATEMENT_FAILED: 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_BALANCE_SHEET_FAILED: 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_CASH_FLOW_FAILED: 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_EARNINGS_FAILED: 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_PROFILE_FAILED: 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_QUOTE_FAILED: 404: This symbol is available starting with the Grow or Venture plan. Consider upgrading now at https://twelvedata.com/pricing | 404: **symbol** or **figi** parameter is missing or invalid. Please provide a valid symbol according to API documentation: https://twelvedata.com/docs#reference-data",
+    "fetched_at": "2026-09-04T09:20:16.103109+00:00",
+    "cache_source": "yahoo_finance"
+  },
+  "JISLJALEQS": {
+    "symbol": "JISLJALEQS",
+    "source": "Yahoo Finance",
+    "provider": "yahoo_finance",
+    "source_status": "PARTIAL",
+    "source_symbol": "JISLJALEQS.NS",
+    "endpoint_errors": [],
+    "company_name": "JAIN IRRIGATION SYSTEMS",
+    "sector": "Industrials",
+    "industry": "Conglomerates",
+    "eps": -0.74,
+    "debt_to_equity": 0.71789,
+    "profit": -246100000.0,
+    "profit_growth": -173.37507453786523,
+    "eps_growth": -254.16666666666669,
+    "roe": -0.4291093409309458,
+    "capital": 100216400000.0,
+    "roce": 4.378225519974775,
+    "earnings_quality": -25.14303128809427,
+    "current_price": 31.76,
+    "pe": -42.91891891891892,
+    "missing_provider_fields": [
+      "predictability"
+    ],
+    "fallback_reason": "TWELVEDATA_FUNDAMENTALS_FAILED: TWELVEDATA_INCOME_STATEMENT_FAILED: 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_BALANCE_SHEET_FAILED: 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_CASH_FLOW_FAILED: 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_EARNINGS_FAILED: 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_PROFILE_FAILED: 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_QUOTE_FAILED: 404: This symbol is available starting with the Grow or Venture plan. Consider upgrading now at https://twelvedata.com/pricing | 404: **symbol** or **figi** parameter is missing or invalid. Please provide a valid symbol according to API documentation: https://twelvedata.com/docs#reference-data",
+    "fetched_at": "2026-09-04T09:20:18.730818+00:00",
+    "cache_source": "yahoo_finance"
   }
 }
