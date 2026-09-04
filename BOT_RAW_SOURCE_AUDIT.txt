@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: f2391ef960807a1abb1f3ce63ac31f7c8247de61
-Generated UTC: 2026-09-04T06:09:21.740582+00:00
+Commit SHA: 89c71582e2101fa4be67fc810f668345b05256ba
+Generated UTC: 2026-09-04T06:12:52.587210+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -52,7 +52,7 @@ intraday_bot/alerts.py	917 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	15639 bytes
-intraday_bot/config.py	5955 bytes
+intraday_bot/config.py	6496 bytes
 intraday_bot/database.py	5203 bytes
 intraday_bot/engine.py	16163 bytes
 intraday_bot/event_news_risk.py	7648 bytes
@@ -129,7 +129,7 @@ src/validation_gate.py	9636 bytes
 src/validation_store.py	2407 bytes
 start.sh	504 bytes
 tests/__init__.py	0 bytes
-tests/test_dhan_market_data.py	734 bytes
+tests/test_dhan_market_data.py	1866 bytes
 tests/test_event_news_risk.py	1226 bytes
 tests/test_fundamentals_cache.py	1331 bytes
 tests/test_fundamentals_provider.py	5395 bytes
@@ -18318,7 +18318,7 @@ def load_security_map() -> dict[str, dict[str, Any]]:
 
 ====================================================================
 FILE: intraday_bot/config.py
-SIZE: 5955 bytes
+SIZE: 6496 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -18352,6 +18352,23 @@ def _credential(name: str, default: str = "") -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"', "`"}:
         value = value[1:-1].strip()
     return value
+
+
+def classify_dhan_manual_credential(value: str) -> str:
+    """Classify a manually supplied Dhan credential without exposing it.
+
+    An 8-character value matches the shape of a Dhan application/API key and
+    must never be treated as the bearer access-token used by market-data APIs.
+    Longer values are treated as manually supplied access credentials. Empty
+    values are unconfigured. This helper is deliberately structural; it does
+    not claim that a credential is valid until Dhan accepts it.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return "NONE"
+    if len(text) == 8:
+        return "APP_KEY_NOT_ACCESS_TOKEN"
+    return "MANUAL_ACCESS_CREDENTIAL"
 
 
 def _float(name: str, default: float) -> float:
@@ -18425,8 +18442,6 @@ class Settings:
     def dhan_access_token_configured(self) -> bool:
         return bool(self.dhan_access_token_value)
 
-    # Compatibility names deliberately expose no API key/secret/PIN/TOTP
-    # credentials to the runtime. No automatic token generation is supported.
     @property
     def dhan_api_key(self) -> str:
         return ""
@@ -29885,11 +29900,12 @@ SIZE: 0 bytes
 
 ====================================================================
 FILE: tests/test_dhan_market_data.py
-SIZE: 734 bytes
+SIZE: 1866 bytes
 ====================================================================
 from __future__ import annotations
 
 from intraday_bot.brokers import DhanBroker
+from intraday_bot.config import classify_dhan_manual_credential
 
 
 def test_quote_rows_normalizes_dhan_quote_payload():
@@ -29911,6 +29927,39 @@ def test_ltp_scalar_payload_is_usable_as_price_row():
     payload = {"data": {"NSE_EQ": {"1333": 1750.25}}}
     rows = DhanBroker._quote_rows(payload, "NSE_EQ")
     assert rows == {"1333": {"last_price": 1750.25, "ltp": 1750.25}}
+
+
+def test_eight_character_dhan_value_is_not_treated_as_access_token():
+    assert classify_dhan_manual_credential("12345678") == "APP_KEY_NOT_ACCESS_TOKEN"
+
+
+def test_long_manual_dhan_value_is_accepted_as_access_credential():
+    assert classify_dhan_manual_credential("a" * 32) == "MANUAL_ACCESS_CREDENTIAL"
+
+
+def test_empty_dhan_credential_is_unconfigured():
+    assert classify_dhan_manual_credential("") == "NONE"
+
+
+def test_index_historical_payload_omits_derivative_only_fields():
+    payload = DhanBroker._daily_history_payload(
+        "999", "NSE_IDX", "INDEX", "2026-01-01", "2026-09-04"
+    )
+    assert payload == {
+        "securityId": "999",
+        "exchangeSegment": "NSE_IDX",
+        "instrument": "INDEX",
+        "fromDate": "2026-01-01",
+        "toDate": "2026-09-04",
+    }
+
+
+def test_equity_historical_payload_keeps_derivative_compatibility_fields_out():
+    payload = DhanBroker._daily_history_payload(
+        "1333", "NSE_EQ", "EQUITY", "2026-01-01", "2026-09-04"
+    )
+    assert "expiryCode" not in payload
+    assert "oi" not in payload
 
 ====================================================================
 FILE: tests/test_event_news_risk.py
