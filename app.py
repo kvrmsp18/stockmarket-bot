@@ -16,7 +16,7 @@ from intraday_bot.brokers import DhanBroker
 from intraday_bot.config import settings
 from intraday_bot.database import Database
 from intraday_bot.fundamentals_provider import fetch_fundamentals
-from intraday_bot.research import FRAMEWORK_RULES, framework_analysis, fundamental_score, valuation_score
+from intraday_bot.research import FRAMEWORK_RULES, framework_analysis, fundamental_score, valuation_analysis, valuation_score
 from intraday_bot.runtime import PAPER_MODE, run_cycle
 
 
@@ -201,7 +201,14 @@ def dashboard():
 
 def prompt():
     header("🤖 AI Prompt Guide", "Operational AI contract. Missing data is reported, never invented; AI cannot override deterministic gates.")
-    text = f'''NSE/BSE INTRADAY AI ADVISORY CONTRACT\n- Never invent missing data; report DATA UNAVAILABLE and missing fields.\n- AI is advisory only and cannot create/override an execution gate.\n- Deterministic market data, technical, SCRAP, funds, risk, broker and reconciliation controls always win.\n- Research frameworks: Buffett, Rakesh Jhunjhunwala, Peter Lynch, 100 Baggers, CANSLIM.\n- Bullish threshold: {settings.bullish_threshold}; bearish threshold: {settings.bearish_threshold}; minimum R:R: {settings.min_rr}.\n- Paper reference capital: ₹{settings.reference_capital:,.2f}.\n- Never expose credentials.'''
+    text = f'''NSE/BSE INTRADAY AI ADVISORY CONTRACT
+- Never invent missing data; report DATA UNAVAILABLE and missing fields.
+- AI is advisory only and cannot create/override an execution gate.
+- Deterministic market data, technical, SCRAP, funds, risk, broker and reconciliation controls always win.
+- Research frameworks: Buffett, Rakesh Jhunjhunwala, Peter Lynch, 100 Baggers, CANSLIM.
+- Bullish threshold: {settings.bullish_threshold}; bearish threshold: {settings.bearish_threshold}; minimum R:R: {settings.min_rr}.
+- Paper reference capital: ₹{settings.reference_capital:,.2f}.
+- Never expose credentials.'''
     st.code(text, language="text")
     st.download_button("Download Prompt_FINAL current", text, file_name="Prompt_FINAL_current.txt")
     for n, x in FRAMEWORK_RULES.items():
@@ -213,6 +220,13 @@ def _framework_rows(bundle: dict) -> pd.DataFrame:
     for name, item in bundle.get("frameworks", {}).items():
         rows.append({"Framework": name, "Score": item.get("score", 0), "Confidence": item.get("confidence", 0), "Positive": ", ".join(item.get("positive_factors", [])) or "—", "Negative": ", ".join(item.get("negative_factors", [])) or "—", "Missing": ", ".join(item.get("missing_data", [])) or "—"})
     return pd.DataFrame(rows)
+
+
+def _valuation_rows(valuation: dict) -> pd.DataFrame:
+    return pd.DataFrame([
+        {"Metric": x.get("metric"), "Value": x.get("value"), "Score": x.get("score"), "Basis": x.get("basis")}
+        for x in valuation.get("components", [])
+    ])
 
 
 def frameworks():
@@ -235,9 +249,25 @@ def frameworks():
             with st.spinner(f"Fetching source fundamentals for {symbol}…"):
                 try:
                     source = fetch_fundamentals(symbol)
-                    research = {key: source[key] for key in ("profit_growth", "eps_growth", "roce", "roe", "debt_to_equity", "predictability", "earnings_quality", "pe", "sector_weight_pct", "company_weight_pct", "red_flags") if key in source}
+                    research_keys = (
+                        "profit_growth", "eps_growth", "roce", "roe", "debt_to_equity",
+                        "predictability", "earnings_quality", "pe", "forward_pe", "price_to_sales",
+                        "price_to_book", "enterprise_to_revenue", "enterprise_to_ebitda", "peg_ratio",
+                        "sector_weight_pct", "company_weight_pct", "red_flags", "sector"
+                    )
+                    research = {key: source[key] for key in research_keys if key in source}
                     bundle = framework_analysis(research)
-                    snapshot = {"symbol": symbol, "source": source, "research_input": research, "fundamental_score": fundamental_score(research), "valuation_score": valuation_score(research), "frameworks": bundle, "fetched_at": datetime.now(timezone.utc).isoformat()}
+                    valuation = valuation_analysis(research)
+                    snapshot = {
+                        "symbol": symbol,
+                        "source": source,
+                        "research_input": research,
+                        "fundamental_score": fundamental_score(research),
+                        "valuation_score": valuation["score"],
+                        "valuation": valuation,
+                        "frameworks": bundle,
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    }
                     st.session_state.deep_research_source = snapshot
                 except Exception as exc:
                     st.error(str(exc))
@@ -246,6 +276,7 @@ def frameworks():
     if live and live.get("symbol") == symbol:
         source = live.get("source", {})
         bundle = live.get("frameworks", {})
+        valuation = live.get("valuation") or {}
         provider = source.get("provider", "unknown")
         status = source.get("source_status", "DATA UNAVAILABLE")
         if status == "AVAILABLE":
@@ -257,20 +288,29 @@ def frameworks():
         fallback_reason = source.get("fallback_reason")
         if fallback_reason:
             st.caption("Twelve Data did not provide the requested data; the Bot automatically used the configured secondary provider.")
-        metrics = {k: v for k, v in source.items() if k not in {"missing_provider_fields", "source_status", "symbol", "source", "provider", "fallback_reason", "endpoint_errors"}}
+        metrics = {k: v for k, v in source.items() if k not in {"missing_provider_fields", "valuation_missing_fields", "source_status", "symbol", "source", "provider", "fallback_reason", "endpoint_errors"}}
         if metrics:
-            st.subheader("Source-backed company fundamentals")
+            st.subheader("Source-backed company fundamentals and valuation inputs")
             st.dataframe(pd.DataFrame(sorted(metrics.items()), columns=["Metric", "Value"]), use_container_width=True, hide_index=True)
         a, b, c = st.columns(3)
         a.metric("Fundamental Score", f"{float(live.get('fundamental_score', 0)):.2f}/10")
         b.metric("Valuation Score", f"{float(live.get('valuation_score', 0)):.2f}/10")
         c.metric("Research Status", bundle.get("status", "DATA UNAVAILABLE"))
+        if valuation:
+            st.caption(f"Valuation status: {valuation.get('status', 'DATA UNAVAILABLE')} · Method: {valuation.get('method', 'NONE')} · {valuation.get('reason', '')}")
+            valuation_rows = _valuation_rows(valuation)
+            if not valuation_rows.empty:
+                st.subheader("Valuation evidence")
+                st.dataframe(valuation_rows, use_container_width=True, hide_index=True)
         st.subheader("Framework evidence")
         st.dataframe(_framework_rows(bundle), use_container_width=True, hide_index=True)
         st.write(f"**Overall:** {bundle.get('overall', 0)} · **Agreement:** {bundle.get('agreement', 'DATA UNAVAILABLE')} · **Status:** {bundle.get('status', 'DATA UNAVAILABLE')}")
         missing = source.get("missing_provider_fields", [])
         if missing:
             st.warning("Provider did not supply: " + ", ".join(missing))
+        valuation_missing = source.get("valuation_missing_fields", [])
+        if valuation_missing:
+            st.info("Valuation fields not supplied by provider: " + ", ".join(valuation_missing))
         with st.expander("Raw source-backed research evidence"):
             st.json(live)
         return
