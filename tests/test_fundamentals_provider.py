@@ -116,3 +116,30 @@ def test_fetch_fundamentals_retries_qualified_symbol(monkeypatch: pytest.MonkeyP
     assert result["profit"] == 50.0
     assert seen[0] == "ABCAPITAL"
     assert "NSE:ABCAPITAL" in seen
+
+
+def test_negative_trailing_eps_does_not_create_negative_pe(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_get(url: str, params: dict, timeout: int):
+        endpoint = url.rsplit("/", 1)[-1]
+        if endpoint == "income_statement":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "net_income": -100, "operating_income": -120, "diluted_eps": -2.0}]})
+        if endpoint == "balance_sheet":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "total_equity": 500, "total_debt": 50, "cash_and_cash_equivalents": 100}]})
+        if endpoint == "cash_flow":
+            return _Response({"data": [{"fiscal_date": "2026-03-31", "operating_cash_flow": -80}]})
+        if endpoint == "earnings":
+            return _Response({"earnings": [{"fiscal_date": "2026-03-31", "eps": -2.0}]})
+        if endpoint == "profile":
+            return _Response({"name": "Loss Corp", "sector": "Consumer Cyclical"})
+        if endpoint == "quote":
+            return _Response({"close": 100})
+        raise AssertionError(endpoint)
+
+    monkeypatch.setenv("TWELVEDATA_API_KEY", "test-key")
+    monkeypatch.setattr(fp.requests, "get", fake_get)
+
+    result = fp.fetch_fundamentals("LOSSCORP")
+
+    assert result["eps"] == -2.0
+    assert "pe" not in result
+    assert "pe" in result["missing_provider_fields"]
