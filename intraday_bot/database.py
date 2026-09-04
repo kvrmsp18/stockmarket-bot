@@ -11,17 +11,32 @@ from .config import settings
 
 
 class Database:
-    """Small SQLite repository; schema is intentionally PostgreSQL-friendly."""
+    """Small SQLite repository used by the paper-trading runtime.
+
+    The runtime has more than one writer path (cycle persistence, execution
+    events and EOD reconciliation). Connections therefore use autocommit plus
+    SQLite's busy timeout. This prevents a long-lived implicit transaction from
+    holding the database write lock while another repository method records an
+    event. Multi-statement operations that need atomicity should use an
+    explicit ``BEGIN``/``COMMIT`` on the same connection.
+    """
 
     def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path or settings.db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._init()
 
     def connect(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
+        con = sqlite3.connect(
+            self.path,
+            timeout=30,
+            check_same_thread=False,
+            isolation_level=None,
+        )
         con.row_factory = sqlite3.Row
+        con.execute("PRAGMA busy_timeout=30000")
+        con.execute("PRAGMA foreign_keys=ON")
         return con
 
     def _init(self) -> None:
@@ -98,19 +113,34 @@ class Database:
                 """
             )
 
-    def event(self, component: str, severity: str, event_type: str, payload: dict[str, Any], symbol: str | None = None, mode: str = "PAPER") -> None:
+    def event(
+        self,
+        component: str,
+        severity: str,
+        event_type: str,
+        payload: dict[str, Any],
+        symbol: str | None = None,
+        mode: str = "PAPER",
+    ) -> None:
         now = datetime.now(timezone.utc).isoformat()
+        encoded = json.dumps(payload, default=str)
         with self._lock, self.connect() as con:
             con.execute(
                 "INSERT INTO events(ts,component,severity,event_type,symbol,mode,payload) VALUES(?,?,?,?,?,?,?)",
-                (now, component, severity, event_type, symbol, mode, json.dumps(payload, default=str)),
+                (now, component, severity, event_type, symbol, mode, encoded),
             )
 
     def signal(self, signal_id: str, symbol: str, decision: str, payload: dict[str, Any]) -> None:
         with self._lock, self.connect() as con:
             con.execute(
                 "INSERT OR REPLACE INTO signals(signal_id,ts,symbol,decision,payload) VALUES(?,?,?,?,?)",
-                (signal_id, datetime.now(timezone.utc).isoformat(), symbol, decision, json.dumps(payload, default=str)),
+                (
+                    signal_id,
+                    datetime.now(timezone.utc).isoformat(),
+                    symbol,
+                    decision,
+                    json.dumps(payload, default=str),
+                ),
             )
 
     def recent(self, table: str, limit: int = 100) -> list[dict[str, Any]]:
@@ -118,7 +148,10 @@ class Database:
         if table not in allowed:
             raise ValueError("invalid table")
         with self.connect() as con:
-            rows = con.execute(f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT ?", (limit,)).fetchall()
+            rows = con.execute(
+                f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def scalar(self, sql: str, params: tuple[Any, ...] = ()) -> Any:
