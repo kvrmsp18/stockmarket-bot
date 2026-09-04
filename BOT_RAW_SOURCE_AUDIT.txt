@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 5f92c04d2c9daa7f47583dc9a29968788c4bc702
-Generated UTC: 2026-09-04T10:14:55.963395+00:00
+Commit SHA: 19248c630450014bb99a410ab3bff90fba82aa57
+Generated UTC: 2026-09-04T10:15:19.822875+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -144,7 +144,7 @@ tests/test_market_regime.py	2435 bytes
 tests/test_nse_fo.py	2538 bytes
 tests/test_nse_preopen.py	2547 bytes
 tests/test_platform.py	2236 bytes
-tests/test_research_frameworks.py	6382 bytes
+tests/test_research_frameworks.py	7141 bytes
 tests/test_run_daily_cycle.py	4389 bytes
 tests/test_runtime_safety.py	1812 bytes
 tests/test_sector_intelligence.py	2520 bytes
@@ -68586,10 +68586,10 @@ def test_emergency_stop_and_consecutive_loss_gates():
 
 ====================================================================
 FILE: tests/test_research_frameworks.py
-SIZE: 6382 bytes
+SIZE: 7141 bytes
 ====================================================================
 from intraday_bot import research
-from intraday_bot.research import framework_analysis, research_bundle, scrap_analysis, source_valuation, source_roce
+from intraday_bot.research import framework_analysis, research_bundle, scrap_analysis, source_valuation, source_roce, valuation_analysis
 
 
 def test_all_five_frameworks_are_exposed():
@@ -68621,6 +68621,28 @@ def test_source_scoring_is_nonzero_for_valid_data():
     assert score > 0
     assert score <= 10
     assert research.valuation_score(data) > 0
+
+
+def test_loss_making_company_uses_alternative_valuation_instead_of_zero():
+    data = {
+        "eps": -14.78,
+        "pe": -18.68,
+        "price_to_sales": 4.0,
+        "enterprise_to_revenue": 4.2,
+        "enterprise_to_ebitda": 25.0,
+    }
+    valuation = valuation_analysis(data)
+    assert valuation["status"] == "AVAILABLE"
+    assert valuation["score"] > 0
+    assert "P/S" in valuation["method"]
+    assert all(item["value"] > 0 for item in valuation["components"])
+
+
+def test_invalid_negative_pe_is_not_scored_as_a_valid_multiple():
+    valuation = valuation_analysis({"pe": -18.68})
+    assert valuation["score"] == 0.0
+    assert valuation["status"] == "DATA UNAVAILABLE"
+    assert "not meaningful" in valuation["reason"]
 
 
 def test_financial_sector_does_not_overweight_leverage():
