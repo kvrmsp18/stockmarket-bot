@@ -18,6 +18,7 @@ from .brokers import DhanBroker
 from .config import IST, settings
 from .database import Database
 from .fundamentals_cache import get as get_fundamentals, refresh_batch as refresh_fundamentals_batch
+from .market_regime import build as build_market_regime
 from .paper import fill
 from .research import research_bundle, fundamental_score, scrap_analysis
 from .risk import position_size, risk_gate
@@ -64,8 +65,6 @@ def quote(q: dict[str, Any]) -> tuple[float, float, float]:
 
 
 def sector(s: str) -> str:
-    # This is deliberately only a compatibility fallback. Full sector intelligence
-    # must come from source-backed universe metadata when available.
     groups = {
         "BANKING": {"HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK"},
         "IT": {"TCS", "INFY", "WIPRO", "HCLTECH", "TECHM"},
@@ -86,7 +85,6 @@ def _source_sector(item: dict[str, Any], f: dict[str, Any]) -> str:
 
 
 def _verified_funds(broker: DhanBroker) -> tuple[float | None, str]:
-    """Return verified broker funds; never silently substitute reference capital."""
     try:
         raw = broker.funds()
         value = float(raw)
@@ -98,7 +96,6 @@ def _verified_funds(broker: DhanBroker) -> tuple[float | None, str]:
 
 
 def _research_gate(bundle: dict[str, Any], f: dict[str, Any]) -> tuple[bool, str | None]:
-    """Deterministic research/data gate. Missing data is unknown, not negative."""
     status = str(bundle.get("status") or "DATA UNAVAILABLE").upper()
     if status == "REJECTED":
         return False, str(bundle.get("scrap", {}).get("rejection_reason") or "RESEARCH_REJECTION")
@@ -107,15 +104,13 @@ def _research_gate(bundle: dict[str, Any], f: dict[str, Any]) -> tuple[bool, str
     frameworks = bundle.get("frameworks") or {}
     if str(frameworks.get("status")) != "AVAILABLE":
         return False, "FRAMEWORK_DATA_UNAVAILABLE"
-    # A trade may proceed only when at least one core source-backed growth/quality
-    # measure exists. Missing optional fields remain neutral/unknown.
     core = ("profit_growth", "eps_growth", "roce", "roe", "earnings_quality", "predictability")
     if not any(isinstance(f.get(k), (int, float)) and not isinstance(f.get(k), bool) for k in core):
         return False, "FUNDAMENTAL_DATA_UNAVAILABLE"
     return True, None
 
 
-def analyse(broker, item, price: float, volume: float, funds: float | None) -> dict[str, Any]:
+def analyse(broker, item, price: float, volume: float, funds: float | None, market_regime: dict[str, Any]) -> dict[str, Any]:
     symbol = str(item["symbol"]).upper()
     f = fundamentals(symbol, current_price=price)
     bundle = research_bundle(symbol, f)
@@ -137,6 +132,7 @@ def analyse(broker, item, price: float, volume: float, funds: float | None) -> d
         "derivatives": bundle.get("derivatives", {}),
         "market_context": bundle.get("market_context", {}),
         "preopen_market_context": bundle.get("preopen_market_context", {}),
+        "market_regime": market_regime,
         "liquidity_score": 5.0,
         "volume_score": min(10.0, volume / 1e6),
         "market_score": 5.0,
@@ -155,14 +151,22 @@ def analyse(broker, item, price: float, volume: float, funds: float | None) -> d
         base.update(reason="Verified broker funds unavailable", rejection_reason="FUNDS_DATA_UNAVAILABLE", research=bundle)
         return base
     try:
-        h = broker.history(str(item["security_id"]), item.get("exchange_segment", "NSE_EQ"), 5)
+        h = broker.history(str(item["security_id"]), item.get("exchange_segment", "NSE_EQ"), 5, instrument="EQUITY")
     except Exception as exc:
         base.update(reason="DATA UNAVAILABLE", rejection_reason="DATA_ERROR", data_error=str(exc), research=bundle)
         return base
     if len(h) < 60:
         base.update(reason="DATA UNAVAILABLE", rejection_reason="DATA_ERROR", research=bundle)
         return base
-    t = technical_setup(h)
+    try:
+        daily = broker.daily_history(str(item["security_id"]), item.get("exchange_segment", "NSE_EQ"), instrument="EQUITY")
+    except Exception as exc:
+        base.update(reason="MTF RSI data unavailable", rejection_reason="MTF_RSI_DATA_UNAVAILABLE", data_error=str(exc), research=bundle)
+        return base
+    if len(daily) < 300:
+        base.update(reason="MTF RSI history insufficient", rejection_reason="MTF_RSI_DATA_UNAVAILABLE", research=bundle)
+        return base
+    t = technical_setup(h, daily_history=daily)
     base.update({
         "entry": t["entry"], "entry_zone": [t["entry_low"], t["entry_high"]],
         "entry_low": t["entry_low"], "entry_high": t["entry_high"],
@@ -170,10 +174,21 @@ def analyse(broker, item, price: float, volume: float, funds: float | None) -> d
         "rr": t["rr"], "trend_score": t["trend_score"],
         "technical_score": t["technical_score"], "trend_state": t["trend_state"],
         "transition": t.get("transition"), "technical_indicators": t.get("indicators", {}),
-        "research": bundle,
+        "mtf_rsi": t.get("mtf_rsi", {}), "mtf_rsi_agreement": t.get("mtf_rsi_agreement", False),
+        "mtf_rsi_reason": t.get("mtf_rsi_reason"), "research": bundle,
     })
     if t["direction"] == "HOLD":
         base.update(reason="No valid intraday direction", rejection_reason="TECHNICAL_REJECTION")
+        return base
+    combined = str(market_regime.get("combined_regime", "UNAVAILABLE"))
+    if t["direction"] == "BUY" and not bool(market_regime.get("buy_allowed")):
+        base.update(reason=f"Market regime blocks BUY: {combined}", rejection_reason="MARKET_REGIME_GATE")
+        return base
+    if t["direction"] == "SELL" and not bool(market_regime.get("sell_allowed")):
+        base.update(reason=f"Market regime blocks SELL: {combined}", rejection_reason="MARKET_REGIME_GATE")
+        return base
+    if not t.get("mtf_rsi_agreement"):
+        base.update(reason=f"MTF RSI gate failed: {t.get('mtf_rsi_reason')}", rejection_reason=t.get("mtf_rsi_reason", "MTF_RSI_GATE"))
         return base
     ok, why = risk_gate(t["rr"], 0, 0, 0)
     if not ok:
@@ -190,9 +205,11 @@ def analyse(broker, item, price: float, volume: float, funds: float | None) -> d
         "decision": t["direction"], "quantity": size.quantity,
         "capital_required": size.capital_required, "max_risk": size.max_risk,
         "potential_reward": size.potential_reward,
-        "overall_score": t["trend_score"] * .35 + base["fundamental_score"] * .10
-        + base["conviction_score"] * .10 + base["volume_score"] * .10 + 5 * .35,
-        "reason": f"Trend={t['trend_state']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}; OI={bundle.get('derivatives', {}).get('signal', 'UNAVAILABLE')}",
+        "overall_score": t["trend_score"] * .30 + base["fundamental_score"] * .10
+        + base["conviction_score"] * .10 + base["volume_score"] * .10
+        + (10.0 if combined == "BULLISH" and t["direction"] == "BUY" else 10.0 if combined == "BEARISH" and t["direction"] == "SELL" else 0.0) * .20
+        + 5 * .10,
+        "reason": f"Market={combined}; Trend={t['trend_state']}; MTF_RSI={t['mtf_rsi_reason']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}; OI={bundle.get('derivatives', {}).get('signal', 'UNAVAILABLE')}",
     })
     return base
 
@@ -222,19 +239,13 @@ def _manage_positions(db: Database, qmap: dict[str, dict[str, Any]], uni: list[d
                 continue
             side = p["side"]
             reason = None
-            if side == "BUY" and price <= p["stop"]:
-                reason = "STOP_LOSS"
-            elif side == "BUY" and price >= p["target"]:
-                reason = "TARGET"
-            elif side == "SELL" and price >= p["stop"]:
-                reason = "STOP_LOSS"
-            elif side == "SELL" and price <= p["target"]:
-                reason = "TARGET"
-            if now_ist.time() >= clock(settings.square_off_hour, settings.square_off_minute):
-                reason = "EOD_SQUARE_OFF"
+            if side == "BUY" and price <= p["stop"]: reason = "STOP_LOSS"
+            elif side == "BUY" and price >= p["target"]: reason = "TARGET"
+            elif side == "SELL" and price >= p["stop"]: reason = "STOP_LOSS"
+            elif side == "SELL" and price <= p["target"]: reason = "TARGET"
+            if now_ist.time() >= clock(settings.square_off_hour, settings.square_off_minute): reason = "EOD_SQUARE_OFF"
             con.execute("UPDATE positions SET current_price=? WHERE position_id=?", (price, p["position_id"]))
-            if not reason:
-                continue
+            if not reason: continue
             gross = (price - p["entry_price"]) * p["quantity"] * (1 if side == "BUY" else -1)
             charges = _charges((price + p["entry_price"]) * p["quantity"])
             net = gross - charges
@@ -252,8 +263,7 @@ def _record_rejection(db: Database, cycle_id: str, candidate: dict[str, Any], mo
 
 
 def _dynamic_analysis_pool(ranked: list[tuple[float, dict[str, Any], float, float]]) -> list[tuple[float, dict[str, Any], float, float]]:
-    if not ranked:
-        return []
+    if not ranked: return []
     ranked_count = min(len(ranked), max(20, int(getattr(settings, "deep_analysis_count", 80))))
     top_count = max(1, int(ranked_count * 0.75))
     pool = ranked[:top_count]
@@ -264,8 +274,7 @@ def _dynamic_analysis_pool(ranked: list[tuple[float, dict[str, Any], float, floa
         if rotating_count > 0:
             start = (cycle_number * rotating_count) % len(remainder)
             rotated = remainder[start:start + rotating_count]
-            if len(rotated) < rotating_count:
-                rotated += remainder[:rotating_count - len(rotated)]
+            if len(rotated) < rotating_count: rotated += remainder[:rotating_count - len(rotated)]
             pool.extend(rotated)
     return pool
 
@@ -281,8 +290,7 @@ def _portfolio_snapshot(db: Database, capital: float, mode: str) -> dict[str, An
 
 
 def _sector_exposure(db: Database, capital: float, mode: str, target_sector: str, extra_notional: float = 0.0) -> float:
-    if capital <= 0:
-        return 1.0
+    if capital <= 0: return 1.0
     by_symbol = {x["symbol"]: sector(x["symbol"]) for x in universe()}
     with db.connect() as con:
         rows = con.execute("SELECT symbol, quantity, entry_price FROM positions WHERE closed_at IS NULL AND mode=?", (mode,)).fetchall()
@@ -291,25 +299,20 @@ def _sector_exposure(db: Database, capital: float, mode: str, target_sector: str
 
 
 def _run_ai_advisory(candidates: list[dict[str, Any]]) -> None:
-    if not (os.getenv("OPENAI_API_KEY", "").strip() or os.getenv("ANTHROPIC_API_KEY", "").strip()):
-        return
-    try:
-        limit = max(0, min(3, int(os.getenv("AI_ADVISORY_MAX_CANDIDATES", "3"))))
-    except ValueError:
-        limit = 3
+    if not (os.getenv("OPENAI_API_KEY", "").strip() or os.getenv("ANTHROPIC_API_KEY", "").strip()): return
+    try: limit = max(0, min(3, int(os.getenv("AI_ADVISORY_MAX_CANDIDATES", "3"))))
+    except ValueError: limit = 3
     for candidate in candidates[:limit]:
-        context = {k: candidate.get(k) for k in ("symbol", "decision", "price", "entry", "stop", "target", "rr", "trend_score", "technical_score", "fundamental_score", "valuation_score", "framework_agreement", "derivatives", "market_context")}
-        result = advisory("Advisory only. Never override deterministic risk, funds, data, execution or reconciliation gates. Return concise JSON with score 0-10, decision BUY/SELL/HOLD/NO TRADE, confidence 0-1, positives, negatives, risks.\n" + json.dumps(context, default=str))
+        context = {k: candidate.get(k) for k in ("symbol", "decision", "price", "entry", "stop", "target", "rr", "trend_score", "technical_score", "fundamental_score", "valuation_score", "framework_agreement", "derivatives", "market_context", "market_regime", "mtf_rsi")}
+        result = advisory("Advisory only. Never override deterministic market-regime, MTF-RSI, risk, funds, data, execution or reconciliation gates. Return concise JSON with score 0-10, decision BUY/SELL/HOLD/NO TRADE, confidence 0-1, positives, negatives, risks.\n" + json.dumps(context, default=str))
         candidate["ai_advisory"] = result
         candidate["ai_consensus"] = "ADVISORY_AVAILABLE" if result.get("status") == "AVAILABLE" else ("ADVISORY_ERROR" if result.get("status") == "ERROR" else "NOT_CONFIGURED")
-        if result.get("text"):
-            candidate["ai_advisory_text"] = str(result["text"])[:4000]
+        if result.get("text"): candidate["ai_advisory_text"] = str(result["text"])[:4000]
 
 
 def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     mode = str(mode or PAPER_MODE).upper()
-    if mode not in {PAPER_MODE, LIVE_TEST_MODE}:
-        raise ValueError("mode must be PAPER or LIVE_TEST")
+    if mode not in {PAPER_MODE, LIVE_TEST_MODE}: raise ValueError("mode must be PAPER or LIVE_TEST")
     start = time.monotonic()
     db = Database()
     cycle_id = uuid.uuid4().hex
@@ -328,6 +331,16 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
         result["errors"].append("DATA_ERROR: " + str(exc))
         db.event("market_data", "ERROR", "DATA_ERROR", {"error": str(exc)}, mode=mode)
         return finish(result, start, db)
+
+    try:
+        market_regime = build_market_regime(broker)
+        result["market_regime"] = market_regime
+        db.event("market", "INFO", "MARKET_REGIME", market_regime, mode=mode)
+    except Exception as exc:
+        result["market_regime"] = {"status": "UNAVAILABLE", "combined_regime": "UNAVAILABLE", "buy_allowed": False, "sell_allowed": False, "error": str(exc)}
+        result["errors"].append("MARKET_REGIME_UNAVAILABLE: " + str(exc))
+        return finish(result, start, db)
+
     ranked = []
     for item in uni:
         p, prev, v = quote(qmap.get(str(item["security_id"]), {}))
@@ -343,8 +356,7 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
         raw_cache_path = Path("data/fundamentals.json")
         if raw_cache_path.exists():
             payload = json.loads(raw_cache_path.read_text(encoding="utf-8"))
-            if isinstance(payload, dict):
-                before_cache = {str(k).upper(): v for k, v in payload.items() if isinstance(v, dict)}
+            if isinstance(payload, dict): before_cache = {str(k).upper(): v for k, v in payload.items() if isinstance(v, dict)}
     except Exception:
         before_cache = {}
     try:
@@ -362,13 +374,12 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
         result["errors"].append("FUNDS_DATA_UNAVAILABLE: broker funds could not be verified")
     else:
         with ThreadPoolExecutor(max_workers=settings.scan_workers) as ex:
-            futures = [ex.submit(analyse, broker, item, p, v, funds) for _, item, p, v in analysis_pool]
+            futures = [ex.submit(analyse, broker, item, p, v, funds, market_regime) for _, item, p, v in analysis_pool]
             for fut in as_completed(futures):
                 try:
                     c = fut.result()
                     db.event("research", "INFO", "FRAMEWORK_ANALYSIS", c.get("research", {}), c.get("symbol"), mode)
-                    if c["decision"] in {"BUY", "SELL"}:
-                        result["candidates"].append(c)
+                    if c["decision"] in {"BUY", "SELL"}: result["candidates"].append(c)
                     else:
                         reason = c.get("rejection_reason") or "NO_TRADE"
                         result["rejections"][reason] = result["rejections"].get(reason, 0) + 1
@@ -381,68 +392,44 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     _manage_positions(db, qmap, uni)
     if result["market_open"]:
         capital = float(settings.reference_capital)
-        open_symbols = set()
         with db.connect() as con:
             rows = con.execute("SELECT symbol FROM positions WHERE closed_at IS NULL AND mode=?", (mode,)).fetchall()
             open_symbols = {r["symbol"] for r in rows}
         for c in result["candidates"]:
             if c["symbol"] in open_symbols:
-                c["decision"] = "NO TRADE"
-                c["rejection_reason"] = "DUPLICATE_ORDER"
-                c["reason"] = "Position already open"
-                result["rejections"]["DUPLICATE_ORDER"] = result["rejections"].get("DUPLICATE_ORDER", 0) + 1
-                _record_rejection(db, cycle_id, c, mode)
-                continue
+                c["decision"] = "NO TRADE"; c["rejection_reason"] = "DUPLICATE_ORDER"; c["reason"] = "Position already open"
+                result["rejections"]["DUPLICATE_ORDER"] = result["rejections"].get("DUPLICATE_ORDER", 0) + 1; _record_rejection(db, cycle_id, c, mode); continue
             if c["decision"] == "BUY" and c["price"] > c["max_chase"]:
-                c["decision"] = "NO TRADE"
-                c["rejection_reason"] = "ENTRY_EXPIRED"
-                c["reason"] = "BUY entry exceeded max-chase price"
-                result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1
-                _record_rejection(db, cycle_id, c, mode)
-                continue
+                c["decision"] = "NO TRADE"; c["rejection_reason"] = "ENTRY_EXPIRED"; c["reason"] = "BUY entry exceeded max-chase price"
+                result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1; _record_rejection(db, cycle_id, c, mode); continue
             if c["decision"] == "SELL" and c["price"] < c["max_chase"]:
-                c["decision"] = "NO TRADE"
-                c["rejection_reason"] = "ENTRY_EXPIRED"
-                c["reason"] = "SELL entry exceeded max-chase distance"
-                result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1
-                _record_rejection(db, cycle_id, c, mode)
-                continue
+                c["decision"] = "NO TRADE"; c["rejection_reason"] = "ENTRY_EXPIRED"; c["reason"] = "SELL entry exceeded max-chase distance"
+                result["rejections"]["ENTRY_EXPIRED"] = result["rejections"].get("ENTRY_EXPIRED", 0) + 1; _record_rejection(db, cycle_id, c, mode); continue
             state = _portfolio_snapshot(db, capital, mode)
             notional = float(c.get("capital_required", 0) or 0)
-            if state["open_positions"] >= settings.max_positions:
-                why = "POSITION_LIMIT"
-            elif state["daily_loss"] >= settings.daily_loss_limit:
-                why = "DAILY_LOSS_LIMIT"
-            elif state["open_exposure"] + notional > state["deployment_limit"]:
-                why = "CAPITAL_DEPLOYMENT_LIMIT"
+            if state["open_positions"] >= settings.max_positions: why = "POSITION_LIMIT"
+            elif state["daily_loss"] >= settings.daily_loss_limit: why = "DAILY_LOSS_LIMIT"
+            elif state["open_exposure"] + notional > state["deployment_limit"]: why = "CAPITAL_DEPLOYMENT_LIMIT"
             else:
                 sector_fraction = _sector_exposure(db, capital, mode, c.get("sector", "OTHER"), notional)
                 ok, risk_why = risk_gate(float(c.get("rr", 0) or 0), state["daily_loss"], state["open_positions"], sector_fraction)
                 why = None if ok else risk_why
             if why:
-                c["rejection_reason"] = why
-                c["reason"] = f"Execution risk gate: {why}"
-                result["rejections"][why] = result["rejections"].get(why, 0) + 1
-                _record_rejection(db, cycle_id, c, mode)
-                continue
+                c["rejection_reason"] = why; c["reason"] = f"Execution risk gate: {why}"; result["rejections"][why] = result["rejections"].get(why, 0) + 1; _record_rejection(db, cycle_id, c, mode); continue
             sid = "SIG-" + uuid.uuid4().hex[:16]
             c["signal_id"] = sid
             db.signal(sid, c["symbol"], c["decision"], c)
             oid = fill(db, c, mode=mode)
             open_symbols.add(c["symbol"])
             result["orders"].append({"order_id": oid, "signal_id": sid, "status": "FILLED", "mode": mode, "symbol": c["symbol"], "side": c["decision"], "quantity": c["quantity"], "price": c["entry"]})
-            if c["decision"] == "BUY":
-                result["suggested_buy_investment"] += notional
-            else:
-                result["suggested_sell_value"] += float(c.get("entry", 0) or 0) * int(c.get("quantity", 0) or 0)
+            if c["decision"] == "BUY": result["suggested_buy_investment"] += notional
+            else: result["suggested_sell_value"] += float(c.get("entry", 0) or 0) * int(c.get("quantity", 0) or 0)
     result["suggested_buy_investment"] = round(result["suggested_buy_investment"], 2)
     result["suggested_sell_value"] = round(result["suggested_sell_value"], 2)
     result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"
-    broker_funds = funds
     if settings.telegram_token and settings.telegram_chat_id:
-        lines = ["📊 STOCKMARKET BOT — PAPER CYCLE", f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M:%S')} IST", f"Universe: {result['stocks_observed']} | Quotes: {result['quotes']} | Deep analysis: {result['deep_analysis_pool']}", f"Candidates: {len(result['candidates'])} | Orders: {len(result['orders'])}", f"Fundamentals refreshed: {result['fundamentals_refreshed']} | cache hits: {result['fundamentals_cache_hits']}", f"Dhan verified available funds: {'UNAVAILABLE' if broker_funds is None else f'₹{broker_funds:,.2f}'}", f"Paper reference capital: ₹{settings.reference_capital:,.2f}", f"Paper buy investment: ₹{result['suggested_buy_investment']:,.2f}", f"Open positions: {result.get('positions_open', 0)}"]
-        if result["candidates"]:
-            lines.append("Top candidates: " + ", ".join(f"{c['symbol']} {c['decision']}" for c in result["candidates"][:5]))
+        lines = ["📊 STOCKMARKET BOT — PAPER CYCLE", f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M:%S')} IST", f"Universe: {result['stocks_observed']} | Quotes: {result['quotes']} | Deep analysis: {result['deep_analysis_pool']}", f"Market regime: {result.get('market_regime', {}).get('combined_regime', 'UNAVAILABLE')}", f"Candidates: {len(result['candidates'])} | Orders: {len(result['orders'])}", f"Fundamentals refreshed: {result['fundamentals_refreshed']} | cache hits: {result['fundamentals_cache_hits']}", f"Dhan verified available funds: {'UNAVAILABLE' if funds is None else f'₹{funds:,.2f}' }", f"Paper reference capital: ₹{settings.reference_capital:,.2f}", f"Paper buy investment: ₹{result['suggested_buy_investment']:,.2f}", f"Open positions: {result.get('positions_open', 0)}"]
+        if result["candidates"]: lines.append("Top candidates: " + ", ".join(f"{c['symbol']} {c['decision']}" for c in result["candidates"][:5]))
         if result["rejections"]:
             top = sorted(result["rejections"].items(), key=lambda x: x[1], reverse=True)[:5]
             lines.append("Rejections: " + ", ".join(f"{k}={v}" for k, v in top))
