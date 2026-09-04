@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, time as clock
+from datetime import datetime, time as clock, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Any
@@ -48,6 +48,21 @@ def _charges(turnover: float) -> float:
     return brokerage + stt + exchange + sebi + stamp + gst
 
 
+def _morning_window_bounds(today: str) -> tuple[str, str]:
+    day = datetime.strptime(today, "%Y-%m-%d").date()
+    start = datetime.combine(day, clock(9, 15), tzinfo=IST).astimezone(ZoneInfo("UTC"))
+    end = datetime.combine(day, clock(11, 0), tzinfo=IST).astimezone(ZoneInfo("UTC"))
+    return start.isoformat(), end.isoformat()
+
+
+def _in_morning_window(ts: str) -> bool:
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone(IST)
+    except ValueError:
+        return False
+    return clock(9, 15) <= dt.time() <= clock(11, 0)
+
+
 def _load_imported_morning(today: str) -> list[dict[str, Any]]:
     path = Path("data/morning_recommendations") / f"{today}.json"
     if not path.exists():
@@ -61,20 +76,30 @@ def _load_imported_morning(today: str) -> list[dict[str, Any]]:
 
 
 def _load_bot_morning_recommendations(db: Database, today: str) -> list[dict[str, Any]]:
-    """Recover morning recommendations from the persistent cycle ledger.
+    """Recover every actionable morning idea from persistent state.
 
-    cycles is authoritative for every completed monitor cycle, so a later
-    monitor_status.json overwrite cannot erase the morning decision history.
-    Only BUY/SELL candidates that existed in the morning window are included.
+    The final cycle candidate list contains only execution survivors. Candidates
+    rejected by execution gates are persisted as SIGNAL_REJECTED events. EOD
+    combines both ledgers so a later monitor_status overwrite cannot erase a
+    morning recommendation merely because it was rejected before paper entry.
     """
-    out: list[dict[str, Any]] = []
+    rows_out: list[dict[str, Any]] = []
+    previous_day = (datetime.strptime(today, "%Y-%m-%d").date() - timedelta(days=1)).isoformat()
     with db.connect() as con:
-        rows = con.execute(
+        cycle_rows = con.execute(
             "SELECT cycle_id,started_at,ended_at,payload FROM cycles "
-            "WHERE substr(started_at,1,10)=? ORDER BY started_at",
-            (today,),
+            "WHERE substr(started_at,1,10) IN (?, ?) ORDER BY started_at",
+            (today, previous_day),
         ).fetchall()
-    for row in rows:
+        event_rows = con.execute(
+            "SELECT id,ts,symbol,mode,payload FROM events "
+            "WHERE event_type='SIGNAL_REJECTED' AND ts>=? AND ts<=? ORDER BY id",
+            _morning_window_bounds(today),
+        ).fetchall()
+
+    seen: set[tuple[str, str]] = set()
+
+    for row in cycle_rows:
         started = str(row["started_at"] or "")
         try:
             dt = datetime.fromisoformat(started.replace("Z", "+00:00")).astimezone(IST)
@@ -87,14 +112,53 @@ def _load_bot_morning_recommendations(db: Database, today: str) -> list[dict[str
         except Exception:
             continue
         for candidate in payload.get("candidates") or []:
-            if not isinstance(candidate, dict) or str(candidate.get("decision", "")).upper() not in {"BUY", "SELL"}:
+            if not isinstance(candidate, dict):
+                continue
+            decision = str(candidate.get("decision", "")).upper()
+            symbol = str(candidate.get("symbol", "")).upper()
+            if decision not in {"BUY", "SELL"} or not symbol:
+                continue
+            key = (symbol, decision)
+            if key in seen:
                 continue
             item = dict(candidate)
             item["source"] = "BOT_CYCLE_LEDGER"
             item["cycle_id"] = row["cycle_id"]
             item["generated_at"] = started
-            out.append(item)
-    return out
+            rows_out.append(item)
+            seen.add(key)
+
+    for row in event_rows:
+        ts = str(row["ts"] or "")
+        if not _in_morning_window(ts):
+            continue
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except Exception:
+            continue
+        if not isinstance(payload, dict) or payload.get("record_type") != "REJECTED_SIGNAL":
+            continue
+        decision = str(payload.get("decision", "")).upper()
+        symbol = str(payload.get("symbol") or row["symbol"] or "").upper()
+        rejection = str(payload.get("rejection_reason", "")).upper()
+        if decision not in {"BUY", "SELL"} or not symbol or rejection not in EXECUTION_REJECTIONS:
+            continue
+        key = (symbol, decision)
+        if key in seen:
+            continue
+        item = dict(payload)
+        item["symbol"] = symbol
+        item["decision"] = decision
+        item["source"] = "BOT_EXECUTION_REJECTION_LEDGER"
+        item["generated_at"] = ts
+        item["event_id"] = row["id"]
+        item["execution_rejection_reason"] = rejection
+        item["paper_execution_status"] = "REJECTED_BEFORE_PAPER_ENTRY"
+        rows_out.append(item)
+        seen.add(key)
+
+    rows_out.sort(key=lambda x: str(x.get("generated_at", "")))
+    return rows_out
 
 
 def _load_paper_trades(db: Database, today: str) -> list[dict[str, Any]]:
@@ -193,14 +257,15 @@ def _evaluate_reference(row: dict[str, Any], eod_price: float | None) -> dict[st
     return result
 
 
-def _reconcile_bot_recommendations(rows: list[dict[str, Any]], trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _reconcile_bot_recommendations(rows: list[dict[str, Any]], trades: list[dict[str, Any]], eod_prices: dict[str, float]) -> list[dict[str, Any]]:
     by_symbol: dict[str, list[dict[str, Any]]] = {}
     for trade in trades:
         by_symbol.setdefault(str(trade.get("symbol", "")).upper(), []).append(trade)
     out = []
     for row in rows:
         item = dict(row)
-        matches = by_symbol.get(str(row.get("symbol", "")).upper(), [])
+        rejected_before_entry = item.get("source") == "BOT_EXECUTION_REJECTION_LEDGER"
+        matches = [] if rejected_before_entry else by_symbol.get(str(row.get("symbol", "")).upper(), [])
         if matches:
             trade = matches[0]
             item["paper_execution_status"] = "EXECUTED_PAPER"
@@ -208,10 +273,15 @@ def _reconcile_bot_recommendations(rows: list[dict[str, Any]], trades: list[dict
             item["realized_net_pnl"] = _f(trade.get("net_pnl"))
             item["pnl_type"] = "REALIZED_PAPER_TRADE"
             item["eod_price"] = _f(trade.get("exit_price"), 0.0)
-        else:
+        elif not rejected_before_entry:
             item["paper_execution_status"] = "NO_PAPER_TRADE"
             item["realized_net_pnl"] = None
             item["pnl_type"] = "HYPOTHETICAL_REFERENCE_ENTRY"
+        else:
+            item["realized_net_pnl"] = None
+            item["pnl_type"] = "HYPOTHETICAL_REFERENCE_ENTRY"
+        if item.get("paper_execution_status") != "EXECUTED_PAPER":
+            item = _evaluate_reference(item, eod_prices.get(str(item.get("symbol", "")).upper()))
         out.append(item)
     return out
 
@@ -224,31 +294,13 @@ def main() -> int:
     imported = _load_imported_morning(today)
     bot_morning = _load_bot_morning_recommendations(db, today)
 
-    # Imported morning export is kept separate from the bot's paper ledger.
-    # This prevents a user's manual purchase from being falsely reported as a
-    # simulated broker fill.
     imported_symbols = {str(x.get("symbol", "")).upper() for x in imported}
     bot_morning = [x for x in bot_morning if str(x.get("symbol", "")).upper() not in imported_symbols]
 
     all_morning_symbols = list(imported_symbols | {str(x.get("symbol", "")).upper() for x in bot_morning})
     eod_prices, quote_error = _eod_quotes(all_morning_symbols)
     manual_rows = [_evaluate_reference(x, eod_prices.get(str(x.get("symbol", "")).upper())) for x in imported]
-    bot_rows = _reconcile_bot_recommendations(bot_morning, trades)
-    for row in bot_rows:
-        if row.get("paper_execution_status") == "NO_PAPER_TRADE":
-            row = _evaluate_reference(row, eod_prices.get(str(row.get("symbol", "")).upper()))
-        else:
-            # Replace the list element with the enriched row when a trade exists.
-            pass
-    # Re-run the bot reconciliation with a clean list so hypothetical rows also
-    # receive the EOD reference evaluation.
-    enriched_bot: list[dict[str, Any]] = []
-    for row in bot_morning:
-        base = _reconcile_bot_recommendations([row], trades)[0]
-        if base.get("paper_execution_status") == "NO_PAPER_TRADE":
-            base = _evaluate_reference(base, eod_prices.get(str(base.get("symbol", "")).upper()))
-        enriched_bot.append(base)
-    bot_rows = enriched_bot
+    bot_rows = _reconcile_bot_recommendations(bot_morning, trades, eod_prices)
 
     signals_today = int(db.scalar("SELECT COUNT(*) FROM signals WHERE substr(ts,1,10)=?", (today,)) or 0)
     net = sum(_f(x.get("net_pnl")) for x in trades)
@@ -298,6 +350,7 @@ def main() -> int:
             "manual_purchase_pnl_claimed": False,
             "paper_trades_separated_from_manual_purchases": True,
             "hypothetical_pnl_is_not_realized_pnl": True,
+            "execution_rejected_morning_candidates_recovered": True,
         },
     }
 
@@ -329,9 +382,9 @@ def main() -> int:
             else:
                 lines.append(f"{symbol}: EOD price unavailable | {outcome}")
     if bot_rows:
-        lines.append(f"Bot morning recommendations from cycle ledger: {len(bot_rows)}")
-        for row in bot_rows[:5]:
-            lines.append(f"{row.get('decision','?')} {row.get('symbol','?')}: {row.get('paper_execution_status','UNKNOWN')} | P&L type={row.get('pnl_type','UNKNOWN')}")
+        lines.append(f"Bot morning recommendations recovered: {len(bot_rows)}")
+        for row in bot_rows[:8]:
+            lines.append(f"{row.get('decision','?')} {row.get('symbol','?')}: {row.get('paper_execution_status','UNKNOWN')} | reason={row.get('execution_rejection_reason', row.get('rejection_reason', '—'))} | P&L type={row.get('pnl_type','UNKNOWN')}")
     if quote_error:
         lines.append(f"EOD quote warning: {quote_error[:220]}")
     lines.append(f"Profit factor: {'N/A' if profit_factor is None else f'{profit_factor:.2f}'}")
