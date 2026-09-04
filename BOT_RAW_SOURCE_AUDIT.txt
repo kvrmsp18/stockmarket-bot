@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: ba8b623e652b50df4fd6a827bd9a51e2b47cd836
-Generated UTC: 2026-09-04T07:23:54.643518+00:00
+Commit SHA: c934de9e6823fa81069c7556f544b0c424d72a9c
+Generated UTC: 2026-09-04T07:31:40.051747+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -43,7 +43,7 @@ data/telegram_preflight_status.json	250 bytes
 data/trading.db	28905472 bytes
 data/universe.json	303881 bytes
 data/watchdog_heartbeat.json	488 bytes
-data/worker_heartbeat.json	427 bytes
+data/worker_heartbeat.json	447 bytes
 deploy/README.md	2755 bytes
 deploy/stockmarket-worker.service	697 bytes
 docker-compose.yml	805 bytes
@@ -67,7 +67,7 @@ intraday_bot/nse_preopen.py	7712 bytes
 intraday_bot/paper.py	1447 bytes
 intraday_bot/research.py	13124 bytes
 intraday_bot/risk.py	4581 bytes
-intraday_bot/runtime.py	26103 bytes
+intraday_bot/runtime.py	29994 bytes
 intraday_bot/safety.py	715 bytes
 intraday_bot/sector_intelligence.py	7742 bytes
 intraday_bot/technical.py	8245 bytes
@@ -38476,9 +38476,9 @@ SIZE: 312 bytes
 {
   "status": "PASSED",
   "message": "Dhan client ID + access token and market-feed preflight passed",
-  "updated_at": "2026-09-04T12:47:23.109453+05:30",
+  "updated_at": "2026-09-04T13:00:32.552067+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "33848001343",
+  "workflow_run_id": "33848999701",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
@@ -38491,9 +38491,9 @@ SIZE: 350 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T12:46:54.249201+05:30",
+  "updated_at": "2026-09-04T13:00:05.125174+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33848001343",
+  "workflow_run_id": "33848999701",
   "event": "schedule",
   "market_open": true,
   "scheduled_interval_seconds": 300,
@@ -38506,10 +38506,10 @@ FILE: data/telegram_preflight_status.json
 SIZE: 250 bytes
 ====================================================================
 {
-  "updated_at": "2026-09-04T12:47:20.114923+05:30",
+  "updated_at": "2026-09-04T13:00:29.310184+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "33848001343",
+  "workflow_run_id": "33848999701",
   "status": "PASSED",
   "message": "Telegram authenticated and test message delivered"
 }
@@ -54376,20 +54376,20 @@ SIZE: 488 bytes
 
 ====================================================================
 FILE: data/worker_heartbeat.json
-SIZE: 427 bytes
+SIZE: 447 bytes
 ====================================================================
 {
-  "state": "RUNNING",
-  "message": "Latest complete paper-trading market cycle succeeded",
-  "updated_at": "2026-09-04T12:47:58.053559+05:30",
+  "state": "DEGRADED",
+  "message": "Market-cycle invocation failed; inspect preflight_status or cycle logs",
+  "updated_at": "2026-09-04T13:00:38.130040+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmejwal",
-  "workflow_run_id": "33848001343",
+  "hostname": "runnervmgx7h7",
+  "workflow_run_id": "33848999701",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
   "market_cycle": true,
-  "cycle_success": true,
+  "cycle_success": false,
   "scheduler_based_monitor": true
 }
 
@@ -57479,7 +57479,7 @@ def risk_gate(
 
 ====================================================================
 FILE: intraday_bot/runtime.py
-SIZE: 26103 bytes
+SIZE: 29994 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -57505,6 +57505,7 @@ from .market_regime import build as build_market_regime
 from .paper import fill
 from .research import research_bundle, fundamental_score, scrap_analysis
 from .risk import position_size, risk_gate
+from .sector_intelligence import build as build_sector_intelligence, membership as sector_membership
 from .technical import technical_setup
 
 LIVE_TEST_MODE = "LIVE_TEST"
@@ -57548,6 +57549,8 @@ def quote(q: dict[str, Any]) -> tuple[float, float, float]:
 
 
 def sector(s: str) -> str:
+    # Legacy fallback only. Production classification comes from NSE sector
+    # membership and is injected through _source_sector().
     groups = {
         "BANKING": {"HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK"},
         "IT": {"TCS", "INFY", "WIPRO", "HCLTECH", "TECHM"},
@@ -57560,11 +57563,16 @@ def sector(s: str) -> str:
     return next((k for k, v in groups.items() if s in v), "OTHER")
 
 
-def _source_sector(item: dict[str, Any], f: dict[str, Any]) -> str:
+def _source_sector(item: dict[str, Any], f: dict[str, Any], membership_cache: dict[str, Any] | None = None) -> str:
+    symbol = str(item.get("symbol", "")).upper()
+    if membership_cache:
+        source_sector = (membership_cache.get("symbol_sector") or {}).get(symbol)
+        if isinstance(source_sector, str) and source_sector.strip():
+            return source_sector.strip().upper()
     for value in (item.get("sector"), item.get("industry"), f.get("sector")):
         if isinstance(value, str) and value.strip():
             return value.strip().upper()
-    return sector(str(item.get("symbol", "")).upper())
+    return sector(symbol)
 
 
 def _verified_funds(broker: DhanBroker) -> tuple[float | None, str]:
@@ -57593,15 +57601,16 @@ def _research_gate(bundle: dict[str, Any], f: dict[str, Any]) -> tuple[bool, str
     return True, None
 
 
-def analyse(broker, item, price: float, volume: float, funds: float | None, market_regime: dict[str, Any]) -> dict[str, Any]:
+def analyse(broker, item, price: float, volume: float, funds: float | None, market_regime: dict[str, Any], membership_cache: dict[str, Any] | None = None) -> dict[str, Any]:
     symbol = str(item["symbol"]).upper()
     f = fundamentals(symbol, current_price=price)
     bundle = research_bundle(symbol, f)
     scrap = scrap_analysis(symbol, f)
-    sector_name = _source_sector(item, f)
+    sector_name = _source_sector(item, f, membership_cache)
     base: dict[str, Any] = {
         "symbol": symbol,
         "sector": sector_name,
+        "sector_source": "NSE_OFFICIAL_SECTOR_INDICES" if membership_cache and symbol in (membership_cache.get("symbol_sector") or {}) else "SECONDARY_METADATA_OR_LEGACY_FALLBACK",
         "theme": "UNKNOWN",
         "price": price,
         "decision": "NO TRADE",
@@ -57692,7 +57701,7 @@ def analyse(broker, item, price: float, volume: float, funds: float | None, mark
         + base["conviction_score"] * .10 + base["volume_score"] * .10
         + (10.0 if combined == "BULLISH" and t["direction"] == "BUY" else 10.0 if combined == "BEARISH" and t["direction"] == "SELL" else 0.0) * .20
         + 5 * .10,
-        "reason": f"Market={combined}; Trend={t['trend_state']}; MTF_RSI={t['mtf_rsi_reason']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}; OI={bundle.get('derivatives', {}).get('signal', 'UNAVAILABLE')}",
+        "reason": f"Market={combined}; Sector={sector_name}; Trend={t['trend_state']}; MTF_RSI={t['mtf_rsi_reason']}; R:R={t['rr']:.2f}; Frameworks={bundle['frameworks']['agreement']}; OI={bundle.get('derivatives', {}).get('signal', 'UNAVAILABLE')}",
     })
     return base
 
@@ -57772,12 +57781,17 @@ def _portfolio_snapshot(db: Database, capital: float, mode: str) -> dict[str, An
     return {"open_positions": len(rows), "open_exposure": exposure, "daily_loss": max(0.0, -daily_pnl), "daily_pnl": daily_pnl, "deployment_limit": capital * settings.max_capital_deployment}
 
 
-def _sector_exposure(db: Database, capital: float, mode: str, target_sector: str, extra_notional: float = 0.0) -> float:
+def _sector_exposure(db: Database, capital: float, mode: str, target_sector: str, extra_notional: float = 0.0, membership_cache: dict[str, Any] | None = None) -> float:
     if capital <= 0: return 1.0
-    by_symbol = {x["symbol"]: sector(x["symbol"]) for x in universe()}
+    if membership_cache is None:
+        try:
+            membership_cache = sector_membership()
+        except Exception:
+            membership_cache = {}
+    by_symbol = membership_cache.get("symbol_sector") or {}
     with db.connect() as con:
         rows = con.execute("SELECT symbol, quantity, entry_price FROM positions WHERE closed_at IS NULL AND mode=?", (mode,)).fetchall()
-    total = sum(float(r["entry_price"] or 0) * int(r["quantity"] or 0) for r in rows if by_symbol.get(r["symbol"], "OTHER") == target_sector)
+    total = sum(float(r["entry_price"] or 0) * int(r["quantity"] or 0) for r in rows if str(by_symbol.get(str(r["symbol"]).upper(), "OTHER")).upper() == str(target_sector).upper())
     return (total + extra_notional) / capital
 
 
@@ -57786,11 +57800,53 @@ def _run_ai_advisory(candidates: list[dict[str, Any]]) -> None:
     try: limit = max(0, min(3, int(os.getenv("AI_ADVISORY_MAX_CANDIDATES", "3"))))
     except ValueError: limit = 3
     for candidate in candidates[:limit]:
-        context = {k: candidate.get(k) for k in ("symbol", "decision", "price", "entry", "stop", "target", "rr", "trend_score", "technical_score", "fundamental_score", "valuation_score", "framework_agreement", "derivatives", "market_context", "market_regime", "mtf_rsi")}
-        result = advisory("Advisory only. Never override deterministic market-regime, MTF-RSI, risk, funds, data, execution or reconciliation gates. Return concise JSON with score 0-10, decision BUY/SELL/HOLD/NO TRADE, confidence 0-1, positives, negatives, risks.\n" + json.dumps(context, default=str))
+        context = {k: candidate.get(k) for k in ("symbol", "decision", "sector", "price", "entry", "stop", "target", "rr", "trend_score", "technical_score", "fundamental_score", "valuation_score", "framework_agreement", "derivatives", "market_context", "market_regime", "mtf_rsi")}
+        result = advisory("Advisory only. Never override deterministic market-regime, sector, MTF-RSI, risk, funds, data, execution or reconciliation gates. Return concise JSON with score 0-10, decision BUY/SELL/HOLD/NO TRADE, confidence 0-1, positives, negatives, risks.\n" + json.dumps(context, default=str))
         candidate["ai_advisory"] = result
         candidate["ai_consensus"] = "ADVISORY_AVAILABLE" if result.get("status") == "AVAILABLE" else ("ADVISORY_ERROR" if result.get("status") == "ERROR" else "NOT_CONFIGURED")
         if result.get("text"): candidate["ai_advisory_text"] = str(result["text"])[:4000]
+
+
+def _telegram_cycle_message(result: dict[str, Any], funds: float | None, sector_info: dict[str, Any]) -> str:
+    lines = [
+        "📊 STOCKMARKET BOT — PAPER CYCLE",
+        f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M:%S')} IST",
+        f"Universe: {result['stocks_observed']} | Quotes: {result['quotes']} | Deep analysis: {result['deep_analysis_pool']}",
+        f"Market regime: {result.get('market_regime', {}).get('combined_regime', 'UNAVAILABLE')}",
+        f"Candidates: {len(result['candidates'])} | Paper orders: {len(result['orders'])}",
+        f"Dhan verified available funds: {'UNAVAILABLE' if funds is None else f'₹{funds:,.2f}'}",
+        f"Paper reference capital: ₹{settings.reference_capital:,.2f}",
+        f"Suggested BUY investment: ₹{result['suggested_buy_investment']:,.2f}",
+        f"Suggested SELL value: ₹{result['suggested_sell_value']:,.2f}",
+        f"Open positions: {result.get('positions_open', 0)}",
+    ]
+    sectors = sector_info.get("sectors") or {}
+    ranked_sectors = sorted(sectors.items(), key=lambda kv: float(kv[1].get("strength", 0) or 0), reverse=True)
+    if ranked_sectors:
+        top = ranked_sectors[:3]
+        weak = sorted(sectors.items(), key=lambda kv: float(kv[1].get("strength", 0) or 0))[:2]
+        lines.append("Sector leaders: " + ", ".join(f"{name} {row.get('strength', 0):.1f}/10 ({row.get('breadth_pct', 0):.0f}% breadth)" for name, row in top))
+        lines.append("Sector weak: " + ", ".join(f"{name} {row.get('strength', 0):.1f}/10" for name, row in weak))
+    if result["candidates"]:
+        lines.append("🔎 TRADE SUGGESTIONS")
+        for c in result["candidates"][:5]:
+            lines.append(
+                f"{c['decision']} {c['symbol']} | Sector {c.get('sector','OTHER')} | Entry ₹{float(c.get('entry',0)):.2f} | SL ₹{float(c.get('stop',0)):.2f} | Target ₹{float(c.get('target',0)):.2f} | Qty {int(c.get('quantity',0))} | R:R {float(c.get('rr',0)):.2f} | Score {float(c.get('overall_score',0)):.1f}"
+            )
+            lines.append(f"Reason: {str(c.get('reason',''))[:260]}")
+            if c.get("ai_advisory_text"):
+                lines.append(f"AI advisory: {str(c['ai_advisory_text'])[:260]}")
+    else:
+        lines.append("🔎 TRADE SUGGESTIONS: NONE — no candidate passed every deterministic gate.")
+        if result["rejections"]:
+            top = sorted(result["rejections"].items(), key=lambda x: x[1], reverse=True)[:8]
+            lines.append("Top rejection reasons: " + ", ".join(f"{k}={v}" for k, v in top))
+        details = result.get("rejection_details") or []
+        for c in sorted(details, key=lambda x: float(x.get("trend_score", 0) or 0), reverse=True)[:3]:
+            lines.append(f"Near-miss: {c.get('symbol','?')} | {c.get('rejection_reason','NO_TRADE')} | {str(c.get('reason',''))[:180]}")
+    if result.get("errors"):
+        lines.append("Cycle errors: " + " | ".join(str(x) for x in result["errors"][:3]))
+    return "\n".join(lines)[:3900]
 
 
 def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
@@ -57823,6 +57879,24 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
         result["market_regime"] = {"status": "UNAVAILABLE", "combined_regime": "UNAVAILABLE", "buy_allowed": False, "sell_allowed": False, "error": str(exc)}
         result["errors"].append("MARKET_REGIME_UNAVAILABLE: " + str(exc))
         return finish(result, start, db)
+
+    try:
+        sector_info = build_sector_intelligence(uni, qmap)
+        membership_cache = sector_membership()
+        result["sector_intelligence"] = {
+            "status": sector_info.get("status", "UNAVAILABLE"),
+            "source": sector_info.get("source"),
+            "classified_symbols": sector_info.get("classified_symbols", 0),
+            "unclassified_universe_symbols": sector_info.get("unclassified_universe_symbols", 0),
+            "as_of": sector_info.get("as_of"),
+            "cache_warning": sector_info.get("cache_warning"),
+        }
+        db.event("market", "INFO", "SECTOR_INTELLIGENCE", result["sector_intelligence"], mode=mode)
+    except Exception as exc:
+        sector_info = {"status": "UNAVAILABLE", "sectors": {}, "error": str(exc)}
+        membership_cache = {}
+        result["sector_intelligence"] = sector_info
+        result["errors"].append("SECTOR_INTELLIGENCE_UNAVAILABLE: " + str(exc))
 
     ranked = []
     for item in uni:
@@ -57857,7 +57931,7 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
         result["errors"].append("FUNDS_DATA_UNAVAILABLE: broker funds could not be verified")
     else:
         with ThreadPoolExecutor(max_workers=settings.scan_workers) as ex:
-            futures = [ex.submit(analyse, broker, item, p, v, funds, market_regime) for _, item, p, v in analysis_pool]
+            futures = [ex.submit(analyse, broker, item, p, v, funds, market_regime, membership_cache) for _, item, p, v in analysis_pool]
             for fut in as_completed(futures):
                 try:
                     c = fut.result()
@@ -57894,7 +57968,7 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
             elif state["daily_loss"] >= settings.daily_loss_limit: why = "DAILY_LOSS_LIMIT"
             elif state["open_exposure"] + notional > state["deployment_limit"]: why = "CAPITAL_DEPLOYMENT_LIMIT"
             else:
-                sector_fraction = _sector_exposure(db, capital, mode, c.get("sector", "OTHER"), notional)
+                sector_fraction = _sector_exposure(db, capital, mode, c.get("sector", "OTHER"), notional, membership_cache)
                 ok, risk_why = risk_gate(float(c.get("rr", 0) or 0), state["daily_loss"], state["open_positions"], sector_fraction)
                 why = None if ok else risk_why
             if why:
@@ -57911,12 +57985,7 @@ def run_cycle(mode: str = PAPER_MODE) -> dict[str, Any]:
     result["suggested_sell_value"] = round(result["suggested_sell_value"], 2)
     result["execution_gate"] = "LIVE_TEST_SIMULATION" if mode == LIVE_TEST_MODE else "PAPER_MODE"
     if settings.telegram_token and settings.telegram_chat_id:
-        lines = ["📊 STOCKMARKET BOT — PAPER CYCLE", f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M:%S')} IST", f"Universe: {result['stocks_observed']} | Quotes: {result['quotes']} | Deep analysis: {result['deep_analysis_pool']}", f"Market regime: {result.get('market_regime', {}).get('combined_regime', 'UNAVAILABLE')}", f"Candidates: {len(result['candidates'])} | Orders: {len(result['orders'])}", f"Fundamentals refreshed: {result['fundamentals_refreshed']} | cache hits: {result['fundamentals_cache_hits']}", f"Dhan verified available funds: {'UNAVAILABLE' if funds is None else f'₹{funds:,.2f}' }", f"Paper reference capital: ₹{settings.reference_capital:,.2f}", f"Paper buy investment: ₹{result['suggested_buy_investment']:,.2f}", f"Open positions: {result.get('positions_open', 0)}"]
-        if result["candidates"]: lines.append("Top candidates: " + ", ".join(f"{c['symbol']} {c['decision']}" for c in result["candidates"][:5]))
-        if result["rejections"]:
-            top = sorted(result["rejections"].items(), key=lambda x: x[1], reverse=True)[:5]
-            lines.append("Rejections: " + ", ".join(f"{k}={v}" for k, v in top))
-        telegram("\n".join(lines)[:3900])
+        telegram(_telegram_cycle_message(result, funds, sector_info))
     return finish(result, start, db)
 
 
