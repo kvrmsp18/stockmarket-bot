@@ -4140,6 +4140,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "ESDS",
+    "security_id": "765553",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "ESENSEX",
     "security_id": "759995",
     "exchange_segment": "NSE_EQ",
@@ -10626,12 +10632,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "PAR",
-    "security_id": "5631",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "PARACABLES",
     "security_id": "13951",
     "exchange_segment": "NSE_EQ",
@@ -14396,12 +14396,6 @@
   {
     "symbol": "TIINDIA",
     "security_id": "312",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
-    "symbol": "TIJARIA",
-    "security_id": "25482",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },

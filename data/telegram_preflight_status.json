@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-09-04T11:00:39.892344+05:30",
+  "updated_at": "2026-09-04T11:13:05.458243+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "33840715221",
+  "workflow_run_id": "33841498027",
   "status": "FAILED",
   "message": "sendMessage HTTP 400: Bad Request: chat not found; TELEGRAM_CHAT_ID is not visible to this bot. Start the bot from the target account/group, add the bot to the target group/channel, and use that chat ID."
 }

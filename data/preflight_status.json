@@ -1,9 +1,9 @@
 {
-  "status": "FAILED",
-  "message": "DHAN_API_KEY contains an 8-character Dhan application/API key, not a bearer access credential. It will not be sent as the access-token header. Keep the secret name DHAN_API_KEY, but the value must be the manually generated access credential intended by this project.",
-  "updated_at": "2026-09-04T11:00:41.940688+05:30",
+  "status": "PASSED",
+  "message": "Dhan client ID + access token and market-feed preflight passed",
+  "updated_at": "2026-09-04T11:13:07.672393+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "33840715221",
+  "workflow_run_id": "33841498027",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
