@@ -50,6 +50,23 @@ def _bool(name: str, default: bool = False) -> bool:
     return _secret_or_env(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def classify_dhan_manual_credential(value: str) -> str:
+    """Classify the value stored in DHAN_API_KEY without exposing it.
+
+    The project intentionally keeps one manually entered Dhan credential under
+    DHAN_API_KEY.  An 8-character value is the shape of a Dhan application/API
+    key and is not a bearer access token, so it must never be sent as the
+    access-token header.  Longer values are treated as the manually entered
+    access credential expected by this project.
+    """
+    value = str(value or "").strip()
+    if not value:
+        return "NONE"
+    if len(value) == 8:
+        return "APP_KEY_NOT_ACCESS_TOKEN"
+    return "MANUAL_ACCESS_CREDENTIAL"
+
+
 @dataclass(frozen=True)
 class Settings:
     mode: str = _secret_or_env("BOT_MODE", "PAPER").upper()
@@ -76,8 +93,9 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # The manually entered Dhan credential is stored only in DHAN_API_KEY.
-    # It is used as the access-token value for market-data requests.
+    # The project keeps the single manually entered Dhan access credential in
+    # DHAN_API_KEY.  It must be a bearer/access credential, not the 8-character
+    # Dhan application/API key.  We reject the latter instead of misusing it.
     dhan_api_key: str = _credential("DHAN_API_KEY", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
@@ -91,16 +109,27 @@ class Settings:
         return ROOT / "data" / "trading.db"
 
     @property
+    def dhan_manual_credential_kind(self) -> str:
+        return classify_dhan_manual_credential(self.dhan_api_key)
+
+    @property
     def dhan_market_data_token(self) -> str:
+        if self.dhan_manual_credential_kind == "APP_KEY_NOT_ACCESS_TOKEN":
+            return ""
         return self.dhan_api_key
 
     @property
     def dhan_market_data_credential_source(self) -> str:
-        return "DHAN_API_KEY_MANUAL" if self.dhan_api_key else "NONE"
+        kind = self.dhan_manual_credential_kind
+        if kind == "MANUAL_ACCESS_CREDENTIAL":
+            return "DHAN_API_KEY_MANUAL_ACCESS_CREDENTIAL"
+        if kind == "APP_KEY_NOT_ACCESS_TOKEN":
+            return "DHAN_API_KEY_APP_KEY_REJECTED"
+        return "NONE"
 
     @property
     def dhan_access_token_configured(self) -> bool:
-        return bool(self.dhan_api_key)
+        return self.dhan_manual_credential_kind == "MANUAL_ACCESS_CREDENTIAL"
 
     # Legacy compatibility properties intentionally return empty values.
     # Automatic PIN/TOTP/token generation is disabled.
@@ -139,8 +168,8 @@ class Settings:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.daily_loss_limit <= 0 or self.max_position_exposure <= 0:
             raise ValueError("Paper risk limits must be positive")
-        if self.live_mode_requested and (not self.dhan_client_id or not self.dhan_api_key):
-            raise ValueError("LIVE requested but Dhan client ID/manual API key credential is unavailable")
+        if self.live_mode_requested and (not self.dhan_client_id or not self.dhan_access_token_configured):
+            raise ValueError("LIVE requested but Dhan client ID/manual access credential is unavailable or is an 8-character app key")
 
 
 settings = Settings()
