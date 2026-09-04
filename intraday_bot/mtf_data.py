@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 from .brokers import DhanBroker
+
+
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def extended_daily_history(
@@ -20,8 +24,7 @@ def extended_daily_history(
     windows, merge them, and deduplicate timestamps. No synthetic candles are
     created and no daily data is substituted with intraday data.
     """
-    now = datetime.now(broker._session_tz) if hasattr(broker, "_session_tz") else datetime.now().astimezone()
-    end = now.date()
+    end: date = datetime.now(IST).date()
     start = end - timedelta(days=max(365, int(calendar_days)))
     split = start + timedelta(days=(end - start).days // 2)
     windows = ((start, split), (split + timedelta(days=1), end))
@@ -44,6 +47,7 @@ def extended_daily_history(
 
     if not frames:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
     out = pd.concat(frames, ignore_index=True)
     out["timestamp"] = pd.to_datetime(out["timestamp"], utc=True, errors="coerce")
     out = out.dropna(subset=["timestamp", "close"])
