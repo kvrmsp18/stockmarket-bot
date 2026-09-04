@@ -33,7 +33,10 @@ class BrokerInterface:
     def bulk_quotes(self, instruments: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         raise NotImplementedError
 
-    def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5) -> pd.DataFrame:
+    def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5, instrument: str = "EQUITY") -> pd.DataFrame:
+        raise NotImplementedError
+
+    def daily_history(self, security_id: str, exchange_segment: str = "NSE_EQ", instrument: str = "EQUITY") -> pd.DataFrame:
         raise NotImplementedError
 
     def order(self, symbol: str, side: str, quantity: int, price: float, live: bool = False, **kwargs: Any) -> dict[str, Any]:
@@ -59,7 +62,10 @@ class PaperTradingBroker(BrokerInterface):
     def bulk_quotes(self, instruments: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         return {}
 
-    def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5) -> pd.DataFrame:
+    def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5, instrument: str = "EQUITY") -> pd.DataFrame:
+        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+    def daily_history(self, security_id: str, exchange_segment: str = "NSE_EQ", instrument: str = "EQUITY") -> pd.DataFrame:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
     def order(self, symbol: str, side: str, quantity: int, price: float, live: bool = False, **kwargs: Any) -> dict[str, Any]:
@@ -77,7 +83,7 @@ class PaperTradingBroker(BrokerInterface):
 
 
 class DhanBroker(BrokerInterface):
-    """Dhan adapter for the configured market-data credential."""
+    """Dhan adapter using the configured long-lived access token when present."""
 
     _rate_lock = threading.Lock()
     _last_quote_call = 0.0
@@ -109,19 +115,12 @@ class DhanBroker(BrokerInterface):
         if self._refresh_attempted:
             return False
         self._refresh_attempted = True
-
-        # Never replace a token explicitly supplied by the user.
         if settings.dhan_access_token:
             return False
         if not (settings.dhan_client_id and settings.dhan_pin and settings.dhan_totp_secret):
             return False
-
         clear_cached_token()
-        token, source = get_access_token(
-            settings.dhan_client_id,
-            settings.dhan_pin,
-            settings.dhan_totp_secret,
-        )
+        token, source = get_access_token(settings.dhan_client_id, settings.dhan_pin, settings.dhan_totp_secret)
         if not token:
             return False
         self.token = token
@@ -167,16 +166,11 @@ class DhanBroker(BrokerInterface):
         return str(response.status_code), str(payload)[:500]
 
     def _auth_context(self) -> str:
-        return (
-            f"credential_source={self.credential_source}; "
-            f"client_id_configured={'yes' if bool(self.client_id) else 'no'}; "
-            f"credential_length={len(self.token)}"
-        )
+        return f"credential_source={self.credential_source}; client_id_configured={'yes' if bool(self.client_id) else 'no'}; credential_length={len(self.token)}"
 
     def _request(self, method: str, path: str, category: str = "data", **kwargs: Any) -> Any:
         if not self.client_id or not self.token:
             raise RuntimeError(f"DHAN_AUTH_UNAVAILABLE: {self._auth_context()}")
-
         refresh_attempted = False
         last_error = ""
         for attempt in range(self._MAX_RETRIES + 1):
@@ -189,7 +183,6 @@ class DhanBroker(BrokerInterface):
                     raise RuntimeError(last_error) from exc
                 time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
                 continue
-
             error_code, error_message = self._response_code_and_message(response)
             is_rate_limited = response.status_code == 429 or error_code == "805"
             if is_rate_limited:
@@ -198,23 +191,18 @@ class DhanBroker(BrokerInterface):
                     raise RuntimeError(last_error)
                 time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
                 continue
-
             if response.status_code in {401, 403} and not refresh_attempted:
                 if self._refresh_access_token_after_401():
                     refresh_attempted = True
                     continue
-
             if response.status_code == 401:
                 raise RuntimeError(f"DHAN_HTTP_401: {response.text[:500]} [{self._auth_context()}]")
-
             if response.status_code >= 400:
                 raise RuntimeError(f"DHAN_HTTP_{response.status_code}: {response.text[:500]}")
-
             try:
                 payload = response.json()
             except ValueError as exc:
                 raise RuntimeError("DHAN_INVALID_JSON_RESPONSE") from exc
-
             if isinstance(payload, dict) and payload.get("status") == "failed":
                 data = payload.get("data", {})
                 code = str(next(iter(data), "unknown")) if isinstance(data, dict) else "unknown"
@@ -226,9 +214,7 @@ class DhanBroker(BrokerInterface):
                     time.sleep(self._RETRY_BASE_SECONDS * (2**attempt))
                     continue
                 raise RuntimeError(f"DHAN_API_ERROR_{code}: {message}")
-
             return payload
-
         raise RuntimeError(last_error or "DHAN_REQUEST_FAILED")
 
     def health(self) -> BrokerHealth:
@@ -277,12 +263,7 @@ class DhanBroker(BrokerInterface):
         return out
 
     def _ltp_batch(self, exchange_segment: str, batch: list[int]) -> dict[str, dict[str, Any]]:
-        payload = self._request(
-            "POST",
-            "/v2/marketfeed/ltp",
-            category="quote",
-            json={exchange_segment: batch},
-        )
+        payload = self._request("POST", "/v2/marketfeed/ltp", category="quote", json={exchange_segment: batch})
         return self._quote_rows(payload, exchange_segment)
 
     def bulk_quotes(self, instruments: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -297,79 +278,84 @@ class DhanBroker(BrokerInterface):
             except ValueError:
                 continue
             groups.setdefault(exchange_segment, []).append(security_id)
-
         out: dict[str, dict[str, Any]] = {}
         for exchange_segment, ids in groups.items():
             unique_ids = list(dict.fromkeys(ids))
             for start in range(0, len(unique_ids), 500):
                 batch = unique_ids[start:start + 500]
                 try:
-                    data = self._request(
-                        "POST",
-                        "/v2/marketfeed/quote",
-                        category="quote",
-                        json={exchange_segment: batch},
-                    )
+                    data = self._request("POST", "/v2/marketfeed/quote", category="quote", json={exchange_segment: batch})
                     rows = self._quote_rows(data, exchange_segment)
                     if rows:
                         out.update(rows)
                         continue
-                    ltp_rows = self._ltp_batch(exchange_segment, batch)
-                    out.update(ltp_rows)
+                    out.update(self._ltp_batch(exchange_segment, batch))
                 except RuntimeError as quote_error:
                     try:
                         ltp_rows = self._ltp_batch(exchange_segment, batch)
                     except Exception as ltp_error:
-                        raise RuntimeError(
-                            f"DHAN_MARKETFEED_FAILED: quote={quote_error}; ltp={ltp_error}"
-                        ) from ltp_error
+                        raise RuntimeError(f"DHAN_MARKETFEED_FAILED: quote={quote_error}; ltp={ltp_error}") from ltp_error
                     if not ltp_rows:
-                        raise RuntimeError(
-                            f"DHAN_MARKETFEED_EMPTY: quote={quote_error}; ltp returned zero rows"
-                        )
+                        raise RuntimeError(f"DHAN_MARKETFEED_EMPTY: quote={quote_error}; ltp returned zero rows")
                     out.update(ltp_rows)
         return out
 
     @staticmethod
     def _history_start_date(today: datetime) -> str:
-        """Return a prior weekday far enough back to warm intraday indicators."""
         cursor = today.date() - timedelta(days=7)
         while cursor.weekday() >= 5:
             cursor -= timedelta(days=1)
         return cursor.isoformat()
 
-    def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5) -> pd.DataFrame:
-        """Fetch a warm intraday history window ending today.
+    @staticmethod
+    def _daily_start_date(today: datetime) -> str:
+        return (today.date() - timedelta(days=420)).isoformat()
 
-        The technical engine needs at least 60 five-minute bars. Asking Dhan
-        for today's candles alone makes early-session analysis impossible, so
-        the request includes the preceding weekday window as well. The local
-        runtime still uses only the latest completed/current bar for decisions.
-        """
-        now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
-        today = now_ist.date().isoformat()
-        from_date = self._history_start_date(now_ist)
-        payload = {
-            "securityId": str(self._security_id(security_id)),
-            "exchangeSegment": str(exchange_segment).strip().upper(),
-            "instrument": "EQUITY",
-            "interval": str(int(interval)),
-            "fromDate": from_date,
-            "toDate": today,
-        }
-        data = self._request("POST", "/v2/charts/intraday", category="data", json=payload)
-        body = data.get("data", data) if isinstance(data, dict) else {}
+    @staticmethod
+    def _frame(body: Any) -> pd.DataFrame:
         keys = ["timestamp", "open", "high", "low", "close", "volume"]
         if not isinstance(body, dict) or not all(k in body for k in keys):
             return pd.DataFrame(columns=keys)
-        return pd.DataFrame({
-            "timestamp": pd.to_datetime(body["timestamp"], unit="s", utc=True),
-            "open": body["open"],
-            "high": body["high"],
-            "low": body["low"],
-            "close": body["close"],
-            "volume": body["volume"],
-        }).dropna(subset=["close"]).reset_index(drop=True)
+        try:
+            return pd.DataFrame({
+                "timestamp": pd.to_datetime(body["timestamp"], unit="s", utc=True),
+                "open": body["open"],
+                "high": body["high"],
+                "low": body["low"],
+                "close": body["close"],
+                "volume": body["volume"],
+            }).dropna(subset=["close"]).reset_index(drop=True)
+        except (TypeError, ValueError, KeyError):
+            return pd.DataFrame(columns=keys)
+
+    def history(self, security_id: str, exchange_segment: str = "NSE_EQ", interval: int = 5, instrument: str = "EQUITY") -> pd.DataFrame:
+        """Fetch warm intraday history for equity or index instruments."""
+        now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+        payload = {
+            "securityId": str(self._security_id(security_id)),
+            "exchangeSegment": str(exchange_segment).strip().upper(),
+            "instrument": str(instrument).strip().upper(),
+            "interval": str(int(interval)),
+            "fromDate": self._history_start_date(now_ist),
+            "toDate": now_ist.date().isoformat(),
+        }
+        data = self._request("POST", "/v2/charts/intraday", category="data", json=payload)
+        return self._frame(data.get("data", data) if isinstance(data, dict) else {})
+
+    def daily_history(self, security_id: str, exchange_segment: str = "NSE_EQ", instrument: str = "EQUITY") -> pd.DataFrame:
+        """Fetch genuine daily candles; weekly/monthly values are aggregated locally."""
+        now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+        payload = {
+            "securityId": str(self._security_id(security_id)),
+            "exchangeSegment": str(exchange_segment).strip().upper(),
+            "instrument": str(instrument).strip().upper(),
+            "expiryCode": 0,
+            "oi": False,
+            "fromDate": self._daily_start_date(now_ist),
+            "toDate": now_ist.date().isoformat(),
+        }
+        data = self._request("POST", "/v2/charts/historical", category="data", json=payload)
+        return self._frame(data.get("data", data) if isinstance(data, dict) else {})
 
     def order(self, symbol: str, side: str, quantity: int, price: float, live: bool = False, **kwargs: Any) -> dict[str, Any]:
         if not live or not settings.live_mode_requested:
@@ -405,7 +391,4 @@ def load_security_map() -> dict[str, dict[str, Any]]:
         obj = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    return {
-        str(symbol).upper(): (value if isinstance(value, dict) else {"security_id": value, "exchange_segment": "NSE_EQ"})
-        for symbol, value in obj.items()
-    }
+    return {str(symbol).upper(): (value if isinstance(value, dict) else {"security_id": value, "exchange_segment": "NSE_EQ"}) for symbol, value in obj.items()}
