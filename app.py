@@ -129,6 +129,7 @@ def heartbeat_age_seconds(payload):
 
 
 def verified_candidates(status: dict, heartbeat: dict) -> pd.DataFrame:
+    """Return validated research recommendations from a recent successful market cycle."""
     if heartbeat.get("cycle_success") is not True:
         return pd.DataFrame()
     if heartbeat.get("market_open") is not True:
@@ -137,7 +138,7 @@ def verified_candidates(status: dict, heartbeat: dict) -> pd.DataFrame:
         return pd.DataFrame()
     if heartbeat_age_seconds(heartbeat) > 900:
         return pd.DataFrame()
-    rows = status.get("candidates", [])
+    rows = status.get("recommendations", status.get("candidates", []))
     return pd.DataFrame(rows) if isinstance(rows, list) else pd.DataFrame()
 
 
@@ -183,7 +184,7 @@ def near_misses(status: dict) -> pd.DataFrame:
         out.append({
             "Symbol": x.get("symbol"),
             "Decision": x.get("decision"),
-            "Rejection": x.get("rejection_reason"),
+            "Rejection": x.get("execution_rejection_reason", x.get("rejection_reason")),
             "Trend": x.get("trend_score"),
             "Reason": x.get("reason"),
         })
@@ -286,7 +287,8 @@ def _research_screener_rows(df: pd.DataFrame, context_df: pd.DataFrame | None = 
         sector = _first_value(candidate, "sector") or _first_value(research_source, "sector")
         theme = _first_value(candidate, "theme") or _first_value(research_source, "theme")
         decision = _first_value(candidate, "decision", "action")
-        rejection = _first_value(candidate, "rejection_reason", "reason")
+        rejection = _first_value(candidate, "execution_rejection_reason", "rejection_reason", "reason")
+        execution = _first_value(candidate, "execution_status")
         trend = _first_value(candidate, "trend_score")
         price = _first_value(candidate, "price", "ltp", "last_price", "close")
         scrap_score = _first_value(research_source, "scrap_score")
@@ -316,6 +318,8 @@ def _research_screener_rows(df: pd.DataFrame, context_df: pd.DataFrame | None = 
             "Sector": str(sector) if sector not in (None, "", "UNKNOWN") else "DATA UNAVAILABLE",
             "Theme": str(theme) if theme not in (None, "", "UNKNOWN") else "DATA UNAVAILABLE",
             "Direction": str(decision).upper() if decision is not None else "DATA UNAVAILABLE",
+            "Execution Status": str(execution).upper() if execution is not None else "NOT_RECORDED",
+            "Execution Rejection": str(rejection) if rejection is not None else "—",
             "Trend Score": _display_score(trend, trend is not None),
             "SCRAP Score": _display_score(scrap_score, score_available and scrap_score is not None),
             "Fundamental Score": _display_score(fundamental, score_available and fundamental is not None),
@@ -383,7 +387,7 @@ def stock_screener():
             selected = st.selectbox("Stock", view["Symbol"].tolist(), key="screener_evidence_symbol")
             row = view[view["Symbol"] == selected].iloc[0]
             st.json(row["_raw_payload"])
-    st.caption("The screener is a research view, not an order list. A BUY/SELL can still be rejected by market, risk, execution, sector-exposure, capital, or event/news gates.")
+    st.caption("The screener is a research view, not an order list. A BUY/SELL can be a validated recommendation while still being rejected by portfolio/execution limits for paper entry.")
 
 
 def header(t, d):
@@ -401,10 +405,10 @@ def dashboard():
     a.metric("Mode", s.get("mode", "PAPER"))
     b.metric("Universe", s.get("stocks_observed", 0))
     c.metric("Quotes", s.get("quotes", 0))
-    d.metric("Candidates", len(live_candidates))
-    e.metric("Open Positions", s.get("positions_open", 0))
-    f.metric("Today's P&L", f"₹{float(s.get('today_realized_pnl', 0) or 0):,.2f}")
-    g.metric("Capital", f"₹{settings.reference_capital:,.0f}")
+    d.metric("Recommendations", len(live_candidates))
+    e.metric("Paper Accepted", s.get("execution_accepted_candidates", len(s.get("orders", []))))
+    f.metric("Open Positions", s.get("positions_open", 0))
+    g.metric("Today's P&L", f"₹{float(s.get('today_realized_pnl', 0) or 0):,.2f}")
     cycle_errors = s.get("errors") or []
     age_seconds = heartbeat_age_seconds(h)
     market_is_open = bool(h.get("market_open", s.get("market_open", False)))
@@ -425,29 +429,30 @@ def dashboard():
     if not st.session_state.get("sync_ok", True):
         st.error(f"Dashboard refresh could not retrieve latest persisted state: {st.session_state.get('sync_error', 'unknown error')}")
 
-    st.subheader("Actionable candidates")
+    st.subheader("Validated trade recommendations")
     if live_candidates.empty:
         if cycle_success is not True:
             reason = cycle_errors[0] if cycle_errors else h.get("message", "No verified successful market cycle")
-            st.error(f"No actionable candidates: current market cycle is not verified successful. {reason}")
+            st.error(f"No validated recommendations: current market cycle is not verified successful. {reason}")
         elif not market_is_open:
-            st.info("No actionable candidates while the NSE market is closed. Previous-cycle candidates are hidden to prevent stale signals.")
+            st.info("No validated recommendations while the NSE market is closed. Previous-cycle recommendations are hidden to prevent stale signals.")
         elif age_seconds > 900:
-            st.error("No actionable candidates: the last successful cycle is stale (>15 minutes).")
+            st.error("No validated recommendations: the last successful cycle is stale (>15 minutes).")
         else:
-            st.warning("No actionable candidates persisted. See the gate breakdown below for the exact deterministic reason.")
+            st.warning("No validated recommendations persisted. See the deterministic gate breakdown below for the exact reason.")
     else:
-        st.dataframe(live_candidates, use_container_width=True, hide_index=True)
+        display = live_candidates.drop(columns=["_raw_payload"], errors="ignore")
+        st.dataframe(display, use_container_width=True, hide_index=True)
 
     breakdown = rejection_breakdown(s)
     details = near_misses(s)
     st.subheader("Deterministic strategy gate breakdown")
     total_rejected = int(breakdown["Count"].sum()) if not breakdown.empty else 0
-    analysed_estimate = total_rejected + len(live_candidates)
-    x, y, z = st.columns(3)
-    x.metric("Analysed / rejected + accepted", analysed_estimate)
-    y.metric("Rejected by gates", total_rejected)
-    z.metric("Validated candidates", len(live_candidates))
+    x, y, z, q = st.columns(4)
+    x.metric("Validated recommendations", len(live_candidates))
+    y.metric("Research/strategy rejected", total_rejected - int(s.get("execution_rejected_candidates", 0) or 0))
+    z.metric("Execution rejected", int(s.get("execution_rejected_candidates", 0) or 0))
+    q.metric("Paper accepted", int(s.get("execution_accepted_candidates", len(s.get("orders", []))) or 0))
     if breakdown.empty:
         st.info("No persisted rejection breakdown is available for the displayed cycle yet.")
     else:
@@ -605,13 +610,13 @@ def research_page(page):
     r = flat(events(component="research"))
     if page in {"Trend Scanner", "Top Bullish", "Top Bearish"}:
         if c.empty:
-            st.warning("No verified actionable candidates in the latest successful market cycle.")
+            st.warning("No verified recommendations in the latest successful market cycle.")
             return
         x = c.copy()
         x["_trend"] = pd.to_numeric(x.get("trend_score", 0), errors="coerce").fillna(0)
         if page == "Top Bullish": x = x[x._trend >= settings.bullish_threshold]
         if page == "Top Bearish": x = x[x._trend < settings.bearish_threshold]
-        st.dataframe(x.sort_values("_trend", ascending=False).drop(columns=["_trend"]), use_container_width=True, hide_index=True)
+        st.dataframe(x.sort_values("_trend", ascending=False).drop(columns=["_trend"], errors="ignore"), use_container_width=True, hide_index=True)
         return
     if page == "360° Stock Analysis":
         syms = sorted(set(c.get("symbol", pd.Series(dtype=str)).dropna().astype(str)) | set(r.get("symbol", pd.Series(dtype=str)).dropna().astype(str)))
@@ -692,7 +697,7 @@ def main():
         ist_now = current.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
         is_market_open = ist_now.weekday() < 5 and (ist_now.hour, ist_now.minute, ist_now.second) >= (9, 15, 0) and (ist_now.hour, ist_now.minute, ist_now.second) <= (15, 30, 0)
         if not is_market_open:
-            x = {"mode": PAPER_MODE, "market_open": False, "stocks_observed": j(STATUS).get("stocks_observed", 0), "quotes": j(STATUS).get("quotes", 0), "candidates": [], "orders": [], "errors": [], "execution_gate": "MARKET_CLOSED", "message": "NSE market is closed. Manual analysis is available during market hours; the 24/7 monitor remains active outside market hours."}
+            x = {"mode": PAPER_MODE, "market_open": False, "stocks_observed": j(STATUS).get("stocks_observed", 0), "quotes": j(STATUS).get("quotes", 0), "candidates": [], "recommendations": [], "orders": [], "errors": [], "execution_gate": "MARKET_CLOSED", "message": "NSE market is closed. Manual analysis is available during market hours; the 24/7 monitor remains active outside market hours."}
             st.session_state.last_manual_cycle = x
             st.info(x["message"])
         else:
