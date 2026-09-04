@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 406d9d769098a8f93f39f9fb18afd4a0c44716b1
-Generated UTC: 2026-09-04T05:47:59.834456+00:00
+Commit SHA: 353f9e3175f6f996f583353b4fc1e6015b2c24d5
+Generated UTC: 2026-09-04T05:48:27.051918+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -15,7 +15,7 @@ FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1058 bytes
-.github/workflows/continuous-monitor.yml	14246 bytes
+.github/workflows/continuous-monitor.yml	14239 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	6958 bytes
 .gitignore	684 bytes
@@ -229,7 +229,7 @@ SQUARE_OFF_MINUTE=20
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 14246 bytes
+SIZE: 14239 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -270,14 +270,14 @@ jobs:
           import os
           from datetime import datetime
           from zoneinfo import ZoneInfo
-          now = datetime.now(ZoneInfo('Asia/Kolkata'))
-          opened = now.replace(hour=9, minute=15, second=0, microsecond=0)
-          closed = now.replace(hour=15, minute=30, second=0, microsecond=0)
-          market_open = now.weekday() < 5 and opened <= now <= closed
-          manual = os.getenv('GITHUB_EVENT_NAME') == 'workflow_dispatch'
-          run_cycle = market_open or manual
-          print('IST:', now.isoformat(), 'market_open:', market_open, 'run_cycle:', run_cycle)
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+          now=datetime.now(ZoneInfo('Asia/Kolkata'))
+          opened=now.replace(hour=9,minute=15,second=0,microsecond=0)
+          closed=now.replace(hour=15,minute=30,second=0,microsecond=0)
+          market_open=now.weekday()<5 and opened<=now<=closed
+          manual=os.getenv('GITHUB_EVENT_NAME')=='workflow_dispatch'
+          run_cycle=market_open or manual
+          print('IST:',now.isoformat(),'market_open:',market_open,'run_cycle:',run_cycle)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
               f.write(f'run_cycle={str(run_cycle).lower()}\n')
               f.write(f'market_open={str(market_open).lower()}\n')
           PY
@@ -287,15 +287,14 @@ jobs:
           MARKET_OPEN: ${{ steps.market.outputs.market_open }}
         run: |
           python - <<'PY'
-          import json, os, tempfile
+          import json,os,tempfile
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
-          p=Path('data/scheduler_heartbeat.json'); p.parent.mkdir(parents=True,exist_ok=True)
-          now=datetime.now(ZoneInfo('Asia/Kolkata'))
-          payload={'state':'RUNNING','message':'24/7 scheduled monitor heartbeat is active','updated_at':now.isoformat(),'source':'github-actions-scheduler','workflow_run_id':os.getenv('GITHUB_RUN_ID'),'event':os.getenv('GITHUB_EVENT_NAME'),'market_open':os.getenv('MARKET_OPEN')=='true','scheduled_interval_seconds':300,'paper_mode':True,'live_order_submission':False}
+          p=Path('data/scheduler_heartbeat.json');p.parent.mkdir(parents=True,exist_ok=True)
+          payload={'state':'RUNNING','message':'24/7 scheduled monitor heartbeat is active','updated_at':datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),'source':'github-actions-scheduler','workflow_run_id':os.getenv('GITHUB_RUN_ID'),'event':os.getenv('GITHUB_EVENT_NAME'),'market_open':os.getenv('MARKET_OPEN')=='true','scheduled_interval_seconds':300,'paper_mode':True,'live_order_submission':False}
           fd,tmp=tempfile.mkstemp(prefix='scheduler-',suffix='.tmp',dir='data')
-          with os.fdopen(fd,'w',encoding='utf-8') as f: json.dump(payload,f,indent=2)
+          with os.fdopen(fd,'w',encoding='utf-8') as f:json.dump(payload,f,indent=2)
           os.replace(tmp,p)
           PY
 
@@ -318,42 +317,31 @@ jobs:
           MARKET_OPEN: ${{ steps.market.outputs.market_open }}
         run: |
           python - <<'PY'
-          import json, os
+          import json,os
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
           import requests
-          d=Path('data'); d.mkdir(parents=True,exist_ok=True)
-          token=os.getenv('TELEGRAM_BOT_TOKEN','').strip(); chat=os.getenv('TELEGRAM_CHAT_ID','').strip()
+          d=Path('data');d.mkdir(parents=True,exist_ok=True)
+          token=os.getenv('TELEGRAM_BOT_TOKEN','').strip();chat=os.getenv('TELEGRAM_CHAT_ID','').strip()
           result={'updated_at':datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),'market_open':os.getenv('MARKET_OPEN')=='true','source':'github-actions-telegram-preflight','workflow_run_id':os.getenv('GITHUB_RUN_ID')}
-          if not token or not chat:
-              result.update(status='FAILED',message='Telegram secrets unavailable')
-              (d/'telegram_preflight_status.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
-              print('TELEGRAM_PREFLIGHT_FAILED: secrets unavailable')
-          else:
-              try:
-                  r=requests.get(f'https://api.telegram.org/bot{token}/getMe',timeout=10); p=r.json()
-                  if not r.ok or p.get('ok') is not True:
-                      detail=p.get('description','unknown getMe error') if isinstance(p,dict) else 'unknown getMe error'
-                      raise RuntimeError(f'getMe HTTP {r.status_code}: {detail}')
-                  text=('🟢 STOCKMARKET BOT — Telegram preflight OK\n'
-                        f'Market: {"OPEN" if result["market_open"] else "CLOSED"}\n'
-                        'Mode: PAPER\nLive orders: DISABLED\n'
-                        f'Time: {result["updated_at"]}')
-                  r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json={'chat_id':chat,'text':text,'disable_web_page_preview':True},timeout=10)
-                  try: p=r.json()
-                  except ValueError: p={}
-                  if not r.ok or p.get('ok') is not True:
-                      detail=p.get('description','unknown sendMessage error') if isinstance(p,dict) else 'unknown sendMessage error'
-                      if 'chat not found' in detail.lower():
-                          detail += '; TELEGRAM_CHAT_ID is not visible to this bot. Start the bot from the target account/group, add the bot to the target group/channel, and use that chat ID.'
-                      raise RuntimeError(f'sendMessage HTTP {r.status_code}: {detail}')
-                  result.update(status='PASSED',message='Telegram authenticated and test message delivered')
-                  print('TELEGRAM_PREFLIGHT_PASSED')
-              except Exception as exc:
-                  result.update(status='FAILED',message=str(exc))
-                  print('TELEGRAM_PREFLIGHT_FAILED:',str(exc))
-              (d/'telegram_preflight_status.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
+          try:
+              if not token or not chat: raise RuntimeError('Telegram secrets unavailable')
+              r=requests.get(f'https://api.telegram.org/bot{token}/getMe',timeout=10);p=r.json()
+              if not r.ok or p.get('ok') is not True: raise RuntimeError(f'getMe HTTP {r.status_code}: {p.get("description","unknown error")}')
+              text=('🟢 STOCKMARKET BOT — Telegram preflight OK\n'
+                    f'Market: {"OPEN" if result["market_open"] else "CLOSED"}\nMode: PAPER\nLive orders: DISABLED\n'
+                    f'Time: {result["updated_at"]}')
+              r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json={'chat_id':chat,'text':text,'disable_web_page_preview':True},timeout=10)
+              try:p=r.json()
+              except ValueError:p={}
+              if not r.ok or p.get('ok') is not True: raise RuntimeError(f'sendMessage HTTP {r.status_code}: {p.get("description","unknown error")}')
+              result.update(status='PASSED',message='Telegram authenticated and test message delivered');print('TELEGRAM_PREFLIGHT_PASSED')
+          except Exception as exc:
+              result.update(status='FAILED',message=str(exc));print('TELEGRAM_PREFLIGHT_FAILED:',str(exc))
+          (d/'telegram_preflight_status.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
+          if result['status']!='PASSED': raise SystemExit(result['message'])
+          PY
 
       - name: Dhan authentication and market-feed preflight
         if: steps.market.outputs.run_cycle == 'true'
@@ -365,43 +353,37 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, os
+          import json,os
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
           from intraday_bot.brokers import DhanBroker
           from intraday_bot.config import settings
-          p=Path('data/preflight_status.json'); p.parent.mkdir(parents=True,exist_ok=True)
-          def status(msg,ok):
+          p=Path('data/preflight_status.json');p.parent.mkdir(parents=True,exist_ok=True)
+          def write(msg,ok):
               p.write_text(json.dumps({'status':'PASSED' if ok else 'FAILED','message':msg,'updated_at':datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),'source':'github-actions-dhan-preflight','workflow_run_id':os.getenv('GITHUB_RUN_ID'),'mode':'PAPER','market_open':os.getenv('MARKET_OPEN')=='true','live_order_submission':False},indent=2),encoding='utf-8')
           print('Dhan credential source:',settings.dhan_market_data_credential_source)
           print('Dhan access token configured:',bool(settings.dhan_access_token_value),'length:',len(settings.dhan_access_token_value))
           print('Dhan client configured:',bool(settings.dhan_client_id))
           if not settings.dhan_client_id or not settings.dhan_access_token_configured:
-              message='Dhan requires DHAN_CLIENT_ID and a valid user-generated access token in DHAN_ACCESS_TOKEN. API/application keys are not used as the bearer access credential; automatic PIN/TOTP/token generation is disabled.'
-              status(message,False)
-              raise SystemExit('DHAN_PREFLIGHT_ERROR: '+message)
+              msg='Dhan requires DHAN_CLIENT_ID and a valid user-generated access token in DHAN_ACCESS_TOKEN; automatic PIN/TOTP/token generation is disabled.';write(msg,False);raise SystemExit('DHAN_PREFLIGHT_ERROR: '+msg)
           try: health=DhanBroker().health()
-          except Exception as exc: status('Dhan preflight failed: '+str(exc),False); raise SystemExit('DHAN_PREFLIGHT_ERROR: '+str(exc))
+          except Exception as exc: write(str(exc),False);raise SystemExit('DHAN_PREFLIGHT_ERROR: '+str(exc))
           print('Dhan authentication:',health.message)
-          if not health.authenticated:
-              status(health.message,False); raise SystemExit('DHAN_PREFLIGHT_ERROR: '+health.message)
+          if not health.authenticated: write(health.message,False);raise SystemExit('DHAN_PREFLIGHT_ERROR: '+health.message)
           raw=settings.dhan_security_ids_json.strip()
           if raw:
-              try: mapping=json.loads(raw)
-              except json.JSONDecodeError: status('Invalid DHAN_SECURITY_IDS_JSON',False); raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: invalid security map')
+              try:mapping=json.loads(raw)
+              except json.JSONDecodeError: write('Invalid DHAN_SECURITY_IDS_JSON',False);raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: invalid security map')
               instruments=[]
               for symbol,value in mapping.items():
                   item=value if isinstance(value,dict) else {'security_id':value,'exchange_segment':'NSE_EQ'}
-                  if item.get('security_id'):
-                      instruments.append({'symbol':str(symbol),'security_id':item['security_id'],'exchange_segment':item.get('exchange_segment','NSE_EQ')})
-                  if instruments: break
+                  if item.get('security_id'): instruments.append({'symbol':str(symbol),'security_id':item['security_id'],'exchange_segment':item.get('exchange_segment','NSE_EQ')})
+                  if instruments:break
               if instruments:
-                  quotes=DhanBroker().bulk_quotes(instruments)
-                  print('Dhan market-feed preflight quotes:',len(quotes))
-                  if not quotes: status('Market-feed returned zero quotes',False); raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: zero quotes')
-          status('Dhan client ID + access token and market-feed preflight passed',True)
-          print('DHAN_PREFLIGHT_PASSED')
+                  quotes=DhanBroker().bulk_quotes(instruments);print('Dhan market-feed preflight quotes:',len(quotes))
+                  if not quotes: write('Market-feed returned zero quotes',False);raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: zero quotes')
+          write('Dhan client ID + access token and market-feed preflight passed',True);print('DHAN_PREFLIGHT_PASSED')
           PY
 
       - name: Build complete NSE cash-equity universe
@@ -424,8 +406,7 @@ jobs:
           if not universe: raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: universe empty')
           sample=[x for x in universe if 'NSETEST' not in str(x.get('symbol','')).upper()][:10]
           if not sample: raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: no real symbols')
-          quotes=DhanBroker().bulk_quotes(sample)
-          print('Fresh universe symbols:',len(universe),'quote sample:',len(quotes))
+          quotes=DhanBroker().bulk_quotes(sample);print('Fresh universe symbols:',len(universe),'quote sample:',len(quotes))
           if not quotes: raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: zero quotes')
           print('DHAN_FRESH_UNIVERSE_QUOTE_VERIFY_PASSED')
           PY
@@ -462,13 +443,13 @@ jobs:
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
-          p=Path('data/worker_heartbeat.json'); p.parent.mkdir(parents=True,exist_ok=True)
-          mo=os.getenv('MARKET_OPEN')=='true'; ran=os.getenv('RUN_CYCLE')=='true'; ok=os.getenv('CYCLE_SUCCESS')=='true'
+          p=Path('data/worker_heartbeat.json');p.parent.mkdir(parents=True,exist_ok=True)
+          mo=os.getenv('MARKET_OPEN')=='true';ran=os.getenv('RUN_CYCLE')=='true';ok=os.getenv('CYCLE_SUCCESS')=='true'
           state='RUNNING' if mo and ran and ok else ('DEGRADED' if mo and ran else 'HEARTBEAT_ONLY')
-          msg='Latest complete paper-trading market cycle succeeded' if state=='RUNNING' else ('Market-cycle invocation failed; inspect preflight_status or Diagnostics' if state=='DEGRADED' else '24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled')
+          msg='Latest complete paper-trading market cycle succeeded' if state=='RUNNING' else ('Market-cycle invocation failed; inspect preflight_status or cycle logs' if state=='DEGRADED' else '24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled')
           payload={'state':state,'message':msg,'updated_at':datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),'source':'github-actions-monitor','hostname':socket.gethostname(),'workflow_run_id':os.getenv('GITHUB_RUN_ID'),'heartbeat_interval_seconds':300,'is_persistent_worker':False,'market_open':mo,'market_cycle':mo and ran,'cycle_success':ok if ran else None,'scheduler_based_monitor':True}
           fd,tmp=tempfile.mkstemp(prefix='worker-',suffix='.tmp',dir='data')
-          with os.fdopen(fd,'w',encoding='utf-8') as f: json.dump(payload,f,indent=2)
+          with os.fdopen(fd,'w',encoding='utf-8') as f:json.dump(payload,f,indent=2)
           os.replace(tmp,p)
           PY
 
@@ -483,8 +464,26 @@ jobs:
           git commit -m 'Update Bot scheduler, worker heartbeat and paper state [skip ci]'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            git rebase origin/main
-            if git push origin HEAD:main; then echo "State persisted on attempt ${attempt}."; exit 0; fi
+            if git rebase origin/main; then
+              git push origin HEAD:main && echo "State persisted on attempt ${attempt}." && exit 0
+            fi
+            conflicts=$(git diff --name-only --diff-filter=U || true)
+            if [ -z "$conflicts" ]; then
+              git rebase --abort || true
+              git reset --soft origin/main
+              git add data/ reports/
+              git commit -m 'Update Bot scheduler, worker heartbeat and paper state [skip ci]' || true
+              sleep 2
+              continue
+            fi
+            non_state=$(printf '%s\n' "$conflicts" | grep -Ev '^(data/|reports/)' || true)
+            if [ -n "$non_state" ]; then
+              echo "Unexpected non-state merge conflict:";echo "$non_state";git rebase --abort;exit 1
+            fi
+            printf '%s\n' "$conflicts" | while IFS= read -r file; do [ -n "$file" ] && git checkout --ours -- "$file"; done
+            git add $conflicts
+            GIT_EDITOR=true git -c core.editor=true rebase --continue
+            if git push origin HEAD:main; then echo "State persisted after state-conflict resolution on attempt ${attempt}."; exit 0; fi
             git rebase --abort || true
             git reset --soft origin/main
             git add data/ reports/
