@@ -21,7 +21,7 @@
     "FINANCIAL_SERVICES": "404 Client Error: Not Found for url: https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20FINANCIAL%20SERVICES"
   },
   "membership_fetched_at": "2026-09-04T09:10:59.720733+00:00",
-  "as_of": "2026-09-04T09:50:14.401395+00:00",
+  "as_of": "2026-09-04T09:58:11.894279+00:00",
   "classified_symbols": 160,
   "unclassified_universe_symbols": 2478,
   "sectors": {
@@ -59,9 +59,9 @@
       "declining": 5,
       "unchanged": 1,
       "breadth_pct": 54.55,
-      "average_change_pct": 0.1592,
+      "average_change_pct": 0.1984,
       "median_change_pct": 0.133,
-      "strength": 5.466,
+      "strength": 5.525,
       "state": "NEUTRAL"
     },
     "IT": {
@@ -85,9 +85,9 @@
       "declining": 11,
       "unchanged": 2,
       "breadth_pct": 15.38,
-      "average_change_pct": -0.6082,
+      "average_change_pct": -0.6098,
       "median_change_pct": -0.4616,
-      "strength": 2.588,
+      "strength": 2.585,
       "state": "WEAK"
     },
     "PHARMA": {
@@ -98,9 +98,9 @@
       "declining": 13,
       "unchanged": 0,
       "breadth_pct": 35.0,
-      "average_change_pct": -0.2009,
+      "average_change_pct": -0.1784,
       "median_change_pct": -0.8298,
-      "strength": 3.949,
+      "strength": 3.982,
       "state": "NEUTRAL"
     },
     "FMCG": {
@@ -111,9 +111,9 @@
       "declining": 10,
       "unchanged": 1,
       "breadth_pct": 28.57,
-      "average_change_pct": -0.4948,
-      "median_change_pct": -0.5975,
-      "strength": 3.186,
+      "average_change_pct": -0.4842,
+      "median_change_pct": -0.4617,
+      "strength": 3.202,
       "state": "WEAK"
     },
     "METALS": {
@@ -124,9 +124,9 @@
       "declining": 2,
       "unchanged": 0,
       "breadth_pct": 86.67,
-      "average_change_pct": 0.8535,
+      "average_change_pct": 0.878,
       "median_change_pct": 0.6832,
-      "strength": 7.78,
+      "strength": 7.817,
       "state": "STRONG"
     },
     "REALTY": {
@@ -137,9 +137,9 @@
       "declining": 9,
       "unchanged": 0,
       "breadth_pct": 10.0,
-      "average_change_pct": -0.7974,
+      "average_change_pct": -0.8077,
       "median_change_pct": -0.8824,
-      "strength": 2.304,
+      "strength": 2.288,
       "state": "WEAK"
     },
     "MEDIA": {
@@ -150,9 +150,9 @@
       "declining": 4,
       "unchanged": 0,
       "breadth_pct": 60.0,
-      "average_change_pct": 1.2039,
-      "median_change_pct": 0.9755,
-      "strength": 7.306,
+      "average_change_pct": 1.1474,
+      "median_change_pct": 0.8808,
+      "strength": 7.221,
       "state": "STRONG"
     },
     "HEALTHCARE": {
@@ -163,9 +163,9 @@
       "declining": 16,
       "unchanged": 0,
       "breadth_pct": 20.0,
-      "average_change_pct": -0.7711,
+      "average_change_pct": -0.7627,
       "median_change_pct": -1.1254,
-      "strength": 2.343,
+      "strength": 2.356,
       "state": "WEAK"
     },
     "OIL_GAS": {
@@ -173,12 +173,12 @@
       "members": 15,
       "quoted": 15,
       "advancing": 5,
-      "declining": 10,
-      "unchanged": 0,
-      "breadth_pct": 33.33,
-      "average_change_pct": 0.4541,
+      "declining": 9,
+      "unchanged": 1,
+      "breadth_pct": 35.71,
+      "average_change_pct": 0.4922,
       "median_change_pct": -0.312,
-      "strength": 4.848,
+      "strength": 5.024,
       "state": "NEUTRAL"
     },
     "CONSUMER_DURABLES": {
@@ -189,9 +189,9 @@
       "declining": 8,
       "unchanged": 0,
       "breadth_pct": 38.46,
-      "average_change_pct": -0.0761,
+      "average_change_pct": -0.0722,
       "median_change_pct": -0.1591,
-      "strength": 4.309,
+      "strength": 4.315,
       "state": "NEUTRAL"
     },
     "CONSUMPTION": {
