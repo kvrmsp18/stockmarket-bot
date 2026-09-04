@@ -141,6 +141,24 @@ def verified_candidates(status: dict, heartbeat: dict) -> pd.DataFrame:
     return pd.DataFrame(rows) if isinstance(rows, list) else pd.DataFrame()
 
 
+def latest_status() -> dict:
+    """Use monitor_status when valid, otherwise recover the latest cycle ledger."""
+    status = j(STATUS)
+    if isinstance(status, dict) and status.get("cycle_id"):
+        return status
+    try:
+        with DB.connect() as con:
+            row = con.execute("SELECT payload FROM cycles ORDER BY started_at DESC LIMIT 1").fetchone()
+        if row:
+            payload = json.loads(row["payload"] or "{}")
+            if isinstance(payload, dict):
+                payload["_recovered_from_cycle_ledger"] = True
+                return payload
+    except Exception:
+        pass
+    return status if isinstance(status, dict) else {}
+
+
 def rejection_breakdown(status: dict) -> pd.DataFrame:
     raw = status.get("rejections") or {}
     rows = []
@@ -204,56 +222,94 @@ def _display_score(value, available=True):
         return "DATA UNAVAILABLE"
 
 
-def _research_screener_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize raw research events into one latest, human-readable row per symbol."""
-    if df.empty:
+def _latest_context(context_df: pd.DataFrame) -> dict[str, dict]:
+    latest = {}
+    if context_df.empty:
+        return latest
+    work = context_df.copy()
+    if "ts" not in work.columns:
+        return latest
+    work["_ts"] = pd.to_datetime(work["ts"], errors="coerce", utc=True)
+    work = work.sort_values(["_ts", "id"], ascending=[False, False], na_position="last")
+    for _, raw in work.iterrows():
+        payload = _as_payload(raw.get("payload"))
+        symbol = str(_first_value(payload, "symbol") or raw.get("symbol") or "").strip().upper()
+        if symbol and symbol not in latest:
+            latest[symbol] = payload
+    return latest
+
+
+def _research_screener_rows(df: pd.DataFrame, context_df: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Normalize research plus persisted signal/rejection context into one row per stock."""
+    if df.empty and (context_df is None or context_df.empty):
         return pd.DataFrame()
 
+    research_latest = {}
+    if not df.empty:
+        work = df.copy()
+        work["_ts"] = pd.to_datetime(work["ts"], errors="coerce", utc=True)
+        work = work.sort_values(["_ts", "id"], ascending=[False, False], na_position="last")
+        for _, raw in work.iterrows():
+            payload = _as_payload(raw.get("payload"))
+            symbol = str(_first_value(payload, "symbol") or raw.get("symbol") or "").strip().upper()
+            if symbol and symbol not in research_latest:
+                research_latest[symbol] = (payload, raw)
+
+    context_latest = _latest_context(context_df if context_df is not None else pd.DataFrame())
+    symbols = sorted(set(research_latest) | set(context_latest))
     rows = []
-    seen = set()
-    for _, raw in df.sort_values("id", ascending=False).iterrows():
-        payload = _as_payload(raw.get("payload"))
+
+    for symbol in symbols:
+        payload, raw = research_latest.get(symbol, ({}, None))
+        candidate = context_latest.get(symbol, {})
         merged = dict(payload)
-        for key in ("symbol", "sector", "theme", "scrap_score", "fundamental_score", "valuation_score", "conviction_score", "status", "rejection_reason", "decision", "trend_score", "price", "ltp", "source_status", "provider"):
-            if key not in merged and raw.get(key) not in (None, ""):
-                merged[key] = raw.get(key)
+        research_nested = _as_payload(candidate.get("research"))
+        if research_nested:
+            merged_research = dict(research_nested)
+        else:
+            merged_research = {}
 
-        symbol = str(_first_value(merged, "symbol") or "").strip().upper()
-        if not symbol or symbol in seen:
-            continue
-        seen.add(symbol)
+        research_source = dict(payload)
+        if merged_research:
+            research_source.update(merged_research)
+        for key in ("fundamental_score", "valuation_score", "status", "source_status", "provider", "scrap", "frameworks", "valuation"):
+            if key not in research_source and key in candidate:
+                research_source[key] = candidate[key]
 
-        status = str(_first_value(merged, "status", "research_status", "source_status") or "DATA UNAVAILABLE").upper()
-        source = str(_first_value(merged, "provider", "source") or "")
-        sector = _first_value(merged, "sector")
-        theme = _first_value(merged, "theme")
-        decision = _first_value(merged, "decision", "action")
-        rejection = _first_value(merged, "rejection_reason", "reason")
-        trend = _first_value(merged, "trend_score", "score")
-        price = _first_value(merged, "price", "ltp", "last_price", "close")
-
-        scrap = _as_payload(merged.get("scrap"))
+        status = str(_first_value(research_source, "status", "research_status", "source_status") or "DATA UNAVAILABLE").upper()
+        source = str(_first_value(research_source, "provider", "source") or "")
+        scrap = _as_payload(research_source.get("scrap"))
         scrap_status = str(_first_value(scrap, "status") or "").upper()
-        scrap_score = _first_value(merged, "scrap_score")
-        if scrap_score is None:
-            scrap_score = _first_value(scrap, "scrap_score", "score")
         if status == "DATA UNAVAILABLE" and scrap_status:
             status = scrap_status
 
-        fundamentals = _as_payload(merged.get("fundamentals"))
-        valuation = _as_payload(merged.get("valuation"))
-        fundamental = _first_value(merged, "fundamental_score")
-        valuation_score = _first_value(merged, "valuation_score")
+        sector = _first_value(candidate, "sector") or _first_value(research_source, "sector")
+        theme = _first_value(candidate, "theme") or _first_value(research_source, "theme")
+        decision = _first_value(candidate, "decision", "action")
+        rejection = _first_value(candidate, "rejection_reason", "reason")
+        trend = _first_value(candidate, "trend_score")
+        price = _first_value(candidate, "price", "ltp", "last_price", "close")
+        scrap_score = _first_value(research_source, "scrap_score")
+        if scrap_score is None:
+            scrap_score = _first_value(scrap, "scrap_score", "score")
+
+        fundamentals = _as_payload(research_source.get("fundamentals"))
+        valuation = _as_payload(research_source.get("valuation"))
+        fundamental = _first_value(research_source, "fundamental_score")
+        valuation_score = _first_value(research_source, "valuation_score")
         if fundamental is None:
             fundamental = _first_value(fundamentals, "fundamental_score", "score")
         if valuation_score is None:
             valuation_score = _first_value(valuation, "valuation_score", "score")
+        conviction = _first_value(candidate, "conviction_score")
+        if conviction is None:
+            frameworks = _as_payload(research_source.get("frameworks"))
+            conviction = _first_value(frameworks, "overall")
 
         score_available = status not in {"DATA UNAVAILABLE", "UNKNOWN", ""}
         if not score_available:
-            fundamental = valuation_score = scrap_score = None
+            fundamental = valuation_score = scrap_score = conviction = None
 
-        conviction = _first_value(merged, "conviction_score")
         rows.append({
             "Symbol": symbol,
             "Price": _display_score(price, price is not None),
@@ -268,8 +324,8 @@ def _research_screener_rows(df: pd.DataFrame) -> pd.DataFrame:
             "Research Status": status,
             "Provider": source or "DATA UNAVAILABLE",
             "Rejection Reason": str(rejection) if rejection is not None else "—",
-            "Last Updated": raw.get("ts"),
-            "_raw_payload": payload,
+            "Last Updated": (raw.get("ts") if raw is not None else None),
+            "_raw_payload": payload or candidate,
         })
 
     result = pd.DataFrame(rows)
@@ -280,11 +336,16 @@ def _research_screener_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def stock_screener():
-    header("Stock Screener", "Latest persisted source-backed research, normalized to one row per stock. Missing research stays DATA UNAVAILABLE; no generic or fake stock data is substituted.")
-    raw = events(component="research", limit=3000)
-    table = _research_screener_rows(raw)
+    header("Stock Screener", "Latest persisted research plus signal/rejection context, normalized to one row per stock. Missing research stays DATA UNAVAILABLE; no generic or fake stock data is substituted.")
+    research_raw = events(component="research", limit=3000)
+    rejection_raw = events(kind="SIGNAL_REJECTED", limit=3000)
+    signals_raw = sql("SELECT rowid AS id, ts, symbol, decision, payload FROM signals ORDER BY rowid DESC LIMIT 3000")
+    if not signals_raw.empty:
+        signals_raw["component"] = "signals"
+    context = pd.concat([rejection_raw, signals_raw], ignore_index=True, sort=False) if not rejection_raw.empty or not signals_raw.empty else pd.DataFrame()
+    table = _research_screener_rows(research_raw, context)
     if table.empty:
-        st.info("No persisted research records are available yet.")
+        st.info("No persisted research or signal records are available yet.")
         return
 
     c1, c2, c3, c4 = st.columns(4)
@@ -331,7 +392,7 @@ def header(t, d):
 
 
 def dashboard():
-    s = j(STATUS)
+    s = latest_status()
     h = j(HB)
     sh = j(SHB)
     header("📈 NSE/BSE Intraday AI Trading Desk", "Observe → Analyse → Filter → Rank → Decide → Validate → Size → Execute → Monitor → Exit → Reconcile. Paper mode is default; AI is advisory only.")
@@ -538,7 +599,7 @@ def research_page(page):
         return
 
     header(page, f"{page} — persisted Bot results only; no generic/fake stock data is substituted.")
-    s = j(STATUS)
+    s = latest_status()
     h = j(HB)
     c = verified_candidates(s, h)
     r = flat(events(component="research"))
