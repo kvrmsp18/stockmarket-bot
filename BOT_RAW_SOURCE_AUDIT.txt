@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: c934de9e6823fa81069c7556f544b0c424d72a9c
-Generated UTC: 2026-09-04T07:31:40.051747+00:00
+Commit SHA: bd8acfc4c7a3c37cec521913f2e60f028951ebe6
+Generated UTC: 2026-09-04T07:37:15.840126+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -38,7 +38,7 @@ data/market_regime.json	933 bytes
 data/monitor_status.json	1215018 bytes
 data/paper_trading_journal.jsonl	814 bytes
 data/preflight_status.json	312 bytes
-data/scheduler_heartbeat.json	350 bytes
+data/scheduler_heartbeat.json	359 bytes
 data/telegram_preflight_status.json	250 bytes
 data/trading.db	28905472 bytes
 data/universe.json	303881 bytes
@@ -94,7 +94,7 @@ scripts/eod_report.py	3477 bytes
 scripts/load_universe.py	2260 bytes
 scripts/run_daily_cycle.py	3428 bytes
 scripts/run_eod_close.py	3034 bytes
-scripts/run_sector_intelligence.py	1480 bytes
+scripts/run_sector_intelligence.py	2146 bytes
 scripts/worker.py	6600 bytes
 src/__init__.py	1376 bytes
 src/adapters.py	3391 bytes
@@ -38476,9 +38476,9 @@ SIZE: 312 bytes
 {
   "status": "PASSED",
   "message": "Dhan client ID + access token and market-feed preflight passed",
-  "updated_at": "2026-09-04T13:00:32.552067+05:30",
+  "updated_at": "2026-09-04T13:04:48.579150+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "33848999701",
+  "workflow_run_id": "33849326075",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
@@ -38486,15 +38486,15 @@ SIZE: 312 bytes
 
 ====================================================================
 FILE: data/scheduler_heartbeat.json
-SIZE: 350 bytes
+SIZE: 359 bytes
 ====================================================================
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T13:00:05.125174+05:30",
+  "updated_at": "2026-09-04T13:04:16.030930+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33848999701",
-  "event": "schedule",
+  "workflow_run_id": "33849326075",
+  "event": "workflow_dispatch",
   "market_open": true,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
@@ -38506,10 +38506,10 @@ FILE: data/telegram_preflight_status.json
 SIZE: 250 bytes
 ====================================================================
 {
-  "updated_at": "2026-09-04T13:00:29.310184+05:30",
+  "updated_at": "2026-09-04T13:04:46.072080+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "33848999701",
+  "workflow_run_id": "33849326075",
   "status": "PASSED",
   "message": "Telegram authenticated and test message delivered"
 }
@@ -54381,10 +54381,10 @@ SIZE: 447 bytes
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect preflight_status or cycle logs",
-  "updated_at": "2026-09-04T13:00:38.130040+05:30",
+  "updated_at": "2026-09-04T13:04:54.407329+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmgx7h7",
-  "workflow_run_id": "33848999701",
+  "workflow_run_id": "33849326075",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
@@ -59657,40 +59657,63 @@ if __name__ == "__main__":
 
 ====================================================================
 FILE: scripts/run_sector_intelligence.py
-SIZE: 1480 bytes
+SIZE: 2146 bytes
 ====================================================================
+"""Build live NSE sector intelligence for the production paper-trading cycle."""
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+# When a file under scripts/ is executed directly (``python scripts/foo.py``),
+# Python puts scripts/ on sys.path rather than the repository root.  Explicitly
+# add the root so the production intraday_bot package is always importable in
+# GitHub Actions and local validation.
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from intraday_bot.brokers import DhanBroker
 from intraday_bot.sector_intelligence import build
 
 
 def main() -> None:
-    universe_path = Path("data/universe.json")
+    universe_path = ROOT / "data" / "universe.json"
     universe = json.loads(universe_path.read_text(encoding="utf-8")) if universe_path.exists() else []
-    if not universe:
+    if not isinstance(universe, list) or not universe:
         raise SystemExit("SECTOR_INTELLIGENCE_FAILED: universe is empty")
-    quotes = DhanBroker().bulk_quotes(universe)
+
+    broker = DhanBroker()
+    quotes = broker.bulk_quotes(universe)
     if not quotes:
         raise SystemExit("SECTOR_INTELLIGENCE_FAILED: Dhan returned zero quotes")
+
     result = build(universe, quotes)
     if result.get("status") != "AVAILABLE":
         raise SystemExit("SECTOR_INTELLIGENCE_FAILED: sector source unavailable")
+
     print("SECTOR_INTELLIGENCE_AVAILABLE")
     print("Classified symbols:", result.get("classified_symbols"))
     print("Unclassified universe symbols:", result.get("unclassified_universe_symbols"))
+
     ranked = sorted(
-        (dict(v, sector=k) for k, v in (result.get("sectors") or {}).items()),
-        key=lambda x: x.get("strength", 0),
+        (dict(value, sector=key) for key, value in (result.get("sectors") or {}).items()),
+        key=lambda row: row.get("strength", 0),
         reverse=True,
     )
     for row in ranked[:5]:
-        print(f"STRONGEST {row['sector']}: strength={row['strength']} breadth={row['breadth_pct']}% avg={row['average_change_pct']}")
+        print(
+            f"STRONGEST {row['sector']}: "
+            f"strength={row['strength']} breadth={row['breadth_pct']}% "
+            f"avg={row['average_change_pct']}"
+        )
     for row in ranked[-5:]:
-        print(f"WEAKEST {row['sector']}: strength={row['strength']} breadth={row['breadth_pct']}% avg={row['average_change_pct']}")
+        print(
+            f"WEAKEST {row['sector']}: "
+            f"strength={row['strength']} breadth={row['breadth_pct']}% "
+            f"avg={row['average_change_pct']}"
+        )
 
 
 if __name__ == "__main__":
