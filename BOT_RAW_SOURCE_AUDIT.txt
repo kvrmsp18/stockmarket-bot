@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 1b687973a126a27c1ca6f1e809fb7dfcc8aa5fd9
-Generated UTC: 2026-09-04T11:06:32.698726+00:00
+Commit SHA: c5b2aa2835aec6740132d692c2399c7659c964b4
+Generated UTC: 2026-09-04T11:10:57.333731+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -56,7 +56,7 @@ intraday_bot/ai_advisor.py	2731 bytes
 intraday_bot/alerts.py	917 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
-intraday_bot/brokers.py	15861 bytes
+intraday_bot/brokers.py	16028 bytes
 intraday_bot/config.py	6496 bytes
 intraday_bot/database.py	6073 bytes
 intraday_bot/engine.py	16163 bytes
@@ -38096,9 +38096,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T16:27:06.823190+05:30",
+  "updated_at": "2026-09-04T16:39:59.281492+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33865628634",
+  "workflow_run_id": "33866635959",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -55182,10 +55182,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-04T16:27:06.907864+05:30",
+  "updated_at": "2026-09-04T16:39:59.366900+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmejwal",
-  "workflow_run_id": "33865628634",
+  "hostname": "runnervmgx7h7",
+  "workflow_run_id": "33866635959",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -55576,7 +55576,7 @@ def run(df:pd.DataFrame, capital:float=100000)->dict:
 
 ====================================================================
 FILE: intraday_bot/brokers.py
-SIZE: 15861 bytes
+SIZE: 16028 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -55827,7 +55827,9 @@ class DhanBroker(BrokerInterface):
 
     @staticmethod
     def _daily_start_date(today: datetime) -> str:
-        return (today.date() - timedelta(days=420)).isoformat()
+        # Keep enough genuine daily candles for 14-period monthly RSI plus warm-up.
+        # 540 calendar days is intentionally above the runtime's 300-candle floor.
+        return (today.date() - timedelta(days=540)).isoformat()
 
     @staticmethod
     def _daily_history_payload(security_id: str, exchange_segment: str, instrument: str, from_date: str, to_date: str) -> dict[str, Any]:
