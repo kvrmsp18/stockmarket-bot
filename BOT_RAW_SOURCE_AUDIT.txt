@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 369d1eaa51c1d45a34de058bdd8eebd0a3b2bfc9
-Generated UTC: 2026-09-04T10:17:44.660978+00:00
+Commit SHA: 0a6fbbc14e43916dcaebe15aab7f1a3197f43126
+Generated UTC: 2026-09-04T10:28:32.263790+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -58,7 +58,7 @@ intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	15861 bytes
 intraday_bot/config.py	6496 bytes
-intraday_bot/database.py	5203 bytes
+intraday_bot/database.py	6073 bytes
 intraday_bot/engine.py	16163 bytes
 intraday_bot/event_news_risk.py	6806 bytes
 intraday_bot/fundamentals_cache.py	4100 bytes
@@ -136,6 +136,7 @@ src/validation_gate.py	9636 bytes
 src/validation_store.py	2407 bytes
 start.sh	504 bytes
 tests/__init__.py	0 bytes
+tests/test_database_locking.py	1015 bytes
 tests/test_dhan_market_data.py	2391 bytes
 tests/test_event_news_risk.py	1226 bytes
 tests/test_fundamentals_cache.py	1331 bytes
@@ -37799,9 +37800,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-04T15:41:08.252437+05:30",
+  "updated_at": "2026-09-04T15:55:51.320108+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33861992521",
+  "workflow_run_id": "33863185263",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -54885,10 +54886,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-04T15:41:08.335961+05:30",
+  "updated_at": "2026-09-04T15:55:51.405115+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "33861992521",
+  "workflow_run_id": "33863185263",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -55809,7 +55810,7 @@ settings = Settings()
 
 ====================================================================
 FILE: intraday_bot/database.py
-SIZE: 5203 bytes
+SIZE: 6073 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -55824,17 +55825,32 @@ from .config import settings
 
 
 class Database:
-    """Small SQLite repository; schema is intentionally PostgreSQL-friendly."""
+    """Small SQLite repository used by the paper-trading runtime.
+
+    The runtime has more than one writer path (cycle persistence, execution
+    events and EOD reconciliation). Connections therefore use autocommit plus
+    SQLite's busy timeout. This prevents a long-lived implicit transaction from
+    holding the database write lock while another repository method records an
+    event. Multi-statement operations that need atomicity should use an
+    explicit ``BEGIN``/``COMMIT`` on the same connection.
+    """
 
     def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path or settings.db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._init()
 
     def connect(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
+        con = sqlite3.connect(
+            self.path,
+            timeout=30,
+            check_same_thread=False,
+            isolation_level=None,
+        )
         con.row_factory = sqlite3.Row
+        con.execute("PRAGMA busy_timeout=30000")
+        con.execute("PRAGMA foreign_keys=ON")
         return con
 
     def _init(self) -> None:
@@ -55911,19 +55927,34 @@ class Database:
                 """
             )
 
-    def event(self, component: str, severity: str, event_type: str, payload: dict[str, Any], symbol: str | None = None, mode: str = "PAPER") -> None:
+    def event(
+        self,
+        component: str,
+        severity: str,
+        event_type: str,
+        payload: dict[str, Any],
+        symbol: str | None = None,
+        mode: str = "PAPER",
+    ) -> None:
         now = datetime.now(timezone.utc).isoformat()
+        encoded = json.dumps(payload, default=str)
         with self._lock, self.connect() as con:
             con.execute(
                 "INSERT INTO events(ts,component,severity,event_type,symbol,mode,payload) VALUES(?,?,?,?,?,?,?)",
-                (now, component, severity, event_type, symbol, mode, json.dumps(payload, default=str)),
+                (now, component, severity, event_type, symbol, mode, encoded),
             )
 
     def signal(self, signal_id: str, symbol: str, decision: str, payload: dict[str, Any]) -> None:
         with self._lock, self.connect() as con:
             con.execute(
                 "INSERT OR REPLACE INTO signals(signal_id,ts,symbol,decision,payload) VALUES(?,?,?,?,?)",
-                (signal_id, datetime.now(timezone.utc).isoformat(), symbol, decision, json.dumps(payload, default=str)),
+                (
+                    signal_id,
+                    datetime.now(timezone.utc).isoformat(),
+                    symbol,
+                    decision,
+                    json.dumps(payload, default=str),
+                ),
             )
 
     def recent(self, table: str, limit: int = 100) -> list[dict[str, Any]]:
@@ -55931,7 +55962,10 @@ class Database:
         if table not in allowed:
             raise ValueError("invalid table")
         with self.connect() as con:
-            rows = con.execute(f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT ?", (limit,)).fetchall()
+            rows = con.execute(
+                f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def scalar(self, sql: str, params: tuple[Any, ...] = ()) -> Any:
@@ -68028,6 +68062,33 @@ FILE: tests/__init__.py
 SIZE: 0 bytes
 ====================================================================
 
+
+====================================================================
+FILE: tests/test_database_locking.py
+SIZE: 1015 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+import sqlite3
+
+from intraday_bot.database import Database
+
+
+def test_event_can_write_while_runtime_connection_is_open(tmp_path):
+    db = Database(tmp_path / "trading.db")
+    with db.connect() as con:
+        con.execute(
+            "INSERT INTO positions(position_id,symbol,mode,side,quantity,entry_price,current_price,stop,target,opened_at,payload) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("POS-1", "TEST", "PAPER", "BUY", 1, 100.0, 100.0, 95.0, 110.0, "2026-09-04T10:00:00+00:00", "{}"),
+        )
+        # This reproduces the old EOD pattern: a transaction is open on one
+        # connection and the repository records the close event separately.
+        db.event("execution", "INFO", "POSITION_CLOSED", {"trade_id": "TRD-1", "net_pnl": 5.0}, "TEST", "PAPER")
+
+    assert db.scalar("SELECT COUNT(*) FROM events WHERE event_type='POSITION_CLOSED'") == 1
+    assert db.scalar("SELECT COUNT(*) FROM positions WHERE position_id='POS-1'") == 1
 
 ====================================================================
 FILE: tests/test_dhan_market_data.py
