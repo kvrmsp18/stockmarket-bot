@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: fcfe0740a5835c7949e3b16691c31b98711b50a4
-Generated UTC: 2026-09-04T03:12:58.730403+00:00
+Commit SHA: ccb3793354cff1346cef8c80026f77e98541a443
+Generated UTC: 2026-09-04T03:13:27.392937+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -15,7 +15,7 @@ FILE INVENTORY
 ====================================================================
 .devcontainer/devcontainer.json	1034 bytes
 .env.example	1097 bytes
-.github/workflows/continuous-monitor.yml	14526 bytes
+.github/workflows/continuous-monitor.yml	12711 bytes
 .github/workflows/eod-close.yml	1751 bytes
 .github/workflows/export-source-audit.yml	6958 bytes
 .gitignore	684 bytes
@@ -232,7 +232,7 @@ SQUARE_OFF_MINUTE=20
 
 ====================================================================
 FILE: .github/workflows/continuous-monitor.yml
-SIZE: 14526 bytes
+SIZE: 12711 bytes
 ====================================================================
 name: Complete Intraday Monitor
 
@@ -276,14 +276,13 @@ jobs:
           now = datetime.now(ZoneInfo('Asia/Kolkata'))
           opened = now.replace(hour=9, minute=15, second=0, microsecond=0)
           closed = now.replace(hour=15, minute=30, second=0, microsecond=0)
-          weekday = now.weekday() < 5
-          in_window = weekday and opened <= now <= closed
+          market_open = now.weekday() < 5 and opened <= now <= closed
           manual = os.getenv('GITHUB_EVENT_NAME') == 'workflow_dispatch'
-          run_cycle = in_window or manual
-          print('IST:', now.isoformat(), 'market_open:', in_window, 'run_cycle:', run_cycle)
+          run_cycle = market_open or manual
+          print('IST:', now.isoformat(), 'market_open:', market_open, 'run_cycle:', run_cycle)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'run_cycle={str(run_cycle).lower()}\n')
-              f.write(f'market_open={str(in_window).lower()}\n')
+              f.write(f'market_open={str(market_open).lower()}\n')
           PY
 
       - name: Record scheduler heartbeat
@@ -329,14 +328,11 @@ jobs:
         if: steps.market.outputs.run_cycle == 'true'
         run: pip install -r requirements.txt --quiet
 
-      - name: Dhan authentication and market-feed preflight
+      - name: Dhan manual-token market-feed preflight
         if: steps.market.outputs.run_cycle == 'true'
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
-          DHAN_PIN: ${{ secrets.DHAN_PIN }}
-          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           MARKET_OPEN: ${{ steps.market.outputs.market_open }}
         shell: bash
@@ -351,60 +347,47 @@ jobs:
           from intraday_bot.brokers import DhanBroker
           from intraday_bot.config import settings
 
-          PREFLIGHT_PATH = Path('data/preflight_status.json')
+          path = Path('data/preflight_status.json')
 
-          def write_status(message: str, passed: bool) -> None:
-              PREFLIGHT_PATH.parent.mkdir(parents=True, exist_ok=True)
-              now = datetime.now(ZoneInfo('Asia/Kolkata')).isoformat()
-              payload = {
+          def write_status(message, passed):
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(json.dumps({
                   'status': 'PASSED' if passed else 'FAILED',
                   'message': message,
-                  'updated_at': now,
+                  'updated_at': datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),
                   'source': 'github-actions-dhan-preflight',
                   'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
                   'mode': 'PAPER',
                   'market_open': os.getenv('MARKET_OPEN') == 'true',
                   'live_order_submission': False,
-              }
-              PREFLIGHT_PATH.write_text(json.dumps(payload, indent=2), encoding='utf-8')
+              }, indent=2), encoding='utf-8')
 
-          def fail(message: str) -> None:
-              write_status(message, False)
-              raise SystemExit(message)
-
+          token = settings.dhan_market_data_token
           print('Dhan credential source:', settings.dhan_market_data_credential_source)
           print('Dhan client configured:', bool(settings.dhan_client_id))
-          print('Dhan API key configured:', bool(settings.dhan_api_key))
-          print('Dhan PIN configured:', bool(settings.dhan_pin))
-          print('Dhan TOTP secret configured:', bool(settings.dhan_totp_secret))
-          print('Dhan explicit access token configured:', bool(settings.dhan_access_token))
-          try:
-              token = settings.dhan_market_data_token
-          except Exception as exc:
-              fail('DHAN_PREFLIGHT_ERROR: automatic token generation failed: ' + str(exc))
-          print('Dhan access token available:', bool(token))
-          print('Dhan access token length:', len(token))
-          if not token:
-              fail('DHAN_PREFLIGHT_ERROR: no Dhan Access Token available')
-
-          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env_file:
-              env_file.write('DHAN_ACCESS_TOKEN=' + token + '\n')
-          print('Dhan access token prepared for reuse by subsequent monitor steps.')
+          print('Dhan manually entered token configured:', bool(token))
+          print('Dhan manually entered token length:', len(token))
+          if not settings.dhan_client_id or not token:
+              write_status('Dhan manual authentication is unavailable: DHAN_CLIENT_ID and DHAN_API_KEY are required', False)
+              raise SystemExit('DHAN_PREFLIGHT_ERROR: manually entered Dhan token is unavailable')
 
           try:
               health = DhanBroker().health()
           except Exception as exc:
-              fail('DHAN_PREFLIGHT_ERROR: ' + str(exc))
+              write_status('Dhan preflight failed: ' + str(exc), False)
+              raise SystemExit('DHAN_PREFLIGHT_ERROR: ' + str(exc))
           print('Dhan authentication:', health.message)
           if not health.authenticated:
-              fail('DHAN_PREFLIGHT_ERROR: ' + health.message)
+              write_status(health.message, False)
+              raise SystemExit('DHAN_PREFLIGHT_ERROR: ' + health.message)
 
           raw = settings.dhan_security_ids_json.strip()
           if raw:
               try:
                   mapping = json.loads(raw)
               except json.JSONDecodeError:
-                  fail('DHAN_QUOTE_PREFLIGHT_FAILED: invalid DHAN_SECURITY_IDS_JSON')
+                  write_status('Invalid DHAN_SECURITY_IDS_JSON', False)
+                  raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: invalid DHAN_SECURITY_IDS_JSON')
               instruments = []
               for symbol, value in mapping.items():
                   if isinstance(value, dict):
@@ -418,21 +401,13 @@ jobs:
                   if len(instruments) >= 1:
                       break
               if instruments:
-                  try:
-                      quotes = DhanBroker().bulk_quotes(instruments)
-                  except Exception as exc:
-                      fail('DHAN_QUOTE_PREFLIGHT_FAILED: ' + str(exc))
+                  quotes = DhanBroker().bulk_quotes(instruments)
                   print('Dhan market-feed preflight quotes:', len(quotes))
                   if not quotes:
-                      fail('DHAN_QUOTE_PREFLIGHT_FAILED: market-feed returned zero quotes')
-                  print('DHAN_MARKET_DATA_PREFLIGHT_PASSED')
-              else:
-                  print('DHAN_QUOTE_PREFLIGHT_SKIPPED: no mapped security ID')
-          else:
-              print('DHAN_QUOTE_PREFLIGHT_SKIPPED: DHAN_SECURITY_IDS_JSON not configured')
-
-          write_status('Dhan authentication and market-feed preflight passed', True)
-          print('DHAN_AUTH_PREFLIGHT_PASSED')
+                      write_status('Market-feed returned zero quotes', False)
+                      raise SystemExit('DHAN_QUOTE_PREFLIGHT_FAILED: market-feed returned zero quotes')
+          write_status('Dhan manually entered token and market-feed preflight passed', True)
+          print('DHAN_MANUAL_TOKEN_PREFLIGHT_PASSED')
           PY
 
       - name: Build complete NSE cash-equity universe
@@ -444,39 +419,23 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
-          DHAN_PIN: ${{ secrets.DHAN_PIN }}
-          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
-          import os
           from pathlib import Path
           from intraday_bot.brokers import DhanBroker
-
-          if not os.getenv('DHAN_ACCESS_TOKEN'):
-              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: generated Dhan Access Token was not propagated to verification step')
           universe = json.loads(Path('data/universe.json').read_text(encoding='utf-8'))
           if not universe:
               raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: universe is empty')
-
-          candidates = [
-              item for item in universe
-              if 'NSETEST' not in str(item.get('symbol', '')).upper()
-          ]
-          if not candidates:
-              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: no real equity symbols remain after filtering synthetic rows')
-
+          candidates = [x for x in universe if 'NSETEST' not in str(x.get('symbol', '')).upper()]
           sample = candidates[:10]
+          if not sample:
+              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: no real equity symbols remain')
+          quotes = DhanBroker().bulk_quotes(sample)
           print('Fresh universe symbols:', len(universe))
-          print('Fresh universe verification sample:', ', '.join(str(x.get('symbol')) for x in sample))
-          print('Dhan generated access token is available to verification step.')
-          try:
-              quotes = DhanBroker().bulk_quotes(sample)
-          except Exception as exc:
-              raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: ' + str(exc))
           print('Fresh universe quote sample:', len(quotes))
           if not quotes:
               raise SystemExit('DHAN_UNIVERSE_VERIFY_FAILED: fresh universe returned zero quotes')
@@ -489,8 +448,6 @@ jobs:
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
-          DHAN_PIN: ${{ secrets.DHAN_PIN }}
-          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
           DHAN_SECURITY_IDS_JSON: ${{ secrets.DHAN_SECURITY_IDS_JSON }}
           BSE_SCRIP_CODES_JSON: ${{ secrets.BSE_SCRIP_CODES_JSON }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
@@ -516,7 +473,6 @@ jobs:
           from zoneinfo import ZoneInfo
           path = Path('data/worker_heartbeat.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          now = datetime.now(ZoneInfo('Asia/Kolkata'))
           market_open = os.getenv('MARKET_OPEN') == 'true'
           cycle_ran = os.getenv('RUN_CYCLE') == 'true'
           cycle_success = os.getenv('CYCLE_SUCCESS') == 'true'
@@ -532,7 +488,7 @@ jobs:
           payload = {
             'state': state,
             'message': message,
-            'updated_at': now.isoformat(),
+            'updated_at': datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(),
             'source': 'github-actions-monitor',
             'hostname': socket.gethostname(),
             'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
