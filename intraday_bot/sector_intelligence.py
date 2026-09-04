@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import statistics
 from datetime import datetime, timedelta, timezone
@@ -11,12 +13,15 @@ import requests
 
 NSE_BASE = "https://www.nseindia.com"
 NSE_INDEX_URL = NSE_BASE + "/api/equity-stockIndices?index="
+NSE_ARCHIVE_BASE = "https://archives.nseindia.com/content/indices/"
+NIFTY_INDICES_BASE = "https://www.niftyindices.com/IndexConstituent/"
 CACHE_PATH = Path("data/sector_membership.json")
 STATS_PATH = Path("data/sector_intelligence.json")
 CACHE_TTL_HOURS = 24
 
-# Official NSE sectoral/thematic indices. The narrower sectoral index is preferred
-# when a symbol appears in more than one index.
+# Official NSE/Nifty Indices sectoral indices.  The archive CSV is used as the
+# primary constituent source because the live NSE JSON endpoint can return 404
+# to cloud-hosted runners even when the index itself is valid.
 SECTOR_INDICES = {
     "BANKING": "NIFTY BANK",
     "IT": "NIFTY IT",
@@ -33,6 +38,25 @@ SECTOR_INDICES = {
     "OIL_GAS": "NIFTY OIL & GAS",
     "CONSUMER_DURABLES": "NIFTY CONSUMER DURABLES",
     "CONSUMPTION": "NIFTY INDIA CONSUMPTION",
+}
+
+# Known official constituent-file slugs published by NSE/Nifty Indices.
+CONSTITUENT_SLUGS = {
+    "BANKING": "ind_niftybanklist.csv",
+    "IT": "ind_niftyitlist.csv",
+    "AUTO": "ind_niftyautolist.csv",
+    "PHARMA": "ind_niftypharmalist.csv",
+    "FMCG": "ind_niftyfmcglist.csv",
+    "METALS": "ind_niftymetallist.csv",
+    "REALTY": "ind_niftyrealtylist.csv",
+    "MEDIA": "ind_niftymedialist.csv",
+    "PRIVATE_BANK": "ind_nifty_privatebanklist.csv",
+    "PSU_BANK": "ind_niftypsubanklist.csv",
+    "FINANCIAL_SERVICES": "ind_niftyfinservlist.csv",
+    "HEALTHCARE": "ind_niftyhealthcarelist.csv",
+    "OIL_GAS": "ind_niftyoilgaslist.csv",
+    "CONSUMER_DURABLES": "ind_niftyconsumerdurableslist.csv",
+    "CONSUMPTION": "ind_niftyconsumptionlist.csv",
 }
 
 PRIORITY = [
@@ -68,30 +92,93 @@ def _session() -> requests.Session:
         "Referer": NSE_BASE + "/",
         "Connection": "keep-alive",
     })
-    s.get(NSE_BASE, timeout=15)
+    try:
+        s.get(NSE_BASE, timeout=15)
+    except requests.RequestException:
+        # The API/archives may still be reachable even when the NSE landing
+        # page cannot be established from a cloud runner.
+        pass
     return s
 
 
-def _fetch_index_membership() -> dict[str, list[str]]:
+def _symbols_from_csv(text: str) -> list[str]:
+    # Nifty Indices files are CSVs with a Symbol column.  Handle BOMs, quoted
+    # fields, and harmless preamble/whitespace without inventing symbols.
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+    if not reader.fieldnames:
+        return []
+    fields = {str(name).strip().lower(): name for name in reader.fieldnames if name}
+    symbol_field = fields.get("symbol") or fields.get("ticker")
+    if not symbol_field:
+        return []
+    symbols: list[str] = []
+    for row in reader:
+        symbol = _normalise_symbol(row.get(symbol_field))
+        if symbol and symbol not in symbols and symbol not in {"SYMBOL", "TICKER"}:
+            symbols.append(symbol)
+    return symbols
+
+
+def _fetch_nse_api(session: requests.Session, index_name: str) -> list[str]:
+    url = NSE_INDEX_URL + quote(index_name, safe="")
+    response = session.get(url, timeout=20)
+    response.raise_for_status()
+    payload = response.json()
+    data = payload.get("data") if isinstance(payload, dict) else None
+    symbols: list[str] = []
+    if isinstance(data, list):
+        for row in data:
+            if isinstance(row, dict):
+                symbol = _normalise_symbol(row.get("symbol"))
+                if symbol and symbol not in symbols:
+                    symbols.append(symbol)
+    if not symbols:
+        raise RuntimeError(f"NSE_SECTOR_MEMBERSHIP_EMPTY:{index_name}")
+    return symbols
+
+
+def _fetch_csv(session: requests.Session, base: str, slug: str) -> list[str]:
+    response = session.get(base + slug, timeout=20, headers={
+        "Accept": "text/csv,application/octet-stream,text/plain,*/*",
+        "Referer": base,
+    })
+    response.raise_for_status()
+    symbols = _symbols_from_csv(response.text)
+    if not symbols:
+        raise RuntimeError(f"NSE_SECTOR_CSV_EMPTY:{slug}")
+    return symbols
+
+
+def _fetch_index_membership() -> tuple[dict[str, list[str]], dict[str, str], dict[str, str]]:
     session = _session()
     memberships: dict[str, list[str]] = {}
+    sources: dict[str, str] = {}
+    errors: dict[str, str] = {}
+
     for sector_name, index_name in SECTOR_INDICES.items():
-        url = NSE_INDEX_URL + quote(index_name, safe="")
-        response = session.get(url, timeout=20)
-        response.raise_for_status()
-        payload = response.json()
-        data = payload.get("data") if isinstance(payload, dict) else None
-        symbols: list[str] = []
-        if isinstance(data, list):
-            for row in data:
-                if isinstance(row, dict):
-                    symbol = _normalise_symbol(row.get("symbol"))
-                    if symbol and symbol not in symbols:
-                        symbols.append(symbol)
-        if not symbols:
-            raise RuntimeError(f"NSE_SECTOR_MEMBERSHIP_EMPTY:{sector_name}:{index_name}")
-        memberships[sector_name] = symbols
-    return memberships
+        slug = CONSTITUENT_SLUGS.get(sector_name)
+        attempts: list[tuple[str, Any]] = []
+        if slug:
+            attempts.append(("NSE_ARCHIVE_CSV", lambda slug=slug: _fetch_csv(session, NSE_ARCHIVE_BASE, slug)))
+            attempts.append(("NIFTY_INDICES_CSV", lambda slug=slug: _fetch_csv(session, NIFTY_INDICES_BASE, slug)))
+        attempts.append(("NSE_INDEX_API", lambda index_name=index_name: _fetch_nse_api(session, index_name)))
+
+        last_error: Exception | None = None
+        for source, loader in attempts:
+            try:
+                symbols = loader()
+                memberships[sector_name] = symbols
+                sources[sector_name] = source
+                break
+            except Exception as exc:
+                last_error = exc
+        else:
+            errors[sector_name] = str(last_error or "unknown error")
+
+    if errors:
+        details = "; ".join(f"{k}={v}" for k, v in errors.items())
+        raise RuntimeError(f"NSE_SECTOR_MEMBERSHIP_UNAVAILABLE:{details}")
+    return memberships, sources, errors
 
 
 def membership(force_refresh: bool = False) -> dict[str, Any]:
@@ -100,7 +187,7 @@ def membership(force_refresh: bool = False) -> dict[str, Any]:
         if cached:
             return cached
     try:
-        raw = _fetch_index_membership()
+        raw, sources, _ = _fetch_index_membership()
         symbol_sector: dict[str, str] = {}
         symbol_sources: dict[str, list[str]] = {}
         for sector_name in PRIORITY:
@@ -110,6 +197,7 @@ def membership(force_refresh: bool = False) -> dict[str, Any]:
         payload = {
             "status": "AVAILABLE",
             "source": "NSE_OFFICIAL_SECTOR_INDICES",
+            "source_by_sector": sources,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
             "sector_indices": SECTOR_INDICES,
             "sectors": raw,
@@ -151,9 +239,12 @@ def build(universe: list[dict[str, Any]], qmap: dict[str, dict[str, Any]], force
                 continue
             quoted += 1
             changes.append(change)
-            if change > 0.05: advancing += 1
-            elif change < -0.05: declining += 1
-            else: unchanged += 1
+            if change > 0.05:
+                advancing += 1
+            elif change < -0.05:
+                declining += 1
+            else:
+                unchanged += 1
         breadth_den = advancing + declining
         breadth = (advancing / breadth_den * 100.0) if breadth_den else 50.0
         avg = statistics.fmean(changes) if changes else None
@@ -181,6 +272,7 @@ def build(universe: list[dict[str, Any]], qmap: dict[str, dict[str, Any]], force
     result = {
         "status": "AVAILABLE",
         "source": cache.get("source", "NSE_OFFICIAL_SECTOR_INDICES"),
+        "source_by_sector": cache.get("source_by_sector", {}),
         "membership_fetched_at": cache.get("fetched_at"),
         "as_of": datetime.now(timezone.utc).isoformat(),
         "classified_symbols": classified,
