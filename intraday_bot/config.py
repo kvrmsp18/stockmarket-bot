@@ -32,6 +32,23 @@ def _credential(name: str, default: str = "") -> str:
     return value
 
 
+def classify_dhan_manual_credential(value: str) -> str:
+    """Classify a manually supplied Dhan credential without exposing it.
+
+    An 8-character value matches the shape of a Dhan application/API key and
+    must never be treated as the bearer access-token used by market-data APIs.
+    Longer values are treated as manually supplied access credentials. Empty
+    values are unconfigured. This helper is deliberately structural; it does
+    not claim that a credential is valid until Dhan accepts it.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return "NONE"
+    if len(text) == 8:
+        return "APP_KEY_NOT_ACCESS_TOKEN"
+    return "MANUAL_ACCESS_CREDENTIAL"
+
+
 def _float(name: str, default: float) -> float:
     try:
         return float(_secret_or_env(name, str(default)))
@@ -103,8 +120,6 @@ class Settings:
     def dhan_access_token_configured(self) -> bool:
         return bool(self.dhan_access_token_value)
 
-    # Compatibility names deliberately expose no API key/secret/PIN/TOTP
-    # credentials to the runtime. No automatic token generation is supported.
     @property
     def dhan_api_key(self) -> str:
         return ""
