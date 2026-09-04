@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 1ffb9d5e3c34cbc85ea1a2e51eb27b12533644c8
-Generated UTC: 2026-09-04T11:05:52.888414+00:00
+Commit SHA: 6b06b57624c2981db7a719ce282fc235ed348b18
+Generated UTC: 2026-09-04T11:06:11.845885+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -64,7 +64,7 @@ intraday_bot/event_news_risk.py	8961 bytes
 intraday_bot/fundamentals_cache.py	4100 bytes
 intraday_bot/fundamentals_provider.py	19799 bytes
 intraday_bot/market_regime.py	7109 bytes
-intraday_bot/mtf_data.py	1914 bytes
+intraday_bot/mtf_data.py	1894 bytes
 intraday_bot/news.py	830 bytes
 intraday_bot/nse_fo.py	8158 bytes
 intraday_bot/nse_preopen.py	7712 bytes
@@ -57540,15 +57540,19 @@ def build(broker, cache_path: str = "data/market_regime.json") -> dict[str, Any]
 
 ====================================================================
 FILE: intraday_bot/mtf_data.py
-SIZE: 1914 bytes
+SIZE: 1894 bytes
 ====================================================================
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 from .brokers import DhanBroker
+
+
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def extended_daily_history(
@@ -57564,8 +57568,7 @@ def extended_daily_history(
     windows, merge them, and deduplicate timestamps. No synthetic candles are
     created and no daily data is substituted with intraday data.
     """
-    now = datetime.now(broker._session_tz) if hasattr(broker, "_session_tz") else datetime.now().astimezone()
-    end = now.date()
+    end: date = datetime.now(IST).date()
     start = end - timedelta(days=max(365, int(calendar_days)))
     split = start + timedelta(days=(end - start).days // 2)
     windows = ((start, split), (split + timedelta(days=1), end))
@@ -57588,6 +57591,7 @@ def extended_daily_history(
 
     if not frames:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
     out = pd.concat(frames, ignore_index=True)
     out["timestamp"] = pd.to_datetime(out["timestamp"], utc=True, errors="coerce")
     out = out.dropna(subset=["timestamp", "close"])
