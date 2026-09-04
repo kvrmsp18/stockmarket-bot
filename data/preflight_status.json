@@ -1,9 +1,9 @@
 {
   "status": "PASSED",
   "message": "Dhan client ID + access token and market-feed preflight passed",
-  "updated_at": "2026-09-04T13:04:48.579150+05:30",
+  "updated_at": "2026-09-04T13:14:26.388968+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "33849326075",
+  "workflow_run_id": "33850064166",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
