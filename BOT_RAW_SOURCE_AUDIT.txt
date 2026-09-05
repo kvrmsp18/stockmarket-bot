@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: d92c94dce4a62919e3eec85e48178190a3f9daa6
-Generated UTC: 2026-09-05T01:39:58.295717+00:00
+Commit SHA: e84a89eab5201e6d3f7dc544f0f4223d5b312b1c
+Generated UTC: 2026-09-05T02:12:56.667220+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -67,12 +67,13 @@ intraday_bot/market_regime.py	7109 bytes
 intraday_bot/news.py	830 bytes
 intraday_bot/nse_fo.py	8158 bytes
 intraday_bot/nse_preopen.py	7712 bytes
-intraday_bot/paper.py	1447 bytes
+intraday_bot/paper.py	3632 bytes
 intraday_bot/portfolio_advisor.py	7962 bytes
 intraday_bot/research.py	17455 bytes
 intraday_bot/risk.py	4155 bytes
 intraday_bot/runtime.py	32173 bytes
 intraday_bot/safety.py	715 bytes
+intraday_bot/scrap_portfolio.py	4418 bytes
 intraday_bot/sector_intelligence.py	11429 bytes
 intraday_bot/technical.py	8245 bytes
 pages/00_TOTP_Diagnostic.py	3165 bytes
@@ -38062,9 +38063,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-05T06:59:07.940789+05:30",
+  "updated_at": "2026-09-05T07:40:09.047466+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33936292584",
+  "workflow_run_id": "33938296376",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -55148,10 +55149,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-05T06:59:08.022263+05:30",
+  "updated_at": "2026-09-05T07:40:09.126214+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "33936292584",
+  "workflow_run_id": "33938296376",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -57934,7 +57935,7 @@ def stock_context(symbol: str, force: bool = False) -> dict[str, Any]:
 
 ====================================================================
 FILE: intraday_bot/paper.py
-SIZE: 1447 bytes
+SIZE: 3632 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -57942,19 +57943,92 @@ from datetime import datetime, timezone
 import uuid
 
 from .database import Database
+from .scrap_portfolio import scrap_portfolio_exposure_check
+
+
+def _portfolio_positions(db: Database, mode: str) -> list[dict]:
+    """Return only open simulated positions for the requested execution mode."""
+    with db.connect() as con:
+        rows = con.execute(
+            "SELECT symbol, quantity, entry_price, current_price, mode FROM positions WHERE closed_at IS NULL AND mode=?",
+            (mode,),
+        ).fetchall()
+    return [
+        {
+            "symbol": str(row[0]).upper(),
+            "quantity": int(row[1] or 0),
+            "entry_price": float(row[2] or 0),
+            "current_price": float(row[3] or row[2] or 0),
+            "mode": str(row[4] or "").upper(),
+        }
+        for row in rows
+    ]
 
 
 def fill(db: Database, signal: dict, mode: str = "PAPER") -> str:
-    """Create a simulated fill for PAPER or LIVE_TEST only; never places a broker order."""
+    """Create a simulated fill for PAPER or LIVE_TEST only; never places a broker order.
+
+    The SCRAP portfolio limits are enforced immediately before the simulated fill,
+    using only open simulated positions. Manual/real broker holdings are never
+    included. The check is based on the isolated reference capital carried by the
+    signal and the candidate's actual entry notional.
+    """
     mode = str(mode or "PAPER").upper()
     if mode not in {"PAPER", "LIVE_TEST"}:
         raise ValueError("Simulated fill mode must be PAPER or LIVE_TEST")
+
+    quantity = int(signal.get("quantity") or 0)
+    entry = float(signal.get("entry") or 0)
+    if quantity <= 0 or entry <= 0:
+        raise ValueError("Invalid simulated fill quantity or entry")
+
+    positions = _portfolio_positions(db, mode)
+    sector = str(signal.get("sector") or "UNKNOWN").strip().upper() or "UNKNOWN"
+    capital = float(signal.get("reference_capital") or signal.get("paper_reference_capital") or 1000.0)
+    exposure = scrap_portfolio_exposure_check(
+        symbol=str(signal["symbol"]).upper(),
+        sector=sector,
+        candidate_notional=quantity * entry,
+        reference_capital=capital,
+        positions=positions,
+    )
+    if not exposure["allowed"]:
+        raise ValueError(exposure["reason"])
+
     prefix = "PAPER-" if mode == "PAPER" else "LIVETEST-"
     order_id = prefix + uuid.uuid4().hex[:16]
     pos_id = "POS-" + uuid.uuid4().hex[:16]
     with db.connect() as con:
-        con.execute("INSERT INTO orders(order_id,signal_id,ts,symbol,side,state,quantity,price,payload) VALUES(?,?,?,?,?,?,?,?,?)", (order_id, signal.get("signal_id"), datetime.now(timezone.utc).isoformat(), signal["symbol"], signal["decision"], "FILLED", int(signal["quantity"]), float(signal["entry"]), str({**signal, "execution_mode": mode, "simulated": True})))
-        con.execute("INSERT INTO positions(position_id,symbol,mode,side,quantity,entry_price,current_price,stop,target,opened_at,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (pos_id, signal["symbol"], mode, signal["decision"], int(signal["quantity"]), float(signal["entry"]), float(signal["entry"]), float(signal["stop"]), float(signal["target"]), datetime.now(timezone.utc).isoformat(), str({**signal, "execution_mode": mode, "simulated": True})))
+        con.execute(
+            "INSERT INTO orders(order_id,signal_id,ts,symbol,side,state,quantity,price,payload) VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                order_id,
+                signal.get("signal_id"),
+                datetime.now(timezone.utc).isoformat(),
+                signal["symbol"],
+                signal["decision"],
+                "FILLED",
+                quantity,
+                entry,
+                str({**signal, "execution_mode": mode, "simulated": True, "scrap_portfolio_check": exposure}),
+            ),
+        )
+        con.execute(
+            "INSERT INTO positions(position_id,symbol,mode,side,quantity,entry_price,current_price,stop,target,opened_at,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                pos_id,
+                signal["symbol"],
+                mode,
+                signal["decision"],
+                quantity,
+                entry,
+                entry,
+                float(signal["stop"]),
+                float(signal["target"]),
+                datetime.now(timezone.utc).isoformat(),
+                str({**signal, "execution_mode": mode, "simulated": True, "scrap_portfolio_check": exposure}),
+            ),
+        )
     return order_id
 
 ====================================================================
@@ -59217,6 +59291,123 @@ class SafetyState:
 
 def valid_session()->bool:
     n=datetime.now(IST);return n.weekday()<5 and time(9,15)<=n.time()<=time(15,30)
+
+====================================================================
+FILE: intraday_bot/scrap_portfolio.py
+SIZE: 4418 bytes
+====================================================================
+from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Any
+
+
+SCRAP_SECTOR_LIMIT_PCT = 15.0
+SCRAP_COMPANY_LIMIT_PCT = 25.0
+
+
+def _position_notional(position: dict[str, Any]) -> float:
+    try:
+        quantity = float(position.get("quantity") or 0)
+        price = float(position.get("current_price") or position.get("entry_price") or 0)
+        return max(0.0, quantity * price)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def scrap_portfolio_exposure_check(
+    symbol: str,
+    sector: str,
+    candidate_notional: float,
+    reference_capital: float,
+    positions: Iterable[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Apply SOURCE_RULES SCRAP portfolio limits to real simulated state.
+
+    Portfolio weights are calculated from open PAPER/LIVE_TEST position state,
+    never from fundamentals. Existing positions are valued at current_price when
+    available, otherwise entry_price. The candidate's actual entry notional is
+    included in projected company and sector exposure before the fill.
+
+    Boundary semantics intentionally follow SOURCE_RULES: exposure strictly
+    greater than 15% for a sector or 25% for a company is rejected. Exactly 15%
+    and exactly 25% remain eligible.
+    """
+    symbol = str(symbol or "").strip().upper()
+    sector = str(sector or "UNKNOWN").strip().upper() or "UNKNOWN"
+    capital = float(reference_capital or 0)
+    candidate = max(0.0, float(candidate_notional or 0))
+
+    if capital <= 0:
+        return {
+            "allowed": False,
+            "reason": "SCRAP_REFERENCE_CAPITAL_UNAVAILABLE",
+            "sector_weight_pct": None,
+            "company_weight_pct": None,
+            "projected_sector_weight_pct": None,
+            "projected_company_weight_pct": None,
+        }
+
+    rows = list(positions or [])
+    existing_total = sum(_position_notional(row) for row in rows)
+    same_company = sum(
+        _position_notional(row)
+        for row in rows
+        if str(row.get("symbol") or "").strip().upper() == symbol
+    )
+    same_sector = sum(
+        _position_notional(row)
+        for row in rows
+        if str(row.get("sector") or "").strip().upper() == sector
+    )
+
+    # The isolated paper reference capital is the denominator, not broker cash
+    # and not the user's real Dhan portfolio.
+    company_weight = same_company / capital * 100.0
+    sector_weight = same_sector / capital * 100.0
+    projected_company = (same_company + candidate) / capital * 100.0
+    projected_sector = (same_sector + candidate) / capital * 100.0
+
+    if projected_sector > SCRAP_SECTOR_LIMIT_PCT:
+        return {
+            "allowed": False,
+            "reason": "SCRAP_REJECTION_SECTOR_EXPOSURE",
+            "sector_weight_pct": round(sector_weight, 4),
+            "company_weight_pct": round(company_weight, 4),
+            "projected_sector_weight_pct": round(projected_sector, 4),
+            "projected_company_weight_pct": round(projected_company, 4),
+            "sector_limit_pct": SCRAP_SECTOR_LIMIT_PCT,
+            "company_limit_pct": SCRAP_COMPANY_LIMIT_PCT,
+            "existing_total_notional": round(existing_total, 4),
+            "candidate_notional": round(candidate, 4),
+        }
+
+    if projected_company > SCRAP_COMPANY_LIMIT_PCT:
+        return {
+            "allowed": False,
+            "reason": "SCRAP_REJECTION_COMPANY_EXPOSURE",
+            "sector_weight_pct": round(sector_weight, 4),
+            "company_weight_pct": round(company_weight, 4),
+            "projected_sector_weight_pct": round(projected_sector, 4),
+            "projected_company_weight_pct": round(projected_company, 4),
+            "sector_limit_pct": SCRAP_SECTOR_LIMIT_PCT,
+            "company_limit_pct": SCRAP_COMPANY_LIMIT_PCT,
+            "existing_total_notional": round(existing_total, 4),
+            "candidate_notional": round(candidate, 4),
+        }
+
+    return {
+        "allowed": True,
+        "reason": None,
+        "sector_weight_pct": round(sector_weight, 4),
+        "company_weight_pct": round(company_weight, 4),
+        "projected_sector_weight_pct": round(projected_sector, 4),
+        "projected_company_weight_pct": round(projected_company, 4),
+        "sector_limit_pct": SCRAP_SECTOR_LIMIT_PCT,
+        "company_limit_pct": SCRAP_COMPANY_LIMIT_PCT,
+        "existing_total_notional": round(existing_total, 4),
+        "candidate_notional": round(candidate, 4),
+    }
 
 ====================================================================
 FILE: intraday_bot/sector_intelligence.py
