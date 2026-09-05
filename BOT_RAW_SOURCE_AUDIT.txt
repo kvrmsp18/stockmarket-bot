@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 773941fb7eb9e13d01b5fc95eabbf13fcae3447a
-Generated UTC: 2026-09-04T19:01:44.517166+00:00
+Commit SHA: f268d387c6543f3a7be652f7813edfb24892014c
+Generated UTC: 2026-09-05T00:47:35.174212+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -83,7 +83,7 @@ pages/04_Dhan_JSON_Body_Auth_Diagnostic.py	1790 bytes
 pages/04_Dhan_Official_SDK_Auth_Diagnostic.py	2154 bytes
 pages/05_Dhan_API_Key_Consent_Diagnostic.py	3753 bytes
 pages/06_Dhan_OAuth_Browser_Login_Diagnostic.py	5985 bytes
-pages/Portfolio_Advisory.py	10372 bytes
+pages/Portfolio_Advisory.py	10405 bytes
 reports/.gitkeep	0 bytes
 reports/daily/.gitkeep	1 bytes
 reports/daily/2026-08-29.md	428 bytes
@@ -38103,9 +38103,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-05T00:23:21.897427+05:30",
+  "updated_at": "2026-09-05T06:15:42.104154+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33908275945",
+  "workflow_run_id": "33934024932",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -55189,10 +55189,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-05T00:23:21.980252+05:30",
+  "updated_at": "2026-09-05T06:15:42.178935+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "33908275945",
+  "workflow_run_id": "33934024932",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -60498,7 +60498,7 @@ st.caption("Security: API credentials and temporary tokenId remain in memory onl
 
 ====================================================================
 FILE: pages/Portfolio_Advisory.py
-SIZE: 10372 bytes
+SIZE: 10405 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -60613,20 +60613,33 @@ def _source_price_history(symbol: str, period: str = "1mo") -> list[float]:
 
 
 def _benchmark_history(benchmark: str, period: str = "1mo") -> list[float]:
-    # Accept a Yahoo-compatible benchmark ticker; ^NSEI is used only when the user explicitly supplies it.
-    if benchmark.startswith("^"):
-        ticker_name = benchmark
-    else:
-        ticker_name = benchmark
+    """Read a real Yahoo Finance benchmark close series."""
     try:
         import yfinance as yf
-        frame = yf.Ticker(ticker_name).history(period=period, auto_adjust=False, actions=False)
+        frame = yf.Ticker(benchmark).history(period=period, auto_adjust=False, actions=False)
         if frame is None or frame.empty or "Close" not in frame:
             return []
         values = pd.to_numeric(frame["Close"], errors="coerce").dropna()
         return [float(x) for x in values.tolist() if float(x) > 0]
     except Exception:
         return []
+
+
+def _render_rebalance_history() -> None:
+    history = _load_json(REBALANCE_HISTORY_PATH)
+    if not isinstance(history, list) or not history:
+        return
+    st.markdown("**Rebalance/advisory history**")
+    rows = []
+    for item in reversed(history[-50:]):
+        r = item.get("result", {}) if isinstance(item, dict) else {}
+        rows.append({
+            "Timestamp": item.get("timestamp") if isinstance(item, dict) else None,
+            "Status": r.get("status"),
+            "Advice count": len(r.get("advice") or []),
+            "Reason": r.get("reason"),
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def _basket_section() -> None:
@@ -60651,6 +60664,7 @@ def _basket_section() -> None:
     if not saved:
         st.info("No baskets saved yet.")
         return
+
     selected = st.selectbox("Saved basket", sorted(saved), key="basket_select")
     basket = saved[selected]
     symbols = [str(x).upper() for x in basket.get("symbols", [])]
@@ -60690,26 +60704,13 @@ def _basket_section() -> None:
         elif benchmark:
             st.info("Benchmark comparison is DATA UNAVAILABLE because the benchmark price history was unavailable.")
 
-    history = _load_json(REBALANCE_HISTORY_PATH)
-    if isinstance(history, list) and history:
-        st.markdown("**Rebalance/advisory history**")
-        rows = []
-        for item in reversed(history[-50:]):
-            r = item.get("result", {})
-            rows.append({
-                "Timestamp": item.get("timestamp"),
-                "Status": r.get("status"),
-                "Advice count": len(r.get("advice") or []),
-                "Reason": r.get("reason"),
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
 
 def _portfolio_section() -> None:
     st.subheader("Portfolio concentration & rebalancing advice")
     positions = _positions()
     if not positions:
         st.info("No open PAPER positions with a valid current price are available. Rebalancing advice is DATA UNAVAILABLE until actual position data exists.")
+        _render_rebalance_history()
         return
     result = rebalance_advice(positions)
     _record_rebalance_history(result)
@@ -60735,10 +60736,10 @@ def _portfolio_section() -> None:
 
     with st.expander("Actual open PAPER positions used"):
         st.dataframe(pd.DataFrame(positions), use_container_width=True, hide_index=True)
+    _render_rebalance_history()
 
 
 def main() -> None:
-    st.set_page_config(page_title="Portfolio Advisory", layout="wide")
     st.title("Portfolio & Baskets")
     st.info(f"PAPER mode · isolated reference capital ₹{settings.reference_capital:,.2f} · live orders remain disabled")
     _portfolio_section()
@@ -60746,7 +60747,9 @@ def main() -> None:
     _basket_section()
 
 
-main()
+if __name__ == "__main__":
+    st.set_page_config(page_title="Portfolio Advisory", layout="wide")
+    main()
 
 ====================================================================
 FILE: reports/.gitkeep
