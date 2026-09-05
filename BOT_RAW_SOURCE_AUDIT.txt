@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 736c47290c974c295a0069a6c3155cd301525e06
-Generated UTC: 2026-09-05T00:48:20.789658+00:00
+Commit SHA: d92c94dce4a62919e3eec85e48178190a3f9daa6
+Generated UTC: 2026-09-05T01:39:58.295717+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -57,7 +57,7 @@ intraday_bot/alerts.py	917 bytes
 intraday_bot/analytics.py	2894 bytes
 intraday_bot/backtest.py	1718 bytes
 intraday_bot/brokers.py	16028 bytes
-intraday_bot/config.py	6496 bytes
+intraday_bot/config.py	5869 bytes
 intraday_bot/database.py	6073 bytes
 intraday_bot/engine.py	16163 bytes
 intraday_bot/event_news_risk.py	8961 bytes
@@ -70,7 +70,7 @@ intraday_bot/nse_preopen.py	7712 bytes
 intraday_bot/paper.py	1447 bytes
 intraday_bot/portfolio_advisor.py	7962 bytes
 intraday_bot/research.py	17455 bytes
-intraday_bot/risk.py	4581 bytes
+intraday_bot/risk.py	4155 bytes
 intraday_bot/runtime.py	32173 bytes
 intraday_bot/safety.py	715 bytes
 intraday_bot/sector_intelligence.py	11429 bytes
@@ -147,7 +147,7 @@ tests/test_fundamentals_provider.py	6733 bytes
 tests/test_market_regime.py	2435 bytes
 tests/test_nse_fo.py	2538 bytes
 tests/test_nse_preopen.py	2547 bytes
-tests/test_platform.py	2236 bytes
+tests/test_platform.py	2296 bytes
 tests/test_portfolio_advisor.py	1723 bytes
 tests/test_research_frameworks.py	7141 bytes
 tests/test_run_daily_cycle.py	4389 bytes
@@ -38062,9 +38062,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-05T06:15:42.104154+05:30",
+  "updated_at": "2026-09-05T06:59:07.940789+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "33934024932",
+  "workflow_run_id": "33936292584",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -55148,10 +55148,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-05T06:15:42.178935+05:30",
+  "updated_at": "2026-09-05T06:59:08.022263+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "33934024932",
+  "workflow_run_id": "33936292584",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -55903,7 +55903,7 @@ def load_security_map() -> dict[str, dict[str, Any]]:
 
 ====================================================================
 FILE: intraday_bot/config.py
-SIZE: 6496 bytes
+SIZE: 5869 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -55940,14 +55940,7 @@ def _credential(name: str, default: str = "") -> str:
 
 
 def classify_dhan_manual_credential(value: str) -> str:
-    """Classify a manually supplied Dhan credential without exposing it.
-
-    An 8-character value matches the shape of a Dhan application/API key and
-    must never be treated as the bearer access-token used by market-data APIs.
-    Longer values are treated as manually supplied access credentials. Empty
-    values are unconfigured. This helper is deliberately structural; it does
-    not claim that a credential is valid until Dhan accepts it.
-    """
+    """Classify a manually supplied Dhan credential without exposing it."""
     text = str(value or "").strip()
     if not text:
         return "NONE"
@@ -55980,7 +55973,8 @@ class Settings:
     live_enabled: bool = _bool("DHAN_LIVE_TRADING_ENABLED", False)
     emergency_stop: bool = _bool("BOT_EMERGENCY_STOP", False)
     max_consecutive_losses: int = _int("MAX_CONSECUTIVE_LOSSES", 3)
-    max_trades_per_day: int = _int("MAX_TRADES_PER_DAY", 2)
+    # Deliberately unlimited. Other risk gates remain active.
+    max_trades_per_day: int | None = None
     risk_per_trade_pct: float = _float("RISK_PER_TRADE_PCT", 0.5)
     daily_loss_limit: float = _float("MAX_DAILY_LOSS", 20.0)
     max_positions: int = _int("MAX_OPEN_POSITIONS", 5)
@@ -56000,9 +55994,6 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # Dhan authenticated market-data requests use the user-generated access
-    # token. API/application keys are not bearer credentials and are not sent
-    # in the access-token header.
     dhan_access_token_value: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
@@ -56060,8 +56051,6 @@ class Settings:
             raise ValueError("MIN_RR must be >=1")
         if self.max_consecutive_losses < 1:
             raise ValueError("MAX_CONSECUTIVE_LOSSES must be >=1")
-        if self.max_trades_per_day < 1:
-            raise ValueError("MAX_TRADES_PER_DAY must be >=1")
         if self.reference_capital <= 0:
             raise ValueError("BOT_RESEARCH_REFERENCE_CAPITAL must be >0")
         if self.daily_loss_limit <= 0 or self.max_position_exposure <= 0:
@@ -58500,15 +58489,14 @@ def research_dict(result: ResearchResult) -> dict[str, Any]:
 
 ====================================================================
 FILE: intraday_bot/risk.py
-SIZE: 4581 bytes
+SIZE: 4155 bytes
 ====================================================================
 from __future__ import annotations
 
 from dataclasses import dataclass
 from math import floor
-from datetime import datetime
 
-from .config import IST, settings
+from .config import settings
 
 
 @dataclass(frozen=True)
@@ -58577,30 +58565,17 @@ def _consecutive_losses_from_db() -> int:
             ).fetchall()
         count = 0
         for row in rows:
-            try: pnl = float(row[0])
-            except (TypeError, ValueError): break
-            if pnl < 0: count += 1
-            else: break
+            try:
+                pnl = float(row[0])
+            except (TypeError, ValueError):
+                break
+            if pnl < 0:
+                count += 1
+            else:
+                break
         return count
     except Exception:
         return settings.max_consecutive_losses
-
-
-def _trades_today_from_db() -> int:
-    """Count filled simulated entries today; open entries count immediately."""
-    try:
-        from .database import Database
-        db = Database()
-        today = datetime.now(IST).date().isoformat()
-        with db.connect() as con:
-            row = con.execute(
-                "SELECT COUNT(*) FROM orders WHERE state='FILLED' AND substr(ts,1,10)=? "
-                "AND (order_id LIKE 'PAPER-%' OR order_id LIKE 'LIVETEST-%')",
-                (today,),
-            ).fetchone()
-        return int(row[0] or 0) if row else 0
-    except Exception:
-        return settings.max_trades_per_day
 
 
 def risk_gate(
@@ -58611,16 +58586,27 @@ def risk_gate(
     emergency_stop: bool | None = None,
     consecutive_losses: int | None = None,
 ) -> tuple[bool, str | None]:
-    """Deterministic risk gate shared by paper and live-test execution."""
+    """Deterministic safety gate with no daily trade-count limit.
+
+    Valid paper opportunities remain eligible without an artificial trade-count
+    ceiling. Capital, position, sector, daily-loss, consecutive-loss,
+    emergency-stop and minimum-R:R controls remain enforced elsewhere here.
+    """
     stop = settings.emergency_stop if emergency_stop is None else emergency_stop
-    if stop: return False, "EMERGENCY_STOP"
-    if daily_loss >= settings.daily_loss_limit: return False, "DAILY_LOSS_LIMIT"
-    if open_positions >= settings.max_positions: return False, "POSITION_LIMIT"
-    if sector_exposure >= settings.max_sector_exposure: return False, "SECTOR_EXPOSURE_LIMIT"
-    if consecutive_losses is None: consecutive_losses = _consecutive_losses_from_db()
-    if consecutive_losses >= settings.max_consecutive_losses: return False, "MAX_CONSECUTIVE_LOSSES"
-    if _trades_today_from_db() >= settings.max_trades_per_day: return False, "MAX_TRADES_PER_DAY"
-    if rr < settings.min_rr: return False, "RISK_REJECTION"
+    if stop:
+        return False, "EMERGENCY_STOP"
+    if daily_loss >= settings.daily_loss_limit:
+        return False, "DAILY_LOSS_LIMIT"
+    if open_positions >= settings.max_positions:
+        return False, "POSITION_LIMIT"
+    if sector_exposure >= settings.max_sector_exposure:
+        return False, "SECTOR_EXPOSURE_LIMIT"
+    if consecutive_losses is None:
+        consecutive_losses = _consecutive_losses_from_db()
+    if consecutive_losses >= settings.max_consecutive_losses:
+        return False, "MAX_CONSECUTIVE_LOSSES"
+    if rr < settings.min_rr:
+        return False, "RISK_REJECTION"
     return True, None
 
 ====================================================================
@@ -69561,7 +69547,7 @@ def test_stock_context_returns_symbol(monkeypatch: pytest.MonkeyPatch) -> None:
 
 ====================================================================
 FILE: tests/test_platform.py
-SIZE: 2236 bytes
+SIZE: 2296 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -69608,8 +69594,11 @@ def test_paper_quantity_ignores_real_broker_cash():
     assert r.capital_required == 200
 
 
+def test_paper_trading_has_no_daily_trade_count_cap():
+    assert settings.max_trades_per_day is None
+
+
 def test_rr_and_risk_gate():
-    assert settings.max_trades_per_day == 2
     assert settings.daily_loss_limit == 20.0
     assert settings.max_position_exposure == 800.0
     assert risk_reward(100,98,106)==3
