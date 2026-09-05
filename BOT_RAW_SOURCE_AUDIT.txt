@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: f268d387c6543f3a7be652f7813edfb24892014c
-Generated UTC: 2026-09-05T00:47:35.174212+00:00
+Commit SHA: 736c47290c974c295a0069a6c3155cd301525e06
+Generated UTC: 2026-09-05T00:48:20.789658+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -24,7 +24,7 @@ FILE INVENTORY
 Dockerfile	229 bytes
 README.md	11801 bytes
 SOURCE_RULES.md	9145 bytes
-app.py	35359 bytes
+app.py	34931 bytes
 config/risk.yaml	244 bytes
 config/settings.yaml	303 bytes
 config/strategy.yaml	451 bytes
@@ -1193,7 +1193,7 @@ If a supplied screenshot/video/formula is unreadable, preserve the observed word
 
 ====================================================================
 FILE: app.py
-SIZE: 35359 bytes
+SIZE: 34931 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -1216,6 +1216,7 @@ from intraday_bot.database import Database
 from intraday_bot.fundamentals_provider import fetch_fundamentals
 from intraday_bot.research import FRAMEWORK_RULES, framework_analysis, fundamental_score, valuation_analysis
 from intraday_bot.runtime import PAPER_MODE, run_cycle
+from pages.Portfolio_Advisory import main as portfolio_advisory_main
 
 
 st.set_page_config(page_title="NSE/BSE Intraday AI Trading Desk", layout="wide", initial_sidebar_state="expanded")
@@ -1441,7 +1442,6 @@ def _research_screener_rows(df: pd.DataFrame, context_df: pd.DataFrame | None = 
     """Normalize research plus persisted signal/rejection context into one row per stock."""
     if df.empty and (context_df is None or context_df.empty):
         return pd.DataFrame()
-
     research_latest = {}
     if not df.empty:
         work = df.copy()
@@ -1452,35 +1452,25 @@ def _research_screener_rows(df: pd.DataFrame, context_df: pd.DataFrame | None = 
             symbol = str(_first_value(payload, "symbol") or raw.get("symbol") or "").strip().upper()
             if symbol and symbol not in research_latest:
                 research_latest[symbol] = (payload, raw)
-
     context_latest = _latest_context(context_df if context_df is not None else pd.DataFrame())
     symbols = sorted(set(research_latest) | set(context_latest))
     rows = []
-
     for symbol in symbols:
         payload, raw = research_latest.get(symbol, ({}, None))
         candidate = context_latest.get(symbol, {})
-        merged = dict(payload)
-        research_nested = _as_payload(candidate.get("research"))
-        if research_nested:
-            merged_research = dict(research_nested)
-        else:
-            merged_research = {}
-
+        merged_research = _as_payload(candidate.get("research"))
         research_source = dict(payload)
         if merged_research:
             research_source.update(merged_research)
         for key in ("fundamental_score", "valuation_score", "status", "source_status", "provider", "scrap", "frameworks", "valuation"):
             if key not in research_source and key in candidate:
                 research_source[key] = candidate[key]
-
         status = str(_first_value(research_source, "status", "research_status", "source_status") or "DATA UNAVAILABLE").upper()
         source = str(_first_value(research_source, "provider", "source") or "")
         scrap = _as_payload(research_source.get("scrap"))
         scrap_status = str(_first_value(scrap, "status") or "").upper()
         if status == "DATA UNAVAILABLE" and scrap_status:
             status = scrap_status
-
         sector = _first_value(candidate, "sector") or _first_value(research_source, "sector")
         theme = _first_value(candidate, "theme") or _first_value(research_source, "theme")
         decision = _first_value(candidate, "decision", "action")
@@ -1491,7 +1481,6 @@ def _research_screener_rows(df: pd.DataFrame, context_df: pd.DataFrame | None = 
         scrap_score = _first_value(research_source, "scrap_score")
         if scrap_score is None:
             scrap_score = _first_value(scrap, "scrap_score", "score")
-
         fundamentals = _as_payload(research_source.get("fundamentals"))
         valuation = _as_payload(research_source.get("valuation"))
         fundamental = _first_value(research_source, "fundamental_score")
@@ -1504,11 +1493,9 @@ def _research_screener_rows(df: pd.DataFrame, context_df: pd.DataFrame | None = 
         if conviction is None:
             frameworks = _as_payload(research_source.get("frameworks"))
             conviction = _first_value(frameworks, "overall")
-
         score_available = status not in {"DATA UNAVAILABLE", "UNKNOWN", ""}
         if not score_available:
             fundamental = valuation_score = scrap_score = conviction = None
-
         rows.append({
             "Symbol": symbol,
             "Price": _display_score(price, price is not None),
@@ -1528,7 +1515,6 @@ def _research_screener_rows(df: pd.DataFrame, context_df: pd.DataFrame | None = 
             "Last Updated": (raw.get("ts") if raw is not None else None),
             "_raw_payload": payload or candidate,
         })
-
     result = pd.DataFrame(rows)
     if result.empty:
         return result
@@ -1548,7 +1534,6 @@ def stock_screener():
     if table.empty:
         st.info("No persisted research or signal records are available yet.")
         return
-
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         query = st.text_input("Search symbol / sector", key="screener_filter").strip()
@@ -1560,7 +1545,6 @@ def stock_screener():
         direction_filter = st.multiselect("Direction", directions, default=[], key="screener_direction")
     with c4:
         min_trend = st.number_input("Minimum Trend Score", min_value=-100.0, max_value=100.0, value=-100.0, step=1.0, key="screener_min_trend")
-
     view = table.copy()
     if query:
         mask = view["Symbol"].str.contains(re.escape(query), case=False, na=False) | view["Sector"].str.contains(re.escape(query), case=False, na=False)
@@ -1571,12 +1555,10 @@ def stock_screener():
         view = view[view["Direction"].isin(direction_filter)]
     trend_numeric = pd.to_numeric(view["Trend Score"], errors="coerce")
     view = view[trend_numeric.isna() | (trend_numeric >= min_trend)]
-
     a, b, c = st.columns(3)
     a.metric("Latest stocks", len(view))
     b.metric("Research available / partial", int(view["Research Status"].isin(["PASS", "AVAILABLE", "PARTIAL"]).sum()))
     c.metric("Research unavailable", int((view["Research Status"] == "DATA UNAVAILABLE").sum()))
-
     display = view.drop(columns=["_raw_payload"], errors="ignore")
     st.dataframe(display, use_container_width=True, hide_index=True)
     if not view.empty:
@@ -1625,7 +1607,6 @@ def dashboard():
     st.caption(f"Data sync: {'OK' if st.session_state.get('sync_ok', True) else 'FAILED'} · {st.session_state.get('sync_at', '—')}")
     if not st.session_state.get("sync_ok", True):
         st.error(f"Dashboard refresh could not retrieve latest persisted state: {st.session_state.get('sync_error', 'unknown error')}")
-
     st.subheader("Validated trade recommendations")
     if live_candidates.empty:
         if cycle_success is not True:
@@ -1638,9 +1619,7 @@ def dashboard():
         else:
             st.warning("No validated recommendations persisted. See the deterministic gate breakdown below for the exact reason.")
     else:
-        display = live_candidates.drop(columns=["_raw_payload"], errors="ignore")
-        st.dataframe(display, use_container_width=True, hide_index=True)
-
+        st.dataframe(live_candidates.drop(columns=["_raw_payload"], errors="ignore"), use_container_width=True, hide_index=True)
     breakdown = rejection_breakdown(s)
     details = near_misses(s)
     st.subheader("Deterministic strategy gate breakdown")
@@ -1683,10 +1662,7 @@ def _framework_rows(bundle: dict) -> pd.DataFrame:
 
 
 def _valuation_rows(valuation: dict) -> pd.DataFrame:
-    return pd.DataFrame([
-        {"Metric": x.get("metric"), "Value": x.get("value"), "Score": x.get("score"), "Basis": x.get("basis")}
-        for x in valuation.get("components", [])
-    ])
+    return pd.DataFrame([{"Metric": x.get("metric"), "Value": x.get("value"), "Score": x.get("score"), "Basis": x.get("basis")} for x in valuation.get("components", [])])
 
 
 def frameworks():
@@ -1695,13 +1671,11 @@ def frameworks():
     persisted_symbols = sorted(persisted.symbol.dropna().astype(str).unique()) if not persisted.empty else []
     default_symbol = persisted_symbols[0] if persisted_symbols else "ABCAPITAL"
     symbol = st.text_input("NSE symbol", value=default_symbol, key="deep_research_symbol").strip().upper()
-
     c1, c2 = st.columns([1, 3])
     with c1:
         fetch_clicked = st.button("🔄 Refresh source-backed research", type="primary", key="refresh_deep_research")
     with c2:
         st.caption("Refreshes company-source data only. It does not place an order. Research remains advisory; deterministic execution and risk gates remain in force.")
-
     if fetch_clicked:
         if not symbol:
             st.warning("Enter an NSE symbol first.")
@@ -1709,29 +1683,14 @@ def frameworks():
             with st.spinner(f"Fetching source fundamentals for {symbol}…"):
                 try:
                     source = fetch_fundamentals(symbol)
-                    research_keys = (
-                        "profit_growth", "eps_growth", "roce", "roe", "debt_to_equity",
-                        "predictability", "earnings_quality", "pe", "forward_pe", "price_to_sales",
-                        "price_to_book", "enterprise_to_revenue", "enterprise_to_ebitda", "peg_ratio",
-                        "sector_weight_pct", "company_weight_pct", "red_flags", "sector"
-                    )
+                    research_keys = ("profit_growth", "eps_growth", "roce", "roe", "debt_to_equity", "predictability", "earnings_quality", "pe", "forward_pe", "price_to_sales", "price_to_book", "enterprise_to_revenue", "enterprise_to_ebitda", "peg_ratio", "sector_weight_pct", "company_weight_pct", "red_flags", "sector")
                     research = {key: source[key] for key in research_keys if key in source}
                     bundle = framework_analysis(research)
                     valuation = valuation_analysis(research)
-                    snapshot = {
-                        "symbol": symbol,
-                        "source": source,
-                        "research_input": research,
-                        "fundamental_score": fundamental_score(research),
-                        "valuation_score": valuation["score"],
-                        "valuation": valuation,
-                        "frameworks": bundle,
-                        "fetched_at": datetime.now(timezone.utc).isoformat(),
-                    }
+                    snapshot = {"symbol": symbol, "source": source, "research_input": research, "fundamental_score": fundamental_score(research), "valuation_score": valuation["score"], "valuation": valuation, "frameworks": bundle, "fetched_at": datetime.now(timezone.utc).isoformat()}
                     st.session_state.deep_research_source = snapshot
                 except Exception as exc:
                     st.error(str(exc))
-
     live = st.session_state.get("deep_research_source", {})
     if live and live.get("symbol") == symbol:
         source = live.get("source", {})
@@ -1774,7 +1733,6 @@ def frameworks():
         with st.expander("Raw source-backed research evidence"):
             st.json(live)
         return
-
     if persisted_symbols:
         matching = persisted[persisted.symbol.astype(str) == symbol]
         if not matching.empty:
@@ -1799,7 +1757,6 @@ def research_page(page):
     if page == "Stock Screener":
         stock_screener()
         return
-
     header(page, f"{page} — persisted Bot results only; no generic/fake stock data is substituted.")
     s = latest_status()
     h = j(HB)
@@ -1910,6 +1867,8 @@ def main():
         dashboard()
     elif nav == "AI Prompt Guide":
         prompt()
+    elif nav == "Portfolio":
+        portfolio_advisory_main()
     elif nav in {"Deep Research", "Stock Screener", "360° Stock Analysis", "Trend Scanner", "Top Bullish", "Top Bearish"}:
         research_page(nav)
     elif nav in {"Orders", "Positions", "Trade Journal"}:
