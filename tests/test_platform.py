@@ -43,8 +43,11 @@ def test_paper_quantity_ignores_real_broker_cash():
     assert r.capital_required == 200
 
 
+def test_paper_trading_has_no_daily_trade_count_cap():
+    assert settings.max_trades_per_day is None
+
+
 def test_rr_and_risk_gate():
-    assert settings.max_trades_per_day == 2
     assert settings.daily_loss_limit == 20.0
     assert settings.max_position_exposure == 800.0
     assert risk_reward(100,98,106)==3
