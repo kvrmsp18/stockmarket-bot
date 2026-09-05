@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import uuid
 
 from .database import Database
-from .research import scrap_portfolio_exposure_check
+from .scrap_portfolio import scrap_portfolio_exposure_check
 
 
 def _portfolio_positions(db: Database, mode: str) -> list[dict]:
@@ -43,9 +43,6 @@ def fill(db: Database, signal: dict, mode: str = "PAPER") -> str:
     if quantity <= 0 or entry <= 0:
         raise ValueError("Invalid simulated fill quantity or entry")
 
-    # SCRAP portfolio exposure is a final pre-fill safety gate. It is deliberately
-    # not sourced from fundamentals, because portfolio weights are execution-state
-    # facts rather than company fundamentals.
     positions = _portfolio_positions(db, mode)
     sector = str(signal.get("sector") or "UNKNOWN").strip().upper() or "UNKNOWN"
     capital = float(signal.get("reference_capital") or signal.get("paper_reference_capital") or 1000.0)
