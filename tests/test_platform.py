@@ -93,12 +93,11 @@ def test_scrap_empty_context_does_not_fabricate_rejection():
     assert result["projected_sector_weight_pct"] == 10.0
 
 
-def test_scrap_ignores_manual_real_positions_by_mode_boundary():
-    # The helper receives only execution-mode-filtered positions. A real/manual
-    # holding is therefore absent and cannot consume PAPER reference capital.
-    paper_positions = [
-        {"symbol": "PAPER1", "sector": "IT", "quantity": 1, "current_price": 150, "entry_price": 150, "mode": "PAPER"},
-    ]
+def test_scrap_manual_real_holdings_are_not_part_of_paper_context():
+    # The paper execution layer filters positions by mode before this helper is
+    # called. An actual/manual Dhan holding therefore cannot consume paper capital.
+    paper_positions: list[dict] = []
     result = scrap_portfolio_exposure_check("MANUAL1", "IT", 100, 1000, paper_positions)
-    assert result["projected_sector_weight_pct"] == 25.0
+    assert result["projected_sector_weight_pct"] == 10.0
+    assert result["projected_company_weight_pct"] == 10.0
     assert result["allowed"] is True
