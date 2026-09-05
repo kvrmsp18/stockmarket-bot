@@ -33,14 +33,7 @@ def _credential(name: str, default: str = "") -> str:
 
 
 def classify_dhan_manual_credential(value: str) -> str:
-    """Classify a manually supplied Dhan credential without exposing it.
-
-    An 8-character value matches the shape of a Dhan application/API key and
-    must never be treated as the bearer access-token used by market-data APIs.
-    Longer values are treated as manually supplied access credentials. Empty
-    values are unconfigured. This helper is deliberately structural; it does
-    not claim that a credential is valid until Dhan accepts it.
-    """
+    """Classify a manually supplied Dhan credential without exposing it."""
     text = str(value or "").strip()
     if not text:
         return "NONE"
@@ -73,9 +66,8 @@ class Settings:
     live_enabled: bool = _bool("DHAN_LIVE_TRADING_ENABLED", False)
     emergency_stop: bool = _bool("BOT_EMERGENCY_STOP", False)
     max_consecutive_losses: int = _int("MAX_CONSECUTIVE_LOSSES", 3)
-    # Paper trading deliberately has NO daily trade-count cap. Valid paper
-    # opportunities remain eligible; actual capital, exposure, loss,
-    # consecutive-loss, market, data, and execution gates still apply.
+    # Deliberately unlimited. Other risk gates remain active.
+    max_trades_per_day: int | None = None
     risk_per_trade_pct: float = _float("RISK_PER_TRADE_PCT", 0.5)
     daily_loss_limit: float = _float("MAX_DAILY_LOSS", 20.0)
     max_positions: int = _int("MAX_OPEN_POSITIONS", 5)
@@ -95,9 +87,6 @@ class Settings:
     database_url: str = _secret_or_env("DATABASE_URL", "sqlite:///data/trading.db")
     dhan_base_url: str = _secret_or_env("DHAN_API_BASE_URL", "https://api.dhan.co")
     dhan_client_id: str = _credential("DHAN_CLIENT_ID", "")
-    # Dhan authenticated market-data requests use the user-generated access
-    # token. API/application keys are not bearer credentials and are not sent
-    # in the access-token header.
     dhan_access_token_value: str = _credential("DHAN_ACCESS_TOKEN", "")
     dhan_security_ids_json: str = _secret_or_env("DHAN_SECURITY_IDS_JSON", "{}")
     bse_scrip_codes_json: str = _secret_or_env("BSE_SCRIP_CODES_JSON", "{}")
