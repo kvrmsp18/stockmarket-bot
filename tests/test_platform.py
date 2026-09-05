@@ -75,7 +75,7 @@ def test_scrap_sector_boundary_and_projection():
 
 
 def test_scrap_company_boundary_and_projection():
-    positions = [{"symbol": "ABC", "sector": "IT", "quantity": 1, "current_price": 250, "entry_price": 250}]
+    positions = [{"symbol": "ABC", "sector": "FINANCIAL", "quantity": 1, "current_price": 250, "entry_price": 250}]
     exact = scrap_portfolio_exposure_check("ABC", "IT", 0, 1000, positions)
     assert exact["allowed"] is True
     assert exact["company_weight_pct"] == 25.0
