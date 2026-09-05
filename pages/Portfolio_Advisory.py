@@ -111,20 +111,33 @@ def _source_price_history(symbol: str, period: str = "1mo") -> list[float]:
 
 
 def _benchmark_history(benchmark: str, period: str = "1mo") -> list[float]:
-    # Accept a Yahoo-compatible benchmark ticker; ^NSEI is used only when the user explicitly supplies it.
-    if benchmark.startswith("^"):
-        ticker_name = benchmark
-    else:
-        ticker_name = benchmark
+    """Read a real Yahoo Finance benchmark close series."""
     try:
         import yfinance as yf
-        frame = yf.Ticker(ticker_name).history(period=period, auto_adjust=False, actions=False)
+        frame = yf.Ticker(benchmark).history(period=period, auto_adjust=False, actions=False)
         if frame is None or frame.empty or "Close" not in frame:
             return []
         values = pd.to_numeric(frame["Close"], errors="coerce").dropna()
         return [float(x) for x in values.tolist() if float(x) > 0]
     except Exception:
         return []
+
+
+def _render_rebalance_history() -> None:
+    history = _load_json(REBALANCE_HISTORY_PATH)
+    if not isinstance(history, list) or not history:
+        return
+    st.markdown("**Rebalance/advisory history**")
+    rows = []
+    for item in reversed(history[-50:]):
+        r = item.get("result", {}) if isinstance(item, dict) else {}
+        rows.append({
+            "Timestamp": item.get("timestamp") if isinstance(item, dict) else None,
+            "Status": r.get("status"),
+            "Advice count": len(r.get("advice") or []),
+            "Reason": r.get("reason"),
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def _basket_section() -> None:
@@ -149,6 +162,7 @@ def _basket_section() -> None:
     if not saved:
         st.info("No baskets saved yet.")
         return
+
     selected = st.selectbox("Saved basket", sorted(saved), key="basket_select")
     basket = saved[selected]
     symbols = [str(x).upper() for x in basket.get("symbols", [])]
@@ -188,26 +202,13 @@ def _basket_section() -> None:
         elif benchmark:
             st.info("Benchmark comparison is DATA UNAVAILABLE because the benchmark price history was unavailable.")
 
-    history = _load_json(REBALANCE_HISTORY_PATH)
-    if isinstance(history, list) and history:
-        st.markdown("**Rebalance/advisory history**")
-        rows = []
-        for item in reversed(history[-50:]):
-            r = item.get("result", {})
-            rows.append({
-                "Timestamp": item.get("timestamp"),
-                "Status": r.get("status"),
-                "Advice count": len(r.get("advice") or []),
-                "Reason": r.get("reason"),
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
 
 def _portfolio_section() -> None:
     st.subheader("Portfolio concentration & rebalancing advice")
     positions = _positions()
     if not positions:
         st.info("No open PAPER positions with a valid current price are available. Rebalancing advice is DATA UNAVAILABLE until actual position data exists.")
+        _render_rebalance_history()
         return
     result = rebalance_advice(positions)
     _record_rebalance_history(result)
@@ -233,10 +234,10 @@ def _portfolio_section() -> None:
 
     with st.expander("Actual open PAPER positions used"):
         st.dataframe(pd.DataFrame(positions), use_container_width=True, hide_index=True)
+    _render_rebalance_history()
 
 
 def main() -> None:
-    st.set_page_config(page_title="Portfolio Advisory", layout="wide")
     st.title("Portfolio & Baskets")
     st.info(f"PAPER mode · isolated reference capital ₹{settings.reference_capital:,.2f} · live orders remain disabled")
     _portfolio_section()
@@ -244,4 +245,6 @@ def main() -> None:
     _basket_section()
 
 
-main()
+if __name__ == "__main__":
+    st.set_page_config(page_title="Portfolio Advisory", layout="wide")
+    main()
