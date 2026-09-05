@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import floor
-from datetime import datetime
 
-from .config import IST, settings
+from .config import settings
 
 
 @dataclass(frozen=True)
@@ -73,30 +72,17 @@ def _consecutive_losses_from_db() -> int:
             ).fetchall()
         count = 0
         for row in rows:
-            try: pnl = float(row[0])
-            except (TypeError, ValueError): break
-            if pnl < 0: count += 1
-            else: break
+            try:
+                pnl = float(row[0])
+            except (TypeError, ValueError):
+                break
+            if pnl < 0:
+                count += 1
+            else:
+                break
         return count
     except Exception:
         return settings.max_consecutive_losses
-
-
-def _trades_today_from_db() -> int:
-    """Count filled simulated entries today; open entries count immediately."""
-    try:
-        from .database import Database
-        db = Database()
-        today = datetime.now(IST).date().isoformat()
-        with db.connect() as con:
-            row = con.execute(
-                "SELECT COUNT(*) FROM orders WHERE state='FILLED' AND substr(ts,1,10)=? "
-                "AND (order_id LIKE 'PAPER-%' OR order_id LIKE 'LIVETEST-%')",
-                (today,),
-            ).fetchone()
-        return int(row[0] or 0) if row else 0
-    except Exception:
-        return settings.max_trades_per_day
 
 
 def risk_gate(
@@ -107,14 +93,25 @@ def risk_gate(
     emergency_stop: bool | None = None,
     consecutive_losses: int | None = None,
 ) -> tuple[bool, str | None]:
-    """Deterministic risk gate shared by paper and live-test execution."""
+    """Deterministic safety gate with no daily trade-count limit.
+
+    Valid paper opportunities remain eligible without an artificial trade-count
+    ceiling. Capital, position, sector, daily-loss, consecutive-loss,
+    emergency-stop and minimum-R:R controls remain enforced elsewhere here.
+    """
     stop = settings.emergency_stop if emergency_stop is None else emergency_stop
-    if stop: return False, "EMERGENCY_STOP"
-    if daily_loss >= settings.daily_loss_limit: return False, "DAILY_LOSS_LIMIT"
-    if open_positions >= settings.max_positions: return False, "POSITION_LIMIT"
-    if sector_exposure >= settings.max_sector_exposure: return False, "SECTOR_EXPOSURE_LIMIT"
-    if consecutive_losses is None: consecutive_losses = _consecutive_losses_from_db()
-    if consecutive_losses >= settings.max_consecutive_losses: return False, "MAX_CONSECUTIVE_LOSSES"
-    if _trades_today_from_db() >= settings.max_trades_per_day: return False, "MAX_TRADES_PER_DAY"
-    if rr < settings.min_rr: return False, "RISK_REJECTION"
+    if stop:
+        return False, "EMERGENCY_STOP"
+    if daily_loss >= settings.daily_loss_limit:
+        return False, "DAILY_LOSS_LIMIT"
+    if open_positions >= settings.max_positions:
+        return False, "POSITION_LIMIT"
+    if sector_exposure >= settings.max_sector_exposure:
+        return False, "SECTOR_EXPOSURE_LIMIT"
+    if consecutive_losses is None:
+        consecutive_losses = _consecutive_losses_from_db()
+    if consecutive_losses >= settings.max_consecutive_losses:
+        return False, "MAX_CONSECUTIVE_LOSSES"
+    if rr < settings.min_rr:
+        return False, "RISK_REJECTION"
     return True, None
