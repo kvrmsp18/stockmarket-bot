@@ -51,12 +51,59 @@ def _band(value: float, points: list[tuple[float, float]]) -> float:
     return points[-1][1]
 
 
-def scrap_analysis(symbol: str, fundamentals: dict[str, Any] | None) -> ResearchResult:
-    """SCRAP and final deterministic event/news pre-entry gate.
+def canslim_inputs(stock_daily: Any, benchmark_daily: Any, market_regime: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Derive CANSLIM inputs only from genuine historical market data.
 
-    Event/news evidence is secondary confirmation/risk information. It can only
-    reject an automated entry; it can never create a BUY/SELL signal.
+    Relative strength is the stock's trailing 20-session return minus NIFTY's
+    trailing 20-session return. Market trend is taken from the verified NIFTY
+    regime score produced from Dhan index history. Missing/insufficient data is
+    returned explicitly rather than replaced with a synthetic score.
     """
+    import pandas as pd
+
+    def clean(frame: Any) -> pd.DataFrame:
+        if frame is None or getattr(frame, "empty", True):
+            return pd.DataFrame()
+        x = frame.copy()
+        if "timestamp" not in x.columns or "close" not in x.columns:
+            return pd.DataFrame()
+        x["timestamp"] = pd.to_datetime(x["timestamp"], utc=True, errors="coerce")
+        x["close"] = pd.to_numeric(x["close"], errors="coerce")
+        return x.dropna(subset=["timestamp", "close"]).sort_values("timestamp")
+
+    stock = clean(stock_daily)
+    benchmark = clean(benchmark_daily)
+    if len(stock) < 21 or len(benchmark) < 21:
+        return {"status": "DATA UNAVAILABLE", "relative_strength": None, "market_trend": None, "relative_strength_basis": "20_SESSION_RETURN_DIFFERENTIAL", "market_trend_basis": "VERIFIED_NIFTY_REGIME_SCORE"}
+    stock_ret = float((stock["close"].iloc[-1] / stock["close"].iloc[-21] - 1.0) * 100)
+    benchmark_ret = float((benchmark["close"].iloc[-1] / benchmark["close"].iloc[-21] - 1.0) * 100)
+    relative_strength = round(stock_ret - benchmark_ret, 4)
+    nifty = (market_regime or {}).get("indices", {}).get("NIFTY_50", {})
+    market_trend = nifty.get("score")
+    if not isinstance(market_trend, (int, float)) or isinstance(market_trend, bool):
+        market_trend = None
+    return {"status": "AVAILABLE" if market_trend is not None else "DATA UNAVAILABLE", "relative_strength": relative_strength, "stock_return_20_pct": round(stock_ret, 4), "benchmark_return_20_pct": round(benchmark_ret, 4), "market_trend": float(market_trend) if market_trend is not None else None, "relative_strength_basis": "20_SESSION_RETURN_DIFFERENTIAL_VS_NIFTY_50", "market_trend_basis": "VERIFIED_NIFTY_REGIME_SCORE"}
+
+
+def scrap_portfolio_exposure_check(symbol: str, sector: str, candidate_notional: float, reference_capital: float, positions: list[dict[str, Any]] | None) -> dict[str, Any]:
+    """Evaluate SCRAP's portfolio limits using actual simulated positions only."""
+    if reference_capital <= 0:
+        return {"allowed": False, "reason": "SCRAP_REJECTION:INVALID_REFERENCE_CAPITAL"}
+    symbol = str(symbol or "").upper()
+    sector = str(sector or "UNKNOWN").upper()
+    rows = [p for p in (positions or []) if str(p.get("mode", "PAPER")).upper() in {"PAPER", "LIVE_TEST"}]
+    company_existing = sum(float(p.get("entry_price") or p.get("current_price") or 0) * int(p.get("quantity") or 0) for p in rows if str(p.get("symbol", "")).upper() == symbol)
+    sector_existing = sum(float(p.get("entry_price") or p.get("current_price") or 0) * int(p.get("quantity") or 0) for p in rows if str(p.get("sector") or "UNKNOWN").upper() == sector)
+    projected_company = (company_existing + max(0.0, float(candidate_notional))) / reference_capital * 100.0
+    projected_sector = (sector_existing + max(0.0, float(candidate_notional))) / reference_capital * 100.0
+    if projected_sector > SCRAP_SECTOR_LIMIT_PCT:
+        return {"allowed": False, "reason": "SCRAP_REJECTION:SECTOR_EXPOSURE", "sector_weight_pct": projected_sector, "company_weight_pct": projected_company, "sector_limit_pct": SCRAP_SECTOR_LIMIT_PCT, "company_limit_pct": SCRAP_COMPANY_LIMIT_PCT}
+    if projected_company > SCRAP_COMPANY_LIMIT_PCT:
+        return {"allowed": False, "reason": "SCRAP_REJECTION:COMPANY_EXPOSURE", "sector_weight_pct": projected_sector, "company_weight_pct": projected_company, "sector_limit_pct": SCRAP_SECTOR_LIMIT_PCT, "company_limit_pct": SCRAP_COMPANY_LIMIT_PCT}
+    return {"allowed": True, "reason": "SCRAP_PORTFOLIO_LIMITS_PASS", "sector_weight_pct": projected_sector, "company_weight_pct": projected_company, "sector_limit_pct": SCRAP_SECTOR_LIMIT_PCT, "company_limit_pct": SCRAP_COMPANY_LIMIT_PCT}
+
+
+def scrap_analysis(symbol: str, fundamentals: dict[str, Any] | None) -> ResearchResult:
     f = fundamentals or {}
     sectors_pct = _numeric(f, "sector_weight_pct")
     company_pct = _numeric(f, "company_weight_pct")
@@ -104,7 +151,6 @@ def _fundamental_component_scores(f: dict[str, Any]) -> tuple[dict[str, float], 
 
 
 def fundamental_score(f: dict[str, Any] | None) -> float:
-    """Continuous 0-10 fundamental score with sector-aware weighting."""
     d = f or {}
     scores, _ = _fundamental_component_scores(d)
     sector_name = str(d.get("sector") or "").strip().lower()
@@ -134,18 +180,10 @@ def _valuation_component(value: float, kind: str) -> float:
 
 
 def valuation_analysis(f: dict[str, Any] | None) -> dict[str, Any]:
-    """Source-backed multi-method valuation.
-
-    P/E is used only when earnings are positive. For loss-making companies,
-    P/E is not treated as a zero valuation score; the model evaluates valid
-    source-backed alternatives such as P/S, EV/Revenue, EV/EBITDA, PEG, and
-    P/B where appropriate. Missing metrics remain unavailable.
-    """
     d = f or {}
     sector_name = str(d.get("sector") or "").strip().lower()
     financial = any(x in sector_name for x in ("financial", "bank", "insurance", "capital markets", "credit"))
     components: list[dict[str, Any]] = []
-
     pe = _numeric(d, "pe")
     if pe is not None and pe > 0:
         components.append({"metric": "P/E", "value": pe, "score": _valuation_component(pe, "pe"), "basis": "TRAILING_EARNINGS"})
@@ -153,32 +191,24 @@ def valuation_analysis(f: dict[str, Any] | None) -> dict[str, Any]:
         forward_pe = _numeric(d, "forward_pe")
         if forward_pe is not None and forward_pe > 0:
             components.append({"metric": "Forward P/E", "value": forward_pe, "score": _valuation_component(forward_pe, "forward_pe"), "basis": "FORWARD_EARNINGS"})
-
     ps = _numeric(d, "price_to_sales")
     ev_revenue = _numeric(d, "enterprise_to_revenue")
     if ps is not None and ps > 0:
         components.append({"metric": "P/S", "value": ps, "score": _valuation_component(ps, "price_to_sales"), "basis": "TRAILING_REVENUE"})
     elif ev_revenue is not None and ev_revenue > 0:
         components.append({"metric": "EV/Revenue", "value": ev_revenue, "score": _valuation_component(ev_revenue, "enterprise_to_revenue"), "basis": "TRAILING_REVENUE"})
-
     ev_ebitda = _numeric(d, "enterprise_to_ebitda")
     if ev_ebitda is not None and ev_ebitda > 0:
         components.append({"metric": "EV/EBITDA", "value": ev_ebitda, "score": _valuation_component(ev_ebitda, "enterprise_to_ebitda"), "basis": "POSITIVE_EBITDA"})
-
     peg = _numeric(d, "peg_ratio")
     if peg is not None and peg > 0:
         components.append({"metric": "PEG", "value": peg, "score": _valuation_component(peg, "peg_ratio"), "basis": "GROWTH_ADJUSTED"})
-
     pb = _numeric(d, "price_to_book")
     if financial and pb is not None and pb > 0:
         components.append({"metric": "P/B", "value": pb, "score": _valuation_component(pb, "price_to_book"), "basis": "FINANCIAL_SECTOR"})
-
     if not components:
         reason = "Trailing P/E is not meaningful because earnings are non-positive and no valid alternative valuation multiple was supplied." if pe is not None and pe <= 0 else "No valid source-backed valuation multiple was supplied."
         return {"score": 0.0, "status": "DATA UNAVAILABLE", "method": "NONE", "components": [], "reason": reason}
-
-    # Do not let multiple representations of the same sales/earnings concept
-    # dominate. Components are already one-per-method family above.
     weights = {"P/E": 0.30, "Forward P/E": 0.25, "P/S": 0.25, "EV/Revenue": 0.25, "EV/EBITDA": 0.20, "PEG": 0.15, "P/B": 0.20}
     weighted = sum(item["score"] * weights.get(item["metric"], 0.15) for item in components)
     total_weight = sum(weights.get(item["metric"], 0.15) for item in components)
@@ -236,11 +266,18 @@ def _factor_result(f: dict[str, Any], key: str) -> tuple[str, str]:
         if value >= 10: return "POSITIVE", f"{key}={value:g} is at least 10%"
         if value < 0: return "NEGATIVE", f"{key}={value:g} is negative"
         return "NEUTRAL", f"{key}={value:g} is positive but below 10%"
+    if key == "relative_strength":
+        if value > 0: return "POSITIVE", f"20-session return differential vs NIFTY={value:g}%"
+        if value < 0: return "NEGATIVE", f"20-session return differential vs NIFTY={value:g}%"
+        return "NEUTRAL", "20-session return differential vs NIFTY is 0%"
+    if key == "market_trend":
+        if value >= 6.5: return "POSITIVE", f"Verified NIFTY market-trend score={value:g}/10"
+        if value <= 3.5: return "NEGATIVE", f"Verified NIFTY market-trend score={value:g}/10"
+        return "NEUTRAL", f"Verified NIFTY market-trend score={value:g}/10"
     return ("POSITIVE", f"{key}={value:g} is positive") if value > 0 else ("NEGATIVE", f"{key}={value:g} is not positive")
 
 
 def framework_analysis(f: dict[str, Any] | None) -> dict[str, Any]:
-    """Auditable five-framework research with positive/neutral/negative/missing states."""
     d = f or {}
     output: dict[str, Any] = {}
     for name, spec in FRAMEWORK_RULES.items():
@@ -283,23 +320,7 @@ def research_bundle(symbol: str, f: dict[str, Any] | None) -> dict[str, Any]:
     scrap = scrap_analysis(symbol, d)
     frameworks = framework_analysis(d)
     valuation = valuation_analysis(d)
-    return {
-        "symbol": symbol,
-        "scrap": asdict(scrap),
-        "fundamental_score": fundamental_score(d),
-        "valuation_score": valuation["score"],
-        "valuation": valuation,
-        "frameworks": frameworks,
-        "derivatives": derivatives,
-        "market_context": market,
-        "preopen": preopen,
-        "preopen_market_context": preopen_market,
-        "event_news": news,
-        "event_news_risk": news_gate,
-        "valuation_price_from_eps_pe": source_valuation(d.get("eps"), d.get("pe")),
-        "roce_from_profit_capital": source_roce(d.get("profit"), d.get("capital")),
-        "status": "REJECTED" if scrap.rejection_reason else ("AVAILABLE" if frameworks["status"] == "AVAILABLE" else "DATA UNAVAILABLE"),
-    }
+    return {"symbol": symbol, "scrap": asdict(scrap), "fundamental_score": fundamental_score(d), "valuation_score": valuation["score"], "valuation": valuation, "frameworks": frameworks, "derivatives": derivatives, "market_context": market, "preopen": preopen, "preopen_market_context": preopen_market, "event_news": news, "event_news_risk": news_gate, "valuation_price_from_eps_pe": source_valuation(d.get("eps"), d.get("pe")), "roce_from_profit_capital": source_roce(d.get("profit"), d.get("capital")), "status": "REJECTED" if scrap.rejection_reason else ("AVAILABLE" if frameworks["status"] == "AVAILABLE" else "DATA UNAVAILABLE")}
 
 
 def research_dict(result: ResearchResult) -> dict[str, Any]:
