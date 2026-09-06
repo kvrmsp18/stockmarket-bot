@@ -13,12 +13,8 @@ import requests
 
 DHAN_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master.csv"
 INDEX_NAMES = {
-    "NIFTY_50": {
-        "NIFTY 50", "NIFTY50", "NIFTY", "NIFTY_50", "NIFTY-50",
-    },
-    "BANK_NIFTY": {
-        "NIFTY BANK", "BANKNIFTY", "NIFTYBANK", "BANK NIFTY", "NIFTY_BANK",
-    },
+    "NIFTY_50": {"NIFTY 50", "NIFTY50", "NIFTY", "NIFTY_50", "NIFTY-50"},
+    "BANK_NIFTY": {"NIFTY BANK", "BANKNIFTY", "NIFTYBANK", "BANK NIFTY", "NIFTY_BANK"},
 }
 
 
@@ -27,31 +23,17 @@ def _normalise(value: Any) -> str:
 
 
 def _resolve_indices(timeout: int = 30) -> dict[str, dict[str, str]]:
-    """Resolve current NSE index security IDs from Dhan's official scrip master."""
-    response = requests.get(
-        DHAN_MASTER_URL,
-        timeout=timeout,
-        headers={"User-Agent": "stockmarket-bot/1.0"},
-    )
+    response = requests.get(DHAN_MASTER_URL, timeout=timeout, headers={"User-Agent": "stockmarket-bot/1.0"})
     response.raise_for_status()
     reader = csv.DictReader(io.StringIO(response.content.decode("utf-8-sig", errors="replace")))
     fieldnames = reader.fieldnames or []
     fields = {_normalise(x): x for x in fieldnames if x}
-
-    required = (
-        "SEM EXM EXCH ID",
-        "SEM SEGMENT",
-        "SEM INSTRUMENT NAME",
-        "SEM TRADING SYMBOL",
-        "SEM SMST SECURITY ID",
-    )
+    required = ("SEM EXM EXCH ID", "SEM SEGMENT", "SEM INSTRUMENT NAME", "SEM TRADING SYMBOL", "SEM SMST SECURITY ID")
     missing = [x for x in required if x not in fields]
     if missing:
         raise RuntimeError("DHAN_INDEX_MASTER_INVALID: " + ",".join(missing))
-
     custom_field = fields.get("SEM CUSTOM SYMBOL")
     out: dict[str, dict[str, str]] = {}
-
     for row in reader:
         exchange = _normalise(row.get(fields["SEM EXM EXCH ID"], ""))
         segment = _normalise(row.get(fields["SEM SEGMENT"], ""))
@@ -59,14 +41,12 @@ def _resolve_indices(timeout: int = 30) -> dict[str, dict[str, str]]:
         trading_symbol = _normalise(row.get(fields["SEM TRADING SYMBOL"], ""))
         custom_symbol = _normalise(row.get(custom_field, "")) if custom_field else ""
         security_id = str(row.get(fields["SEM SMST SECURITY ID"], "")).strip()
-
         if exchange != "NSE" or not security_id:
             continue
         if segment not in {"I", "INDEX"} and "INDEX" not in instrument:
             continue
         if "INDEX" not in instrument:
             continue
-
         names = {trading_symbol, custom_symbol} - {""}
         key = None
         for candidate, aliases in INDEX_NAMES.items():
@@ -75,15 +55,7 @@ def _resolve_indices(timeout: int = 30) -> dict[str, dict[str, str]]:
                 break
         if key is None:
             continue
-
-        out[key] = {
-            "symbol": custom_symbol or trading_symbol,
-            "trading_symbol": trading_symbol,
-            "security_id": security_id,
-            "exchange_segment": "IDX_I",
-            "instrument": "INDEX",
-        }
-
+        out[key] = {"symbol": custom_symbol or trading_symbol, "trading_symbol": trading_symbol, "security_id": security_id, "exchange_segment": "IDX_I", "instrument": "INDEX"}
     missing = [key for key in INDEX_NAMES if key not in out]
     if missing:
         raise RuntimeError("DHAN_INDEX_NOT_FOUND: " + ",".join(missing))
@@ -116,7 +88,6 @@ def _analyse_index(name: str, frame: pd.DataFrame) -> dict[str, Any]:
         x = x.sort_values("timestamp")
     if len(x) < 50:
         raise RuntimeError(f"INDEX_DATA_INSUFFICIENT:{name}:{len(x)}")
-
     close = x["close"].reset_index(drop=True)
     price = float(close.iloc[-1])
     previous = float(close.iloc[-2])
@@ -125,7 +96,6 @@ def _analyse_index(name: str, frame: pd.DataFrame) -> dict[str, Any]:
     ret5 = float(close.pct_change(5).iloc[-1] * 100)
     ret20 = float(close.pct_change(20).iloc[-1] * 100)
     rsi = _rsi(close)
-
     score = 5.0
     score += 1.2 if price > ema20 else -1.2
     score += 1.2 if ema20 > ema50 else -1.2
@@ -135,65 +105,25 @@ def _analyse_index(name: str, frame: pd.DataFrame) -> dict[str, Any]:
         score += 0.8 if rsi >= 55 else -0.8 if rsi <= 45 else 0
     score = max(0.0, min(10.0, score))
     state = "BULLISH" if score >= 6.5 else "BEARISH" if score <= 3.5 else "NEUTRAL"
-
-    return {
-        "name": name,
-        "price": price,
-        "previous_close": previous,
-        "change_pct": round((price / previous - 1) * 100, 4) if previous else 0.0,
-        "ema20": round(ema20, 4),
-        "ema50": round(ema50, 4),
-        "rsi": round(rsi, 4) if rsi is not None else None,
-        "return_5_pct": round(ret5, 4),
-        "return_20_pct": round(ret20, 4),
-        "score": round(score, 3),
-        "state": state,
-        "bars": len(x),
-    }
+    return {"name": name, "price": price, "previous_close": previous, "change_pct": round((price / previous - 1) * 100, 4) if previous else 0.0, "ema20": round(ema20, 4), "ema50": round(ema50, 4), "rsi": round(rsi, 4) if rsi is not None else None, "return_5_pct": round(ret5, 4), "return_20_pct": round(ret20, 4), "score": round(score, 3), "state": state, "bars": len(x)}
 
 
 def _index_history(broker, security_id: str) -> pd.DataFrame:
-    """Fetch genuine daily index history through Dhan's historical-chart API.
-
-    Dhan's index segment is ``IDX_I``.  The broker's historical payload builder
-    also supplies the required ``expiryCode=0`` and ``oi=false`` fields.  This
-    avoids the DH-905 caused by the previous ``NSE_IDX``/incomplete-payload
-    combination.
-    """
-    return broker.daily_history(
-        security_id,
-        exchange_segment="IDX_I",
-        instrument="INDEX",
-    )
+    return broker.daily_history(security_id, exchange_segment="IDX_I", instrument="INDEX")
 
 
 def build(broker, cache_path: str = "data/market_regime.json") -> dict[str, Any]:
     indices = _resolve_indices()
-    nifty = _analyse_index(
-        "NIFTY 50",
-        _index_history(broker, indices["NIFTY_50"]["security_id"]),
-    )
-    bank = _analyse_index(
-        "BANK NIFTY",
-        _index_history(broker, indices["BANK_NIFTY"]["security_id"]),
-    )
-
-    if nifty["state"] == "BULLISH" and bank["state"] == "BULLISH":
-        combined = "BULLISH"
-    elif nifty["state"] == "BEARISH" and bank["state"] == "BEARISH":
-        combined = "BEARISH"
-    else:
-        combined = "MIXED"
-
-    result: dict[str, Any] = {
-        "status": "AVAILABLE",
-        "as_of": datetime.now(timezone.utc).isoformat(),
-        "indices": {"NIFTY_50": nifty, "BANK_NIFTY": bank},
-        "combined_regime": combined,
-        "buy_allowed": combined == "BULLISH",
-        "sell_allowed": combined == "BEARISH",
-        "reason": f"NIFTY={nifty['state']} ({nifty['score']:.2f}), BANK_NIFTY={bank['state']} ({bank['score']:.2f}), combined={combined}",
-    }
+    nifty = _analyse_index("NIFTY 50", _index_history(broker, indices["NIFTY_50"]["security_id"]))
+    bank = _analyse_index("BANK NIFTY", _index_history(broker, indices["BANK_NIFTY"]["security_id"]))
+    if nifty["state"] == "BULLISH" and bank["state"] == "BULLISH": combined = "BULLISH"
+    elif nifty["state"] == "BEARISH" and bank["state"] == "BEARISH": combined = "BEARISH"
+    else: combined = "MIXED"
+    nifty["security_id"] = indices["NIFTY_50"]["security_id"]
+    nifty["exchange_segment"] = indices["NIFTY_50"]["exchange_segment"]
+    bank["security_id"] = indices["BANK_NIFTY"]["security_id"]
+    bank["exchange_segment"] = indices["BANK_NIFTY"]["exchange_segment"]
+    result = {"status": "AVAILABLE", "as_of": datetime.now(timezone.utc).isoformat(), "indices": {"NIFTY_50": nifty, "BANK_NIFTY": bank}, "combined_regime": combined, "buy_allowed": combined == "BULLISH", "sell_allowed": combined == "BEARISH", "reason": f"NIFTY={nifty['state']} ({nifty['score']:.2f}), BANK_NIFTY={bank['state']} ({bank['score']:.2f}), combined={combined}"}
     path = Path(cache_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2), encoding="utf-8")
