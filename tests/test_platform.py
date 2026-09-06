@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from intraday_bot.config import settings
-from intraday_bot.research import source_roce, source_valuation, scrap_analysis
+from intraday_bot.research import canslim_inputs, source_roce, source_valuation, scrap_analysis
 from intraday_bot.risk import position_size, risk_reward, risk_gate
 from intraday_bot.scrap_portfolio import scrap_portfolio_exposure_check
 from intraday_bot.technical import indicators, trend_state
@@ -13,6 +13,11 @@ from intraday_bot.technical import indicators, trend_state
 def sample_bars(n=120):
     close = np.linspace(100, 120, n) + np.sin(np.arange(n)) * 0.5
     return pd.DataFrame({"timestamp": pd.date_range("2026-01-01", periods=n, freq="5min", tz="UTC"), "open": close - 0.2, "high": close + 0.5, "low": close - 0.5, "close": close, "volume": np.full(n, 100000.0)})
+
+
+def sample_daily(n=320, start=100.0, step=0.25):
+    close = start + np.arange(n) * step
+    return pd.DataFrame({"timestamp": pd.date_range("2025-01-01", periods=n, freq="B", tz="UTC"), "close": close, "open": close, "high": close + 1, "low": close - 1, "volume": np.full(n, 100000.0)})
 
 
 def test_source_formulas():
@@ -67,7 +72,6 @@ def test_scrap_sector_boundary_and_projection():
     exact = scrap_portfolio_exposure_check("B", "IT", 0, 1000, positions)
     assert exact["allowed"] is True
     assert exact["sector_weight_pct"] == 15.0
-
     reject = scrap_portfolio_exposure_check("B", "IT", 1, 1000, positions)
     assert reject["allowed"] is False
     assert reject["reason"] == "SCRAP_REJECTION_SECTOR_EXPOSURE"
@@ -79,7 +83,6 @@ def test_scrap_company_boundary_and_projection():
     exact = scrap_portfolio_exposure_check("ABC", "IT", 0, 1000, positions)
     assert exact["allowed"] is True
     assert exact["company_weight_pct"] == 25.0
-
     reject = scrap_portfolio_exposure_check("ABC", "IT", 1, 1000, positions)
     assert reject["allowed"] is False
     assert reject["reason"] == "SCRAP_REJECTION_COMPANY_EXPOSURE"
@@ -94,10 +97,36 @@ def test_scrap_empty_context_does_not_fabricate_rejection():
 
 
 def test_scrap_manual_real_holdings_are_not_part_of_paper_context():
-    # The paper execution layer filters positions by mode before this helper is
-    # called. An actual/manual Dhan holding therefore cannot consume paper capital.
     paper_positions: list[dict] = []
     result = scrap_portfolio_exposure_check("MANUAL1", "IT", 100, 1000, paper_positions)
     assert result["projected_sector_weight_pct"] == 10.0
     assert result["projected_company_weight_pct"] == 10.0
     assert result["allowed"] is True
+
+
+def test_canslim_relative_strength_is_real_return_differential():
+    stock = sample_daily(start=100, step=1.0)
+    market = sample_daily(start=100, step=0.5)
+    regime = {"indices": {"NIFTY_50": {"return_20_pct": 10.0, "score": 8.0}}}
+    result = canslim_inputs(stock, market, regime)
+    expected = (stock["close"].iloc[-1] / stock["close"].iloc[-21] - 1) * 100 - (market["close"].iloc[-1] / market["close"].iloc[-21] - 1) * 100
+    assert result["status"] == "AVAILABLE"
+    assert round(result["relative_strength"], 4) == round(expected, 4)
+    assert result["market_trend"] == 8.0
+
+
+def test_canslim_uses_verified_regime_return_without_synthetic_benchmark():
+    stock = sample_daily(start=100, step=1.0)
+    regime = {"indices": {"NIFTY_50": {"return_20_pct": 10.0, "score": 7.0}}}
+    result = canslim_inputs(stock, None, regime)
+    assert result["status"] == "AVAILABLE"
+    assert result["benchmark_return_20_pct"] == 10.0
+    assert result["market_trend"] == 7.0
+
+
+def test_canslim_missing_history_stays_unavailable():
+    short = sample_daily(n=10)
+    regime = {"indices": {"NIFTY_50": {"return_20_pct": 10.0, "score": 7.0}}}
+    result = canslim_inputs(short, None, regime)
+    assert result["status"] == "DATA UNAVAILABLE"
+    assert result["relative_strength"] is None
