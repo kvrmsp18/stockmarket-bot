@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 8ac54a07149d4ccd0214291d32b7e941268ccb5b
-Generated UTC: 2026-09-07T10:32:46.417162+00:00
+Commit SHA: 095bc9a4ac64cd6bfdbb4b7aee57002184e27ddc
+Generated UTC: 2026-09-07T10:55:28.439438+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -77,6 +77,7 @@ intraday_bot/safety.py	715 bytes
 intraday_bot/scrap_portfolio.py	4418 bytes
 intraday_bot/sector_intelligence.py	11429 bytes
 intraday_bot/technical.py	8245 bytes
+intraday_bot/ui_health.py	4491 bytes
 pages/00_TOTP_Diagnostic.py	3165 bytes
 pages/01_Dhan_Auth_Request_Diagnostic.py	2126 bytes
 pages/02_Dhan_PIN_Diagnostic.py	3922 bytes
@@ -85,6 +86,8 @@ pages/04_Dhan_JSON_Body_Auth_Diagnostic.py	1790 bytes
 pages/04_Dhan_Official_SDK_Auth_Diagnostic.py	2154 bytes
 pages/05_Dhan_API_Key_Consent_Diagnostic.py	3753 bytes
 pages/06_Dhan_OAuth_Browser_Login_Diagnostic.py	5985 bytes
+pages/17_System_Health.py	2193 bytes
+pages/18_Post_Mortem.py	2945 bytes
 pages/Portfolio_Advisory.py	10405 bytes
 reports/.gitkeep	0 bytes
 reports/daily/.gitkeep	1 bytes
@@ -157,6 +160,7 @@ tests/test_research_frameworks.py	7141 bytes
 tests/test_run_daily_cycle.py	4389 bytes
 tests/test_runtime_safety.py	1812 bytes
 tests/test_sector_intelligence.py	2520 bytes
+tests/test_ui_health.py	2655 bytes
 tests/test_validation_gate.py	7134 bytes
 tests/test_worker_heartbeat.py	1301 bytes
 
@@ -42335,9 +42339,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-07T15:55:10.859160+05:30",
+  "updated_at": "2026-09-07T16:19:45.669771+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "34111329902",
+  "workflow_run_id": "34113459173",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -59523,10 +59527,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-07T15:55:10.932865+05:30",
+  "updated_at": "2026-09-07T16:19:45.741514+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "34111329902",
+  "workflow_run_id": "34113459173",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -63991,6 +63995,95 @@ def technical_setup(df: pd.DataFrame, daily_history: pd.DataFrame | None = None)
     }
 
 ====================================================================
+FILE: intraday_bot/ui_health.py
+SIZE: 4491 bytes
+====================================================================
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+def parse_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def age_seconds(value: Any, now: datetime | None = None) -> float | None:
+    parsed = parse_timestamp(value)
+    if parsed is None:
+        return None
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return max(0.0, (current.astimezone(timezone.utc) - parsed).total_seconds())
+
+
+def heartbeat_check(name: str, payload: dict[str, Any], max_age_seconds: int = 900, now: datetime | None = None) -> dict[str, Any]:
+    age = age_seconds(payload.get("updated_at"), now)
+    fresh = age is not None and age <= max_age_seconds
+    return {
+        "component": name,
+        "status": "PASS" if fresh else "FAIL",
+        "fresh": fresh,
+        "age_seconds": round(age, 1) if age is not None else None,
+        "state": payload.get("state", "DATA UNAVAILABLE"),
+        "cycle_success": payload.get("cycle_success"),
+        "market_open": payload.get("market_open"),
+        "updated_at": payload.get("updated_at"),
+        "reason": "fresh heartbeat" if fresh else "heartbeat missing or stale",
+    }
+
+
+def preflight_check(payload: dict[str, Any], max_age_seconds: int = 1800, now: datetime | None = None) -> dict[str, Any]:
+    age = age_seconds(payload.get("updated_at"), now)
+    passed = str(payload.get("status", "")).upper() == "PASSED"
+    live_submission = payload.get("live_order_submission") is True
+    fresh = age is not None and age <= max_age_seconds
+    ok = passed and fresh and not live_submission
+    return {
+        "component": "Dhan preflight",
+        "status": "PASS" if ok else "FAIL",
+        "fresh": fresh,
+        "passed": passed,
+        "live_order_submission": live_submission,
+        "age_seconds": round(age, 1) if age is not None else None,
+        "updated_at": payload.get("updated_at"),
+        "reason": "preflight passed and live submission is disabled" if ok else "preflight unavailable/stale or live submission flag is enabled",
+    }
+
+
+def evaluate_runtime_health(*, mode: str, live_enabled: bool, emergency_stop: bool, worker: dict[str, Any], scheduler: dict[str, Any], preflight: dict[str, Any], status: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
+    """Produce a truthful read-only health model from persisted runtime state."""
+    checks = [
+        {"component": "Operational mode", "status": "PASS" if str(mode).upper() == "PAPER" else "FAIL", "reason": "PAPER mode is active" if str(mode).upper() == "PAPER" else "runtime is not in PAPER mode"},
+        {"component": "Live trading gate", "status": "PASS" if not live_enabled else "FAIL", "reason": "live order submission is disabled" if not live_enabled else "DHAN_LIVE_TRADING_ENABLED is enabled"},
+        {"component": "Emergency stop", "status": "PASS" if not emergency_stop else "FAIL", "reason": "emergency stop is not active" if not emergency_stop else "emergency stop is active"},
+        heartbeat_check("Worker heartbeat", worker, now=now),
+        heartbeat_check("Scheduler heartbeat", scheduler, now=now),
+        preflight_check(preflight, now=now),
+        {"component": "Latest cycle", "status": "PASS" if status.get("cycle_success") is True else "FAIL", "reason": "latest cycle reported success" if status.get("cycle_success") is True else "latest cycle success is not verified", "cycle_id": status.get("cycle_id"), "updated_at": status.get("updated_at") or status.get("ended_at")},
+    ]
+    failures = [x["component"] for x in checks if x.get("status") != "PASS"]
+    return {"status": "HEALTHY" if not failures else "DEGRADED", "checks": checks, "failed_components": failures, "evidence_based": True}
+
+
+def file_state(path: str | Path) -> dict[str, Any]:
+    target = Path(path)
+    if not target.exists():
+        return {"path": str(target), "exists": False, "size_bytes": None}
+    stat = target.stat()
+    return {"path": str(target), "exists": True, "size_bytes": stat.st_size, "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat()}
+
+====================================================================
 FILE: pages/00_TOTP_Diagnostic.py
 SIZE: 3165 bytes
 ====================================================================
@@ -64715,6 +64808,121 @@ if consent_app_id:
 
 st.divider()
 st.caption("Security: API credentials and temporary tokenId remain in memory only. No API key, API secret, PIN, TOTP, tokenId, or Access Token is displayed or persisted.")
+
+====================================================================
+FILE: pages/17_System_Health.py
+SIZE: 2193 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+from intraday_bot.config import settings
+from intraday_bot.ui_health import evaluate_runtime_health, file_state
+
+ROOT = Path("data")
+
+
+def load_json(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+st.set_page_config(page_title="System Health", layout="wide")
+st.title("System Health")
+st.caption("Evidence-based runtime health. Missing evidence is not treated as PASS, and no synthetic market telemetry is used.")
+
+worker = load_json(ROOT / "worker_heartbeat.json")
+scheduler = load_json(ROOT / "scheduler_heartbeat.json")
+preflight = load_json(ROOT / "preflight_status.json")
+status = load_json(ROOT / "monitor_status.json")
+
+health = evaluate_runtime_health(mode=settings.mode, live_enabled=settings.live_enabled, emergency_stop=settings.emergency_stop, worker=worker, scheduler=scheduler, preflight=preflight, status=status)
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Overall", health["status"])
+c2.metric("Checks", len(health["checks"]))
+c3.metric("Failures", len(health["failed_components"]))
+
+rows = [{"Component": x.get("component"), "Status": x.get("status"), "Reason": x.get("reason"), "Age (sec)": x.get("age_seconds"), "Updated": x.get("updated_at")} for x in health["checks"]]
+st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+if health["failed_components"]:
+    st.warning("Not fully healthy: " + ", ".join(health["failed_components"]))
+else:
+    st.success("All persisted runtime safety/health checks passed.")
+
+st.subheader("Runtime evidence")
+evidence = [file_state(ROOT / "monitor_status.json"), file_state(ROOT / "worker_heartbeat.json"), file_state(ROOT / "scheduler_heartbeat.json"), file_state(ROOT / "preflight_status.json")]
+st.dataframe(pd.DataFrame(evidence), use_container_width=True, hide_index=True)
+
+with st.expander("Raw persisted health evidence"):
+    st.json({"worker": worker, "scheduler": scheduler, "preflight": preflight, "monitor_status": status})
+
+====================================================================
+FILE: pages/18_Post_Mortem.py
+SIZE: 2945 bytes
+====================================================================
+from __future__ import annotations
+
+import json
+import pandas as pd
+import streamlit as st
+from intraday_bot.database import Database
+
+st.set_page_config(page_title="Post Mortem", layout="wide")
+st.title("Post Mortem")
+st.caption("Cycle, rejection and error evidence from the persisted ledger. No hypothetical trades or invented market outcomes are added.")
+DB = Database()
+
+def query(sql: str, params=()) -> pd.DataFrame:
+    try:
+        with DB.connect() as con:
+            return pd.DataFrame([dict(row) for row in con.execute(sql, params).fetchall()])
+    except Exception as exc:
+        st.error(f"DATABASE ERROR: {exc}")
+        return pd.DataFrame()
+
+cycles = query("SELECT cycle_id, started_at, ended_at, status, payload FROM cycles ORDER BY started_at DESC LIMIT 100")
+events = query("SELECT id, ts, component, severity, event_type, symbol, mode, payload FROM events ORDER BY id DESC LIMIT 500")
+
+if cycles.empty:
+    st.info("No persisted cycles yet.")
+else:
+    latest = cycles.iloc[0]
+    try:
+        payload = json.loads(latest["payload"] or "{}")
+    except Exception:
+        payload = {}
+    st.subheader("Latest cycle")
+    st.json({"cycle_id": latest["cycle_id"], "started_at": latest["started_at"], "ended_at": latest["ended_at"], "status": latest["status"], "cycle_success": payload.get("cycle_success"), "market_open": payload.get("market_open"), "stocks_observed": payload.get("stocks_observed"), "quotes": payload.get("quotes"), "validated_candidate_count": payload.get("validated_candidate_count"), "execution_accepted_candidates": payload.get("execution_accepted_candidates"), "execution_rejected_candidates": payload.get("execution_rejected_candidates")})
+
+if not events.empty:
+    st.subheader("Failure / rejection evidence")
+    work = events.copy()
+    work["severity"] = work["severity"].astype(str).str.upper()
+    work["event_type"] = work["event_type"].astype(str).str.upper()
+    filtered = work[work["severity"].isin({"ERROR", "CRITICAL", "WARNING"}) | work["event_type"].str.contains("REJECT|FAIL|ERROR", regex=True)]
+    if filtered.empty:
+        st.success("No persisted ERROR/CRITICAL/WARNING or reject/fail events in the latest 500 events.")
+    else:
+        rows = []
+        for _, row in filtered.iterrows():
+            try:
+                event_payload = json.loads(row["payload"] or "{}")
+            except Exception:
+                event_payload = {}
+            rows.append({"Time": row["ts"], "Component": row["component"], "Severity": row["severity"], "Event": row["event_type"], "Symbol": row["symbol"], "Mode": row["mode"], "Reason": event_payload.get("execution_rejection_reason", event_payload.get("rejection_reason", event_payload.get("reason", "DATA UNAVAILABLE")))})
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.subheader("Recent cycle/rejection events")
+    st.dataframe(events.head(100), use_container_width=True, hide_index=True)
 
 ====================================================================
 FILE: pages/Portfolio_Advisory.py
@@ -74445,6 +74653,57 @@ def test_sector_build_does_not_fabricate_missing_quotes(monkeypatch, tmp_path):
     assert banking["advancing"] == 0
     assert banking["declining"] == 0
     assert banking["average_change_pct"] is None
+
+====================================================================
+FILE: tests/test_ui_health.py
+SIZE: 2655 bytes
+====================================================================
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+from intraday_bot.ui_health import evaluate_runtime_health, heartbeat_check, preflight_check
+
+
+def test_heartbeat_missing_timestamp_is_not_pass() -> None:
+    result = heartbeat_check("worker", {})
+    assert result["status"] == "FAIL"
+    assert result["fresh"] is False
+
+
+def test_preflight_requires_passed_fresh_and_no_live_submission() -> None:
+    now = datetime.now(timezone.utc)
+    good = {"status": "PASSED", "updated_at": now.isoformat(), "live_order_submission": False}
+    assert preflight_check(good, now=now)["status"] == "PASS"
+    assert preflight_check(dict(good, live_order_submission=True), now=now)["status"] == "FAIL"
+
+
+def test_runtime_health_fails_if_live_gate_is_enabled() -> None:
+    now = datetime.now(timezone.utc)
+    heartbeat = {"updated_at": now.isoformat(), "state": "RUNNING", "cycle_success": True, "market_open": True}
+    preflight = {"status": "PASSED", "updated_at": now.isoformat(), "live_order_submission": False}
+    result = evaluate_runtime_health(mode="PAPER", live_enabled=True, emergency_stop=False, worker=heartbeat, scheduler=heartbeat, preflight=preflight, status={"cycle_success": True, "cycle_id": "cycle-test"}, now=now)
+    assert result["status"] == "DEGRADED"
+    assert "Live trading gate" in result["failed_components"]
+
+
+def test_runtime_health_is_healthy_only_with_all_evidence() -> None:
+    now = datetime.now(timezone.utc)
+    heartbeat = {"updated_at": now.isoformat(), "state": "RUNNING", "cycle_success": True, "market_open": True}
+    preflight = {"status": "PASSED", "updated_at": now.isoformat(), "live_order_submission": False}
+    result = evaluate_runtime_health(mode="PAPER", live_enabled=False, emergency_stop=False, worker=heartbeat, scheduler=heartbeat, preflight=preflight, status={"cycle_success": True, "cycle_id": "cycle-test"}, now=now)
+    assert result["status"] == "HEALTHY"
+    assert result["failed_components"] == []
+
+
+def test_stale_heartbeat_is_degraded() -> None:
+    now = datetime.now(timezone.utc)
+    old = (now - timedelta(seconds=901)).isoformat()
+    heartbeat = {"updated_at": old, "state": "RUNNING", "cycle_success": True, "market_open": True}
+    preflight = {"status": "PASSED", "updated_at": now.isoformat(), "live_order_submission": False}
+    result = evaluate_runtime_health(mode="PAPER", live_enabled=False, emergency_stop=False, worker=heartbeat, scheduler=heartbeat, preflight=preflight, status={"cycle_success": True, "cycle_id": "cycle-test"}, now=now)
+    assert result["status"] == "DEGRADED"
+    assert "Worker heartbeat" in result["failed_components"]
 
 ====================================================================
 FILE: tests/test_validation_gate.py
