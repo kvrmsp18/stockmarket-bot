@@ -1,0 +1,36 @@
+{
+  "date": "2026-09-07",
+  "mode": "PAPER",
+  "starting_reference_capital": 1000.0,
+  "ending_reference_capital": 1014.4313171420999,
+  "signals_today": 0,
+  "trades": 1,
+  "wins": 1,
+  "losses": 0,
+  "breakeven": 0,
+  "gross_pnl": 14.75,
+  "charges": 0.32,
+  "net_pnl": 14.43,
+  "win_rate": 1.0,
+  "profit_factor": null,
+  "open_positions": 0,
+  "morning_recommendations": {
+    "imported_user_morning_count": 0,
+    "bot_morning_count": 0,
+    "total_count": 0,
+    "manual_purchase_status": "NOT_RECORDED",
+    "eod_prices_available": 0,
+    "hypothetical_reference_net_pnl": 0,
+    "hypothetical_wins": 0,
+    "hypothetical_losses": 0,
+    "records": []
+  },
+  "eod_quote_error": null,
+  "data_integrity": {
+    "manual_purchase_prices_present": false,
+    "manual_purchase_pnl_claimed": false,
+    "paper_trades_separated_from_manual_purchases": true,
+    "hypothetical_pnl_is_not_realized_pnl": true,
+    "execution_rejected_morning_candidates_recovered": true
+  }
+}
