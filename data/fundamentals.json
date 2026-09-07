@@ -1927,5 +1927,83 @@
     "fallback_reason": "TWELVEDATA_FUNDAMENTALS_FAILED: TWELVEDATA_INCOME_STATEMENT_FAILED: 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_BALANCE_SHEET_FAILED: 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_CASH_FLOW_FAILED: 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_EARNINGS_FAILED: 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_PROFILE_FAILED: 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_QUOTE_FAILED: 404: This symbol is available starting with the Grow or Venture plan. Consider upgrading now at https://twelvedata.com/pricing | 404: **symbol** or **figi** parameter is missing or invalid. Please provide a valid symbol according to API documentation: https://twelvedata.com/docs#reference-data",
     "fetched_at": "2026-09-07T07:50:00.921647+00:00",
     "cache_source": "yahoo_finance"
+  },
+  "STAR": {
+    "symbol": "STAR",
+    "source": "Yahoo Finance",
+    "provider": "yahoo_finance",
+    "source_status": "PARTIAL",
+    "source_symbol": "STAR.NS",
+    "endpoint_errors": [],
+    "company_name": "STRIDES PHARMA SCI LTD",
+    "sector": "Healthcare",
+    "industry": "Drug Manufacturers - Specialty & Generic",
+    "trailing_pe": 17.691612,
+    "forward_pe": 12.339622,
+    "price_to_sales": 2.1682262,
+    "price_to_book": 3.4916623,
+    "enterprise_to_revenue": 2.27,
+    "enterprise_to_ebitda": 13.855,
+    "market_cap": 108505710592.0,
+    "enterprise_value": 113618935808.0,
+    "eps": 66.54,
+    "pe": 17.691612,
+    "debt_to_equity": 0.55821,
+    "profit": 5561930000.0,
+    "profit_growth": -84.52205467996677,
+    "eps_growth": -82.96030729833547,
+    "roe": 19.65556041669464,
+    "capital": 46610660000.0,
+    "roce": 17.565380966499937,
+    "earnings_quality": 1.2630849363440388,
+    "current_price": 1177.9,
+    "missing_provider_fields": [
+      "predictability"
+    ],
+    "valuation_missing_fields": [
+      "peg_ratio"
+    ],
+    "fallback_reason": "TWELVEDATA_FUNDAMENTALS_FAILED: TWELVEDATA_INCOME_STATEMENT_FAILED: 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_BALANCE_SHEET_FAILED: 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 522: non-JSON response | TWELVEDATA_CASH_FLOW_FAILED: HTTPSConnectionPool(host='api.twelvedata.com', port=443): Read timed out. (read timeout=20) | 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_EARNINGS_FAILED: 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 502: non-JSON response | TWELVEDATA_PROFILE_FAILED: 502: non-JSON response | 502: non-JSON response | TWELVEDATA_QUOTE_FAILED: 502: non-JSON response | 502: non-JSON response",
+    "fetched_at": "2026-09-07T08:01:30.169446+00:00",
+    "cache_source": "yahoo_finance"
+  },
+  "PAISALO": {
+    "symbol": "PAISALO",
+    "source": "Yahoo Finance",
+    "provider": "yahoo_finance",
+    "source_status": "PARTIAL",
+    "source_symbol": "PAISALO.NS",
+    "endpoint_errors": [],
+    "company_name": "PAISALO DIGITAL LIMITED",
+    "sector": "Financial Services",
+    "industry": "Credit Services",
+    "trailing_pe": 28.718412,
+    "forward_pe": 20.934212,
+    "price_to_sales": 13.238785,
+    "price_to_book": 4.0057406,
+    "enterprise_to_revenue": 20.009,
+    "market_cap": 72720564224.0,
+    "enterprise_value": 109908107264.0,
+    "eps": 2.77,
+    "pe": 28.718412,
+    "debt_to_equity": 2.43153,
+    "profit": 2372061000.0,
+    "profit_growth": 18.531516229955216,
+    "eps_growth": 24.215246636771305,
+    "roe": 14.255358039320878,
+    "capital": 60026421000.0,
+    "roce": 5.304490834127859,
+    "earnings_quality": -3.299921882278744,
+    "current_price": 79.55,
+    "missing_provider_fields": [
+      "predictability"
+    ],
+    "valuation_missing_fields": [
+      "enterprise_to_ebitda",
+      "peg_ratio"
+    ],
+    "fallback_reason": "TWELVEDATA_FUNDAMENTALS_FAILED: TWELVEDATA_INCOME_STATEMENT_FAILED: 403: /income_statement is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 502: non-JSON response | TWELVEDATA_BALANCE_SHEET_FAILED: 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /balance_sheet is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_CASH_FLOW_FAILED: 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /cash_flow is available exclusively with pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_EARNINGS_FAILED: 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /earnings is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_PROFILE_FAILED: 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | 403: /profile is available exclusively with grow or pro or ultra or venture or enterprise plans. Consider upgrading your API Key now at https://twelvedata.com/pricing | TWELVEDATA_QUOTE_FAILED: 502: non-JSON response | 502: non-JSON response",
+    "fetched_at": "2026-09-07T08:01:41.841225+00:00",
+    "cache_source": "yahoo_finance"
   }
 }
