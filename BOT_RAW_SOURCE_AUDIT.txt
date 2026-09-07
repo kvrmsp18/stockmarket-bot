@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 095bc9a4ac64cd6bfdbb4b7aee57002184e27ddc
-Generated UTC: 2026-09-07T10:55:28.439438+00:00
+Commit SHA: 141785d60726e6b8c2e6fb65f988171b2e10dbe7
+Generated UTC: 2026-09-07T11:02:15.276812+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -52,7 +52,7 @@ deploy/stockmarket-worker.service	697 bytes
 docker-compose.yml	805 bytes
 docs/AI_STUDIO_IMPORT_AUDIT.md	5404 bytes
 intraday_bot/__init__.py	87 bytes
-intraday_bot/ai.py	1952 bytes
+intraday_bot/ai.py	4634 bytes
 intraday_bot/ai_advisor.py	2731 bytes
 intraday_bot/alerts.py	917 bytes
 intraday_bot/analytics.py	2894 bytes
@@ -77,7 +77,7 @@ intraday_bot/safety.py	715 bytes
 intraday_bot/scrap_portfolio.py	4418 bytes
 intraday_bot/sector_intelligence.py	11429 bytes
 intraday_bot/technical.py	8245 bytes
-intraday_bot/ui_health.py	4491 bytes
+intraday_bot/ui_health.py	4259 bytes
 pages/00_TOTP_Diagnostic.py	3165 bytes
 pages/01_Dhan_Auth_Request_Diagnostic.py	2126 bytes
 pages/02_Dhan_PIN_Diagnostic.py	3922 bytes
@@ -86,8 +86,9 @@ pages/04_Dhan_JSON_Body_Auth_Diagnostic.py	1790 bytes
 pages/04_Dhan_Official_SDK_Auth_Diagnostic.py	2154 bytes
 pages/05_Dhan_API_Key_Consent_Diagnostic.py	3753 bytes
 pages/06_Dhan_OAuth_Browser_Login_Diagnostic.py	5985 bytes
-pages/17_System_Health.py	2193 bytes
-pages/18_Post_Mortem.py	2945 bytes
+pages/17_System_Health.py	2180 bytes
+pages/18_Post_Mortem.py	2891 bytes
+pages/19_AI_Analyst.py	3757 bytes
 pages/Portfolio_Advisory.py	10405 bytes
 reports/.gitkeep	0 bytes
 reports/daily/.gitkeep	1 bytes
@@ -144,6 +145,7 @@ src/validation_gate.py	9636 bytes
 src/validation_store.py	2407 bytes
 start.sh	504 bytes
 tests/__init__.py	0 bytes
+tests/test_ai_engine.py	1756 bytes
 tests/test_ai_studio_quarantine.py	529 bytes
 tests/test_database_locking.py	1015 bytes
 tests/test_dhan_market_data.py	2391 bytes
@@ -160,7 +162,7 @@ tests/test_research_frameworks.py	7141 bytes
 tests/test_run_daily_cycle.py	4389 bytes
 tests/test_runtime_safety.py	1812 bytes
 tests/test_sector_intelligence.py	2520 bytes
-tests/test_ui_health.py	2655 bytes
+tests/test_ui_health.py	2648 bytes
 tests/test_validation_gate.py	7134 bytes
 tests/test_worker_heartbeat.py	1301 bytes
 
@@ -42339,9 +42341,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-07T16:19:45.669771+05:30",
+  "updated_at": "2026-09-07T16:28:17.046189+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "34113459173",
+  "workflow_run_id": "34114173780",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -59527,10 +59529,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-07T16:19:45.741514+05:30",
+  "updated_at": "2026-09-07T16:28:17.129203+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmejwal",
-  "workflow_run_id": "34113459173",
+  "workflow_run_id": "34114173780",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
@@ -59812,31 +59814,95 @@ __version__ = "1.0.0"
 
 ====================================================================
 FILE: intraday_bot/ai.py
-SIZE: 1952 bytes
+SIZE: 4634 bytes
 ====================================================================
 from __future__ import annotations
-import json, os
+
+import json
+import os
 from typing import Any
+
 import requests
 
+
 class AIEngine:
-    """Independent advisory layer. It cannot submit orders or override safety."""
-    def __init__(self): self.openai=os.getenv("OPENAI_API_KEY",""); self.claude=os.getenv("ANTHROPIC_API_KEY","")
-    def analyse(self, context:dict[str,Any])->dict[str,Any]:
-        prompt="Return JSON only with score 0-10, decision BUY/SELL/HOLD/NO TRADE, confidence 0-1, positives[], negatives[], risks[]. Advisory only. "+json.dumps(context,default=str)[:10000]
-        answers=[]
+    """Independent advisory layer; never an order/risk authority."""
+
+    def __init__(self) -> None:
+        self.openai = os.getenv("OPENAI_API_KEY", "").strip()
+        self.claude = os.getenv("ANTHROPIC_API_KEY", "").strip()
+
+    @staticmethod
+    def _parse_json(text: str) -> dict[str, Any] | None:
+        text = str(text or "").strip()
+        if not text:
+            return None
+        try:
+            value = json.loads(text)
+            return value if isinstance(value, dict) else None
+        except json.JSONDecodeError:
+            start, end = text.find("{"), text.rfind("}")
+            if start >= 0 and end > start:
+                try:
+                    value = json.loads(text[start:end + 1])
+                    return value if isinstance(value, dict) else None
+                except json.JSONDecodeError:
+                    return None
+        return None
+
+    def _prompt(self, context: dict[str, Any]) -> str:
+        return ("Return JSON only with keys score (0-10 or null), decision "
+                "(BUY/SELL/HOLD/NO TRADE or null), confidence (0-1 or null), "
+                "positives, negatives, risks. Use null when evidence is insufficient. "
+                "Advisory only. Never override deterministic risk, funds, portfolio, "
+                "market-data or live-order gates. Never invent market prices or fundamentals. "
+                + json.dumps(context, default=str)[:10000])
+
+    def _openai(self, prompt: str) -> tuple[str, dict[str, Any]]:
+        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+        try:
+            r = requests.post("https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": "Bearer " + self.openai, "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0}, timeout=20)
+            r.raise_for_status()
+            text = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+            parsed = self._parse_json(text)
+            return "ChatGPT", ({"status": "AVAILABLE", "model": model, **parsed} if parsed is not None else {"status": "ERROR", "model": model, "reason": "model response was not valid JSON"})
+        except Exception as exc:
+            return "ChatGPT", {"status": "ERROR", "model": model, "reason": str(exc)}
+
+    def _claude(self, prompt: str) -> tuple[str, dict[str, Any]]:
+        model = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest").strip()
+        try:
+            r = requests.post("https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": self.claude, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={"model": model, "max_tokens": 700, "temperature": 0, "messages": [{"role": "user", "content": prompt}]}, timeout=20)
+            r.raise_for_status()
+            text = "\n".join(str(x.get("text", "")) for x in r.json().get("content", []) if isinstance(x, dict))
+            parsed = self._parse_json(text)
+            return "Claude", ({"status": "AVAILABLE", "model": model, **parsed} if parsed is not None else {"status": "ERROR", "model": model, "reason": "model response was not valid JSON"})
+        except Exception as exc:
+            return "Claude", {"status": "ERROR", "model": model, "reason": str(exc)}
+
+    def analyse(self, context: dict[str, Any]) -> dict[str, Any]:
+        prompt = self._prompt(context)
+        responses: list[tuple[str, dict[str, Any]]] = []
         if self.openai:
-            try:
-                r=requests.post("https://api.openai.com/v1/chat/completions",headers={"Authorization":"Bearer "+self.openai},json={"model":os.getenv("OPENAI_MODEL","gpt-4o-mini"),"messages":[{"role":"user","content":prompt}],"temperature":0},timeout=15)
-                if r.ok:answers.append(("ChatGPT",json.loads(r.json()["choices"][0]["message"]["content"])))
-            except Exception as e:answers.append(("ChatGPT",{"error":str(e)}))
+            responses.append(self._openai(prompt))
         if self.claude:
-            try:
-                r=requests.post("https://api.anthropic.com/v1/messages",headers={"x-api-key":self.claude,"anthropic-version":"2023-06-01","content-type":"application/json"},json={"model":os.getenv("ANTHROPIC_MODEL","claude-3-5-haiku-latest"),"max_tokens":500,"messages":[{"role":"user","content":prompt}]},timeout=15)
-                if r.ok:answers.append(("Claude",json.loads(r.json()["content"][0]["text"])))
-            except Exception as e:answers.append(("Claude",{"error":str(e)}))
-        valid=[x[1] for x in answers if isinstance(x[1],dict) and isinstance(x[1].get("score"),(int,float))]
-        return {"responses":answers,"state":"NO DECISION" if not valid else ("AGREE" if len(valid)<2 or abs(float(valid[0]["score"])-float(valid[1]["score"]))<=2 else "DISAGREE"),"score":sum(float(x["score"]) for x in valid)/len(valid) if valid else 5.0}
+            responses.append(self._claude(prompt))
+        valid = [(provider, answer) for provider, answer in responses
+                 if answer.get("status") == "AVAILABLE" and isinstance(answer.get("score"), (int, float)) and 0 <= float(answer["score"]) <= 10]
+        if len(valid) >= 2:
+            scores = [float(answer["score"]) for _, answer in valid]
+            state, score = ("AGREE" if max(scores) - min(scores) <= 2 else "DISAGREE"), sum(scores) / len(scores)
+        elif len(valid) == 1:
+            state, score = "SINGLE_PROVIDER", float(valid[0][1]["score"])
+        else:
+            state, score = "NO_DECISION", None
+        return {"status": "AVAILABLE" if valid else "DATA_UNAVAILABLE", "responses": responses,
+                "state": state, "score": score, "providers_considered": [p for p, _ in responses],
+                "valid_provider_count": len(valid), "advisory_only": True}
 
 ====================================================================
 FILE: intraday_bot/ai_advisor.py
@@ -63996,7 +64062,7 @@ def technical_setup(df: pd.DataFrame, daily_history: pd.DataFrame | None = None)
 
 ====================================================================
 FILE: intraday_bot/ui_health.py
-SIZE: 4491 bytes
+SIZE: 4259 bytes
 ====================================================================
 from __future__ import annotations
 
@@ -64030,17 +64096,7 @@ def age_seconds(value: Any, now: datetime | None = None) -> float | None:
 def heartbeat_check(name: str, payload: dict[str, Any], max_age_seconds: int = 900, now: datetime | None = None) -> dict[str, Any]:
     age = age_seconds(payload.get("updated_at"), now)
     fresh = age is not None and age <= max_age_seconds
-    return {
-        "component": name,
-        "status": "PASS" if fresh else "FAIL",
-        "fresh": fresh,
-        "age_seconds": round(age, 1) if age is not None else None,
-        "state": payload.get("state", "DATA UNAVAILABLE"),
-        "cycle_success": payload.get("cycle_success"),
-        "market_open": payload.get("market_open"),
-        "updated_at": payload.get("updated_at"),
-        "reason": "fresh heartbeat" if fresh else "heartbeat missing or stale",
-    }
+    return {"component": name, "status": "PASS" if fresh else "FAIL", "fresh": fresh, "age_seconds": round(age, 1) if age is not None else None, "state": payload.get("state", "DATA UNAVAILABLE"), "cycle_success": payload.get("cycle_success"), "market_open": payload.get("market_open"), "updated_at": payload.get("updated_at"), "reason": "fresh heartbeat" if fresh else "heartbeat missing or stale"}
 
 
 def preflight_check(payload: dict[str, Any], max_age_seconds: int = 1800, now: datetime | None = None) -> dict[str, Any]:
@@ -64049,20 +64105,10 @@ def preflight_check(payload: dict[str, Any], max_age_seconds: int = 1800, now: d
     live_submission = payload.get("live_order_submission") is True
     fresh = age is not None and age <= max_age_seconds
     ok = passed and fresh and not live_submission
-    return {
-        "component": "Dhan preflight",
-        "status": "PASS" if ok else "FAIL",
-        "fresh": fresh,
-        "passed": passed,
-        "live_order_submission": live_submission,
-        "age_seconds": round(age, 1) if age is not None else None,
-        "updated_at": payload.get("updated_at"),
-        "reason": "preflight passed and live submission is disabled" if ok else "preflight unavailable/stale or live submission flag is enabled",
-    }
+    return {"component": "Dhan preflight", "status": "PASS" if ok else "FAIL", "fresh": fresh, "passed": passed, "live_order_submission": live_submission, "age_seconds": round(age, 1) if age is not None else None, "updated_at": payload.get("updated_at"), "reason": "preflight passed and live submission is disabled" if ok else "preflight unavailable/stale or live submission flag is enabled"}
 
 
 def evaluate_runtime_health(*, mode: str, live_enabled: bool, emergency_stop: bool, worker: dict[str, Any], scheduler: dict[str, Any], preflight: dict[str, Any], status: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
-    """Produce a truthful read-only health model from persisted runtime state."""
     checks = [
         {"component": "Operational mode", "status": "PASS" if str(mode).upper() == "PAPER" else "FAIL", "reason": "PAPER mode is active" if str(mode).upper() == "PAPER" else "runtime is not in PAPER mode"},
         {"component": "Live trading gate", "status": "PASS" if not live_enabled else "FAIL", "reason": "live order submission is disabled" if not live_enabled else "DHAN_LIVE_TRADING_ENABLED is enabled"},
@@ -64811,21 +64857,16 @@ st.caption("Security: API credentials and temporary tokenId remain in memory onl
 
 ====================================================================
 FILE: pages/17_System_Health.py
-SIZE: 2193 bytes
+SIZE: 2180 bytes
 ====================================================================
 from __future__ import annotations
-
 import json
 from pathlib import Path
-
 import pandas as pd
 import streamlit as st
-
 from intraday_bot.config import settings
 from intraday_bot.ui_health import evaluate_runtime_health, file_state
-
 ROOT = Path("data")
-
 
 def load_json(path: Path) -> dict:
     try:
@@ -64834,54 +64875,43 @@ def load_json(path: Path) -> dict:
     except Exception:
         return {}
 
-
 st.set_page_config(page_title="System Health", layout="wide")
 st.title("System Health")
 st.caption("Evidence-based runtime health. Missing evidence is not treated as PASS, and no synthetic market telemetry is used.")
-
 worker = load_json(ROOT / "worker_heartbeat.json")
 scheduler = load_json(ROOT / "scheduler_heartbeat.json")
 preflight = load_json(ROOT / "preflight_status.json")
 status = load_json(ROOT / "monitor_status.json")
-
 health = evaluate_runtime_health(mode=settings.mode, live_enabled=settings.live_enabled, emergency_stop=settings.emergency_stop, worker=worker, scheduler=scheduler, preflight=preflight, status=status)
-
 c1, c2, c3 = st.columns(3)
 c1.metric("Overall", health["status"])
 c2.metric("Checks", len(health["checks"]))
 c3.metric("Failures", len(health["failed_components"]))
-
 rows = [{"Component": x.get("component"), "Status": x.get("status"), "Reason": x.get("reason"), "Age (sec)": x.get("age_seconds"), "Updated": x.get("updated_at")} for x in health["checks"]]
 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
 if health["failed_components"]:
     st.warning("Not fully healthy: " + ", ".join(health["failed_components"]))
 else:
     st.success("All persisted runtime safety/health checks passed.")
-
 st.subheader("Runtime evidence")
 evidence = [file_state(ROOT / "monitor_status.json"), file_state(ROOT / "worker_heartbeat.json"), file_state(ROOT / "scheduler_heartbeat.json"), file_state(ROOT / "preflight_status.json")]
 st.dataframe(pd.DataFrame(evidence), use_container_width=True, hide_index=True)
-
 with st.expander("Raw persisted health evidence"):
     st.json({"worker": worker, "scheduler": scheduler, "preflight": preflight, "monitor_status": status})
 
 ====================================================================
 FILE: pages/18_Post_Mortem.py
-SIZE: 2945 bytes
+SIZE: 2891 bytes
 ====================================================================
 from __future__ import annotations
-
 import json
 import pandas as pd
 import streamlit as st
 from intraday_bot.database import Database
-
 st.set_page_config(page_title="Post Mortem", layout="wide")
 st.title("Post Mortem")
 st.caption("Cycle, rejection and error evidence from the persisted ledger. No hypothetical trades or invented market outcomes are added.")
 DB = Database()
-
 def query(sql: str, params=()) -> pd.DataFrame:
     try:
         with DB.connect() as con:
@@ -64889,21 +64919,16 @@ def query(sql: str, params=()) -> pd.DataFrame:
     except Exception as exc:
         st.error(f"DATABASE ERROR: {exc}")
         return pd.DataFrame()
-
 cycles = query("SELECT cycle_id, started_at, ended_at, status, payload FROM cycles ORDER BY started_at DESC LIMIT 100")
 events = query("SELECT id, ts, component, severity, event_type, symbol, mode, payload FROM events ORDER BY id DESC LIMIT 500")
-
 if cycles.empty:
     st.info("No persisted cycles yet.")
 else:
     latest = cycles.iloc[0]
-    try:
-        payload = json.loads(latest["payload"] or "{}")
-    except Exception:
-        payload = {}
+    try: payload = json.loads(latest["payload"] or "{}")
+    except Exception: payload = {}
     st.subheader("Latest cycle")
     st.json({"cycle_id": latest["cycle_id"], "started_at": latest["started_at"], "ended_at": latest["ended_at"], "status": latest["status"], "cycle_success": payload.get("cycle_success"), "market_open": payload.get("market_open"), "stocks_observed": payload.get("stocks_observed"), "quotes": payload.get("quotes"), "validated_candidate_count": payload.get("validated_candidate_count"), "execution_accepted_candidates": payload.get("execution_accepted_candidates"), "execution_rejected_candidates": payload.get("execution_rejected_candidates")})
-
 if not events.empty:
     st.subheader("Failure / rejection evidence")
     work = events.copy()
@@ -64915,14 +64940,78 @@ if not events.empty:
     else:
         rows = []
         for _, row in filtered.iterrows():
-            try:
-                event_payload = json.loads(row["payload"] or "{}")
-            except Exception:
-                event_payload = {}
+            try: event_payload = json.loads(row["payload"] or "{}")
+            except Exception: event_payload = {}
             rows.append({"Time": row["ts"], "Component": row["component"], "Severity": row["severity"], "Event": row["event_type"], "Symbol": row["symbol"], "Mode": row["mode"], "Reason": event_payload.get("execution_rejection_reason", event_payload.get("rejection_reason", event_payload.get("reason", "DATA UNAVAILABLE")))})
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     st.subheader("Recent cycle/rejection events")
     st.dataframe(events.head(100), use_container_width=True, hide_index=True)
+
+====================================================================
+FILE: pages/19_AI_Analyst.py
+SIZE: 3757 bytes
+====================================================================
+from __future__ import annotations
+import json
+import pandas as pd
+import streamlit as st
+from intraday_bot.ai import AIEngine
+from intraday_bot.database import Database
+
+st.set_page_config(page_title="AI Analyst", layout="wide")
+st.title("AI Analyst")
+st.caption("Advisory AI only. It receives persisted bot evidence and cannot approve orders, alter deterministic gates, or invent unavailable data.")
+DB = Database()
+
+def latest_context() -> dict:
+    context = {}
+    try:
+        with DB.connect() as con:
+            row = con.execute("SELECT payload FROM cycles ORDER BY started_at DESC LIMIT 1").fetchone()
+            if row:
+                payload = json.loads(row["payload"] or "{}")
+                if isinstance(payload, dict):
+                    context["latest_cycle"] = {k: payload.get(k) for k in ("cycle_id", "market_open", "cycle_success", "stocks_observed", "quotes", "validated_candidate_count", "execution_accepted_candidates", "execution_rejected_candidates", "market_regime", "rejections") if k in payload}
+            rows = con.execute("SELECT symbol, decision, payload FROM signals ORDER BY rowid DESC LIMIT 20").fetchall()
+            context["recent_signals"] = []
+            for row in rows:
+                try: payload = json.loads(row["payload"] or "{}")
+                except Exception: payload = {}
+                context["recent_signals"].append({"symbol": row["symbol"], "decision": row["decision"], "execution_status": payload.get("execution_status"), "execution_rejection_reason": payload.get("execution_rejection_reason"), "trend_score": payload.get("trend_score"), "reason": payload.get("reason")})
+    except Exception:
+        return {}
+    return context
+
+context = latest_context()
+prompt = st.text_area("Question", placeholder="Why were recent candidates rejected? What evidence supports the latest recommendation?", height=100)
+if st.button("Analyse", type="primary"):
+    if not prompt.strip():
+        st.warning("Enter a question first.")
+    else:
+        with st.spinner("Querying configured advisory provider(s)…"):
+            result = AIEngine().analyse({"user_question": prompt.strip(), "persisted_bot_context": context})
+        if result["status"] == "DATA_UNAVAILABLE":
+            st.warning("DATA UNAVAILABLE — no configured AI provider returned a valid advisory response.")
+        else:
+            st.write(f"**Provider state:** {result['state']} · **Valid providers:** {result['valid_provider_count']}")
+            if result["score"] is not None: st.metric("AI advisory score", f"{result['score']:.2f}/10")
+            for provider, answer in result["responses"]:
+                st.markdown(f"### {provider}")
+                if answer.get("status") != "AVAILABLE":
+                    st.warning(f"{answer.get('status')}: {answer.get('reason', 'DATA UNAVAILABLE')}")
+                    continue
+                st.write(f"Decision: {answer.get('decision', 'DATA UNAVAILABLE')} · Confidence: {answer.get('confidence', 'DATA UNAVAILABLE')}")
+                c1, c2, c3 = st.columns(3)
+                with c1: st.write("**Positives**"); st.write(answer.get("positives", []))
+                with c2: st.write("**Negatives**"); st.write(answer.get("negatives", []))
+                with c3: st.write("**Risks**"); st.write(answer.get("risks", []))
+
+st.subheader("Persisted evidence supplied to the analyst")
+if context:
+    if context.get("latest_cycle"): st.dataframe(pd.DataFrame([context["latest_cycle"]]), use_container_width=True, hide_index=True)
+    if context.get("recent_signals"): st.dataframe(pd.DataFrame(context["recent_signals"]), use_container_width=True, hide_index=True)
+else:
+    st.info("DATA UNAVAILABLE — no persisted cycle/signal context is available yet.")
 
 ====================================================================
 FILE: pages/Portfolio_Advisory.py
@@ -73439,6 +73528,45 @@ SIZE: 0 bytes
 
 
 ====================================================================
+FILE: tests/test_ai_engine.py
+SIZE: 1756 bytes
+====================================================================
+from __future__ import annotations
+from intraday_bot.ai import AIEngine
+
+def test_ai_engine_does_not_invent_score_without_provider(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    result = AIEngine().analyse({"symbol": "TEST"})
+    assert result["status"] == "DATA_UNAVAILABLE"
+    assert result["state"] == "NO_DECISION"
+    assert result["score"] is None
+    assert result["advisory_only"] is True
+
+def test_ai_json_parser_rejects_non_object() -> None:
+    assert AIEngine._parse_json("[1, 2, 3]") is None
+    assert AIEngine._parse_json("not json") is None
+    assert AIEngine._parse_json('{"score": 7}') == {"score": 7}
+
+def test_ai_engine_marks_single_valid_provider(monkeypatch) -> None:
+    monkeypatch.setattr(AIEngine, "_openai", lambda self, prompt: ("ChatGPT", {"status": "AVAILABLE", "score": 8.0, "decision": "BUY"}))
+    monkeypatch.setenv("OPENAI_API_KEY", "configured")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    result = AIEngine().analyse({"symbol": "TEST"})
+    assert result["state"] == "SINGLE_PROVIDER"
+    assert result["score"] == 8.0
+    assert result["valid_provider_count"] == 1
+
+def test_ai_engine_detects_disagreement(monkeypatch) -> None:
+    monkeypatch.setattr(AIEngine, "_openai", lambda self, prompt: ("ChatGPT", {"status": "AVAILABLE", "score": 9.0}))
+    monkeypatch.setattr(AIEngine, "_claude", lambda self, prompt: ("Claude", {"status": "AVAILABLE", "score": 3.0}))
+    monkeypatch.setenv("OPENAI_API_KEY", "configured")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "configured")
+    result = AIEngine().analyse({"symbol": "TEST"})
+    assert result["state"] == "DISAGREE"
+    assert result["score"] == 6.0
+
+====================================================================
 FILE: tests/test_ai_studio_quarantine.py
 SIZE: 529 bytes
 ====================================================================
@@ -74656,27 +74784,22 @@ def test_sector_build_does_not_fabricate_missing_quotes(monkeypatch, tmp_path):
 
 ====================================================================
 FILE: tests/test_ui_health.py
-SIZE: 2655 bytes
+SIZE: 2648 bytes
 ====================================================================
 from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
-
 from intraday_bot.ui_health import evaluate_runtime_health, heartbeat_check, preflight_check
-
 
 def test_heartbeat_missing_timestamp_is_not_pass() -> None:
     result = heartbeat_check("worker", {})
     assert result["status"] == "FAIL"
     assert result["fresh"] is False
 
-
 def test_preflight_requires_passed_fresh_and_no_live_submission() -> None:
     now = datetime.now(timezone.utc)
     good = {"status": "PASSED", "updated_at": now.isoformat(), "live_order_submission": False}
     assert preflight_check(good, now=now)["status"] == "PASS"
     assert preflight_check(dict(good, live_order_submission=True), now=now)["status"] == "FAIL"
-
 
 def test_runtime_health_fails_if_live_gate_is_enabled() -> None:
     now = datetime.now(timezone.utc)
@@ -74686,7 +74809,6 @@ def test_runtime_health_fails_if_live_gate_is_enabled() -> None:
     assert result["status"] == "DEGRADED"
     assert "Live trading gate" in result["failed_components"]
 
-
 def test_runtime_health_is_healthy_only_with_all_evidence() -> None:
     now = datetime.now(timezone.utc)
     heartbeat = {"updated_at": now.isoformat(), "state": "RUNNING", "cycle_success": True, "market_open": True}
@@ -74694,7 +74816,6 @@ def test_runtime_health_is_healthy_only_with_all_evidence() -> None:
     result = evaluate_runtime_health(mode="PAPER", live_enabled=False, emergency_stop=False, worker=heartbeat, scheduler=heartbeat, preflight=preflight, status={"cycle_success": True, "cycle_id": "cycle-test"}, now=now)
     assert result["status"] == "HEALTHY"
     assert result["failed_components"] == []
-
 
 def test_stale_heartbeat_is_degraded() -> None:
     now = datetime.now(timezone.utc)
