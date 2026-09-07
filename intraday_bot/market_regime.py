@@ -55,7 +55,13 @@ def _resolve_indices(timeout: int = 30) -> dict[str, dict[str, str]]:
                 break
         if key is None:
             continue
-        out[key] = {"symbol": custom_symbol or trading_symbol, "trading_symbol": trading_symbol, "security_id": security_id, "exchange_segment": "IDX_I", "instrument": "INDEX"}
+        out[key] = {
+            "symbol": custom_symbol or trading_symbol,
+            "trading_symbol": trading_symbol,
+            "security_id": security_id,
+            "exchange_segment": "IDX_I",
+            "instrument": "INDEX",
+        }
     missing = [key for key in INDEX_NAMES if key not in out]
     if missing:
         raise RuntimeError("DHAN_INDEX_NOT_FOUND: " + ",".join(missing))
@@ -105,25 +111,51 @@ def _analyse_index(name: str, frame: pd.DataFrame) -> dict[str, Any]:
         score += 0.8 if rsi >= 55 else -0.8 if rsi <= 45 else 0
     score = max(0.0, min(10.0, score))
     state = "BULLISH" if score >= 6.5 else "BEARISH" if score <= 3.5 else "NEUTRAL"
-    return {"name": name, "price": price, "previous_close": previous, "change_pct": round((price / previous - 1) * 100, 4) if previous else 0.0, "ema20": round(ema20, 4), "ema50": round(ema50, 4), "rsi": round(rsi, 4) if rsi is not None else None, "return_5_pct": round(ret5, 4), "return_20_pct": round(ret20, 4), "score": round(score, 3), "state": state, "bars": len(x)}
+    return {
+        "name": name,
+        "price": price,
+        "previous_close": previous,
+        "change_pct": round((price / previous - 1) * 100, 4) if previous else 0.0,
+        "ema20": round(ema20, 4),
+        "ema50": round(ema50, 4),
+        "rsi": round(rsi, 4) if rsi is not None else None,
+        "return_5_pct": round(ret5, 4),
+        "return_20_pct": round(ret20, 4),
+        "score": round(score, 3),
+        "state": state,
+        "bars": len(x),
+    }
 
 
-def _index_history(broker, security_id: str) -> pd.DataFrame:
-    return broker.daily_history(security_id, exchange_segment="IDX_I", instrument="INDEX")
+def _index_history(broker, security_id: str, exchange_segment: str = "IDX_I") -> pd.DataFrame:
+    return broker.daily_history(security_id, exchange_segment=exchange_segment, instrument="INDEX")
 
 
 def build(broker, cache_path: str = "data/market_regime.json") -> dict[str, Any]:
     indices = _resolve_indices()
-    nifty = _analyse_index("NIFTY 50", _index_history(broker, indices["NIFTY_50"]["security_id"]))
-    bank = _analyse_index("BANK NIFTY", _index_history(broker, indices["BANK_NIFTY"]["security_id"]))
-    if nifty["state"] == "BULLISH" and bank["state"] == "BULLISH": combined = "BULLISH"
-    elif nifty["state"] == "BEARISH" and bank["state"] == "BEARISH": combined = "BEARISH"
-    else: combined = "MIXED"
-    nifty["security_id"] = indices["NIFTY_50"]["security_id"]
-    nifty["exchange_segment"] = indices["NIFTY_50"]["exchange_segment"]
-    bank["security_id"] = indices["BANK_NIFTY"]["security_id"]
-    bank["exchange_segment"] = indices["BANK_NIFTY"]["exchange_segment"]
-    result = {"status": "AVAILABLE", "as_of": datetime.now(timezone.utc).isoformat(), "indices": {"NIFTY_50": nifty, "BANK_NIFTY": bank}, "combined_regime": combined, "buy_allowed": combined == "BULLISH", "sell_allowed": combined == "BEARISH", "reason": f"NIFTY={nifty['state']} ({nifty['score']:.2f}), BANK_NIFTY={bank['state']} ({bank['score']:.2f}), combined={combined}"}
+    nifty_meta = indices["NIFTY_50"]
+    bank_meta = indices["BANK_NIFTY"]
+    nifty = _analyse_index("NIFTY 50", _index_history(broker, nifty_meta["security_id"], nifty_meta.get("exchange_segment", "IDX_I")))
+    bank = _analyse_index("BANK NIFTY", _index_history(broker, bank_meta["security_id"], bank_meta.get("exchange_segment", "IDX_I")))
+    if nifty["state"] == "BULLISH" and bank["state"] == "BULLISH":
+        combined = "BULLISH"
+    elif nifty["state"] == "BEARISH" and bank["state"] == "BEARISH":
+        combined = "BEARISH"
+    else:
+        combined = "MIXED"
+    nifty["security_id"] = nifty_meta["security_id"]
+    nifty["exchange_segment"] = nifty_meta.get("exchange_segment", "IDX_I")
+    bank["security_id"] = bank_meta["security_id"]
+    bank["exchange_segment"] = bank_meta.get("exchange_segment", "IDX_I")
+    result = {
+        "status": "AVAILABLE",
+        "as_of": datetime.now(timezone.utc).isoformat(),
+        "indices": {"NIFTY_50": nifty, "BANK_NIFTY": bank},
+        "combined_regime": combined,
+        "buy_allowed": combined == "BULLISH",
+        "sell_allowed": combined == "BEARISH",
+        "reason": f"NIFTY={nifty['state']} ({nifty['score']:.2f}), BANK_NIFTY={bank['state']} ({bank['score']:.2f}), combined={combined}",
+    }
     path = Path(cache_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2), encoding="utf-8")
