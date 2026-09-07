@@ -30,17 +30,7 @@ def age_seconds(value: Any, now: datetime | None = None) -> float | None:
 def heartbeat_check(name: str, payload: dict[str, Any], max_age_seconds: int = 900, now: datetime | None = None) -> dict[str, Any]:
     age = age_seconds(payload.get("updated_at"), now)
     fresh = age is not None and age <= max_age_seconds
-    return {
-        "component": name,
-        "status": "PASS" if fresh else "FAIL",
-        "fresh": fresh,
-        "age_seconds": round(age, 1) if age is not None else None,
-        "state": payload.get("state", "DATA UNAVAILABLE"),
-        "cycle_success": payload.get("cycle_success"),
-        "market_open": payload.get("market_open"),
-        "updated_at": payload.get("updated_at"),
-        "reason": "fresh heartbeat" if fresh else "heartbeat missing or stale",
-    }
+    return {"component": name, "status": "PASS" if fresh else "FAIL", "fresh": fresh, "age_seconds": round(age, 1) if age is not None else None, "state": payload.get("state", "DATA UNAVAILABLE"), "cycle_success": payload.get("cycle_success"), "market_open": payload.get("market_open"), "updated_at": payload.get("updated_at"), "reason": "fresh heartbeat" if fresh else "heartbeat missing or stale"}
 
 
 def preflight_check(payload: dict[str, Any], max_age_seconds: int = 1800, now: datetime | None = None) -> dict[str, Any]:
@@ -49,20 +39,10 @@ def preflight_check(payload: dict[str, Any], max_age_seconds: int = 1800, now: d
     live_submission = payload.get("live_order_submission") is True
     fresh = age is not None and age <= max_age_seconds
     ok = passed and fresh and not live_submission
-    return {
-        "component": "Dhan preflight",
-        "status": "PASS" if ok else "FAIL",
-        "fresh": fresh,
-        "passed": passed,
-        "live_order_submission": live_submission,
-        "age_seconds": round(age, 1) if age is not None else None,
-        "updated_at": payload.get("updated_at"),
-        "reason": "preflight passed and live submission is disabled" if ok else "preflight unavailable/stale or live submission flag is enabled",
-    }
+    return {"component": "Dhan preflight", "status": "PASS" if ok else "FAIL", "fresh": fresh, "passed": passed, "live_order_submission": live_submission, "age_seconds": round(age, 1) if age is not None else None, "updated_at": payload.get("updated_at"), "reason": "preflight passed and live submission is disabled" if ok else "preflight unavailable/stale or live submission flag is enabled"}
 
 
 def evaluate_runtime_health(*, mode: str, live_enabled: bool, emergency_stop: bool, worker: dict[str, Any], scheduler: dict[str, Any], preflight: dict[str, Any], status: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
-    """Produce a truthful read-only health model from persisted runtime state."""
     checks = [
         {"component": "Operational mode", "status": "PASS" if str(mode).upper() == "PAPER" else "FAIL", "reason": "PAPER mode is active" if str(mode).upper() == "PAPER" else "runtime is not in PAPER mode"},
         {"component": "Live trading gate", "status": "PASS" if not live_enabled else "FAIL", "reason": "live order submission is disabled" if not live_enabled else "DHAN_LIVE_TRADING_ENABLED is enabled"},
