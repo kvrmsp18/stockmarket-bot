@@ -660,6 +660,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "ALKALI",
+    "security_id": "16959",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "ALKEM",
     "security_id": "11703",
     "exchange_segment": "NSE_EQ",
@@ -2112,6 +2118,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "BIRLACABLE",
+    "security_id": "477",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "BIRLACORPN",
     "security_id": "480",
     "exchange_segment": "NSE_EQ",
@@ -2186,6 +2198,12 @@
   {
     "symbol": "BLUECLOUDS",
     "security_id": "765040",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "BLUECOAST",
+    "security_id": "7480",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -2348,6 +2366,12 @@
   {
     "symbol": "BRNL",
     "security_id": "21683",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "BROOKS",
+    "security_id": "25136",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -2808,6 +2832,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "CLEDUCATE",
+    "security_id": "20223",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "CLSEL",
     "security_id": "3482",
     "exchange_segment": "NSE_EQ",
@@ -2864,6 +2894,12 @@
   {
     "symbol": "COCKERILL",
     "security_id": "762623",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "COFFEEDAY",
+    "security_id": "11165",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -3168,12 +3204,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "DAICHI",
-    "security_id": "762633",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "DALBHARAT",
     "security_id": "8075",
     "exchange_segment": "NSE_EQ",
@@ -3218,6 +3248,12 @@
   {
     "symbol": "DBCORP",
     "security_id": "17881",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "DBEIL",
+    "security_id": "25892",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -5808,12 +5844,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "HEG",
-    "security_id": "1336",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "HEIDELBERG",
     "security_id": "2316",
     "exchange_segment": "NSE_EQ",
@@ -7128,6 +7158,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "JOCIL",
+    "security_id": "16927",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "JPOLYINVST",
     "security_id": "31507",
     "exchange_segment": "NSE_EQ",
@@ -7718,6 +7754,12 @@
   {
     "symbol": "KREBSBIO",
     "security_id": "1937",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "KRIDHANINF",
+    "security_id": "11480",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -8556,12 +8598,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "MANAKSTEEL",
-    "security_id": "7463",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "MANALIPETC",
     "security_id": "13796",
     "exchange_segment": "NSE_EQ",
@@ -8940,6 +8976,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "MGEL",
+    "security_id": "1593",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "MGL",
     "security_id": "17534",
     "exchange_segment": "NSE_EQ",
@@ -9062,6 +9104,12 @@
   {
     "symbol": "MIRZAINT",
     "security_id": "4394",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "MITCON",
+    "security_id": "8469",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -9458,6 +9506,12 @@
   {
     "symbol": "MOTISONS",
     "security_id": "20788",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "MOTOGENFIN",
+    "security_id": "2268",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -10602,6 +10656,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "PALREDTEC",
+    "security_id": "17062",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "PANACEABIO",
     "security_id": "4055",
     "exchange_segment": "NSE_EQ",
@@ -10764,8 +10824,20 @@
     "series": "EQ"
   },
   {
+    "symbol": "PENINLAND",
+    "security_id": "2256",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "PERMAGN",
     "security_id": "764838",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "PERNIASPOP",
+    "security_id": "765568",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -11400,6 +11472,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "QUICKHEAL",
+    "security_id": "13116",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "QUINT",
     "security_id": "762854",
     "exchange_segment": "NSE_EQ",
@@ -11826,12 +11904,6 @@
     "series": "EQ"
   },
   {
-    "symbol": "RNBDENIMS",
-    "security_id": "758981",
-    "exchange_segment": "NSE_EQ",
-    "series": "EQ"
-  },
-  {
     "symbol": "ROHLTD",
     "security_id": "13182",
     "exchange_segment": "NSE_EQ",
@@ -11978,6 +12050,12 @@
   {
     "symbol": "RUBICON",
     "security_id": "759316",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "RUBYMILLS",
+    "security_id": "2939",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -12830,6 +12908,12 @@
   {
     "symbol": "SHIVACEM",
     "security_id": "765160",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "SHIVALIK",
+    "security_id": "7016",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },
@@ -14316,6 +14400,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "THACKER",
+    "security_id": "762944",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "THAKDEV",
     "security_id": "762949",
     "exchange_segment": "NSE_EQ",
@@ -15312,6 +15402,12 @@
     "series": "EQ"
   },
   {
+    "symbol": "VIVIANA",
+    "security_id": "763636",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
     "symbol": "VIVIDHA",
     "security_id": "29877",
     "exchange_segment": "NSE_EQ",
@@ -15326,6 +15422,12 @@
   {
     "symbol": "VIYASH",
     "security_id": "14296",
+    "exchange_segment": "NSE_EQ",
+    "series": "EQ"
+  },
+  {
+    "symbol": "VLEGOV",
+    "security_id": "18012",
     "exchange_segment": "NSE_EQ",
     "series": "EQ"
   },

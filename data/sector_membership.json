@@ -20,7 +20,7 @@
   "errors_by_sector": {
     "FINANCIAL_SERVICES": "404 Client Error: Not Found for url: https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20FINANCIAL%20SERVICES"
   },
-  "fetched_at": "2026-09-04T09:10:59.720733+00:00",
+  "fetched_at": "2026-09-07T03:53:12.192375+00:00",
   "sector_indices": {
     "BANKING": "NIFTY BANK",
     "IT": "NIFTY IT",
