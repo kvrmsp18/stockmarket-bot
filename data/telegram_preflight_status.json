@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-09-07T12:52:01.532161+05:30",
+  "updated_at": "2026-09-07T13:06:02.615663+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "34095070824",
+  "workflow_run_id": "34096207132",
   "status": "PASSED",
   "message": "Telegram authenticated and test message delivered"
 }
