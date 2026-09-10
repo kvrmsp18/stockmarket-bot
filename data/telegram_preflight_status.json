@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-09-10T12:11:37.348284+05:30",
+  "updated_at": "2026-09-10T12:26:05.786878+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "34446311063",
+  "workflow_run_id": "34447441536",
   "status": "FAILED",
   "message": "sendMessage HTTP 400: Bad Request: chat not found"
 }
