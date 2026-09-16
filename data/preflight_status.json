@@ -1,9 +1,9 @@
 {
   "status": "FAILED",
   "message": "DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_ACCESS_TOKEN; client_id_configured=yes; manual_credential_configured=yes; manual_credential_length=327]",
-  "updated_at": "2026-09-16T12:29:19.497072+05:30",
+  "updated_at": "2026-09-16T12:45:08.979217+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "35066219720",
+  "workflow_run_id": "35067533675",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
