@@ -1,10 +1,10 @@
 {
   "state": "DEGRADED",
   "message": "Market-cycle invocation failed; inspect preflight_status or cycle logs",
-  "updated_at": "2026-09-17T10:22:32.508546+05:30",
+  "updated_at": "2026-09-17T15:12:05.924460+05:30",
   "source": "github-actions-monitor",
   "hostname": "runnervmlun5p",
-  "workflow_run_id": "35183530483",
+  "workflow_run_id": "35206478365",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": true,
