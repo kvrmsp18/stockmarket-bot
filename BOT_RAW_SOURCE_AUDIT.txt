@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 0b93111ad2db0527512faa9836edfcf5ba8827be
-Generated UTC: 2026-09-27T07:17:01.556887+00:00
+Commit SHA: e6916f0ee0bcb9a3bb0c88c874bfec0a75fb6aea
+Generated UTC: 2026-09-27T07:16:45.584278+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -169,16 +169,10 @@ webapp/INTEGRATION_NOTES.md	1056 bytes
 webapp/src/App.tsx	11 bytes
 webapp/src/components/BacktestPerformanceView.tsx	11 bytes
 webapp/src/components/DashboardView.tsx	11 bytes
-webapp/src/components/Header.tsx	11 bytes
-webapp/src/components/LiveModeModal.tsx	11 bytes
-webapp/src/components/MarketRegimeBar.tsx	11 bytes
 webapp/src/components/PaperTradingView.tsx	11 bytes
 webapp/src/components/PostMortemView.tsx	11 bytes
-webapp/src/components/ScrapView.tsx	11 bytes
 webapp/src/components/Stock360View.tsx	11 bytes
-webapp/src/components/SupervisorView.tsx	11 bytes
 webapp/src/components/TelegramModal.tsx	11 bytes
-webapp/src/components/ThematicBasketsView.tsx	11 bytes
 webapp/src/components/TradeJournalView.tsx	11 bytes
 webapp/src/hooks/useOnlineStatus.ts	11 bytes
 webapp/src/hooks/usePWAInstall.ts	11 bytes
@@ -75128,24 +75122,6 @@ SIZE: 11 bytes
 placeholder
 
 ====================================================================
-FILE: webapp/src/components/Header.tsx
-SIZE: 11 bytes
-====================================================================
-placeholder
-
-====================================================================
-FILE: webapp/src/components/LiveModeModal.tsx
-SIZE: 11 bytes
-====================================================================
-placeholder
-
-====================================================================
-FILE: webapp/src/components/MarketRegimeBar.tsx
-SIZE: 11 bytes
-====================================================================
-placeholder
-
-====================================================================
 FILE: webapp/src/components/PaperTradingView.tsx
 SIZE: 11 bytes
 ====================================================================
@@ -75158,31 +75134,13 @@ SIZE: 11 bytes
 placeholder
 
 ====================================================================
-FILE: webapp/src/components/ScrapView.tsx
-SIZE: 11 bytes
-====================================================================
-placeholder
-
-====================================================================
 FILE: webapp/src/components/Stock360View.tsx
 SIZE: 11 bytes
 ====================================================================
 placeholder
 
 ====================================================================
-FILE: webapp/src/components/SupervisorView.tsx
-SIZE: 11 bytes
-====================================================================
-placeholder
-
-====================================================================
 FILE: webapp/src/components/TelegramModal.tsx
-SIZE: 11 bytes
-====================================================================
-placeholder
-
-====================================================================
-FILE: webapp/src/components/ThematicBasketsView.tsx
 SIZE: 11 bytes
 ====================================================================
 placeholder
