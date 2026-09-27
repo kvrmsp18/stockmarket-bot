@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 6e73f00023ad215a6ff1fa218626f2249024fc18
-Generated UTC: 2026-09-27T07:16:33.279063+00:00
+Commit SHA: e783b9102fabe0f235d5fa4198a45fc8ffb64459
+Generated UTC: 2026-09-27T07:16:51.074487+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -167,7 +167,17 @@ tests/test_validation_gate.py	7134 bytes
 tests/test_worker_heartbeat.py	1301 bytes
 webapp/INTEGRATION_NOTES.md	1056 bytes
 webapp/src/App.tsx	11 bytes
+webapp/src/components/BacktestPerformanceView.tsx	11 bytes
+webapp/src/components/DashboardView.tsx	11 bytes
+webapp/src/components/Header.tsx	11 bytes
+webapp/src/components/PaperTradingView.tsx	11 bytes
+webapp/src/components/PostMortemView.tsx	11 bytes
+webapp/src/components/ScrapView.tsx	11 bytes
+webapp/src/components/Stock360View.tsx	11 bytes
+webapp/src/components/SupervisorView.tsx	11 bytes
 webapp/src/components/TelegramModal.tsx	11 bytes
+webapp/src/components/ThematicBasketsView.tsx	11 bytes
+webapp/src/components/TradeJournalView.tsx	11 bytes
 webapp/src/hooks/useOnlineStatus.ts	11 bytes
 webapp/src/hooks/usePWAInstall.ts	11 bytes
 webapp/src/index.css	11 bytes
@@ -75104,7 +75114,67 @@ SIZE: 11 bytes
 placeholder
 
 ====================================================================
+FILE: webapp/src/components/BacktestPerformanceView.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/components/DashboardView.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/components/Header.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/components/PaperTradingView.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/components/PostMortemView.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/components/ScrapView.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/components/Stock360View.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/components/SupervisorView.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
 FILE: webapp/src/components/TelegramModal.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/components/ThematicBasketsView.tsx
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/components/TradeJournalView.tsx
 SIZE: 11 bytes
 ====================================================================
 placeholder
