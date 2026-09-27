@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: ab1e520d3c735d04b447c754a229005a899e1357
-Generated UTC: 2026-09-27T07:16:41.632997+00:00
+Commit SHA: b83e5b9b14bcc475a8fd38691b7d00f32a0380c5
+Generated UTC: 2026-09-27T07:16:41.658111+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -167,10 +167,8 @@ tests/test_validation_gate.py	7134 bytes
 tests/test_worker_heartbeat.py	1301 bytes
 webapp/INTEGRATION_NOTES.md	1056 bytes
 webapp/src/App.tsx	11 bytes
-webapp/src/components/BacktestPerformanceView.tsx	11 bytes
 webapp/src/components/DashboardView.tsx	11 bytes
 webapp/src/components/PaperTradingView.tsx	11 bytes
-webapp/src/components/PostMortemView.tsx	11 bytes
 webapp/src/components/Stock360View.tsx	11 bytes
 webapp/src/components/TelegramModal.tsx	11 bytes
 webapp/src/hooks/useOnlineStatus.ts	11 bytes
@@ -75109,12 +75107,6 @@ SIZE: 11 bytes
 placeholder
 
 ====================================================================
-FILE: webapp/src/components/BacktestPerformanceView.tsx
-SIZE: 11 bytes
-====================================================================
-placeholder
-
-====================================================================
 FILE: webapp/src/components/DashboardView.tsx
 SIZE: 11 bytes
 ====================================================================
@@ -75122,12 +75114,6 @@ placeholder
 
 ====================================================================
 FILE: webapp/src/components/PaperTradingView.tsx
-SIZE: 11 bytes
-====================================================================
-placeholder
-
-====================================================================
-FILE: webapp/src/components/PostMortemView.tsx
 SIZE: 11 bytes
 ====================================================================
 placeholder
