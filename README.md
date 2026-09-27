@@ -206,3 +206,14 @@ The ₹1,000 reference account is a **virtual validation account**. It does not 
 The intended free-tier design is a five-minute **scheduler/heartbeat**, not a claim that Streamlit Community Cloud is a persistent background worker. During market hours the monitor performs the configured paper cycle; outside market hours it continues heartbeat/state handling and waits for the next valid market window.
 
 For production/live operation later, the architecture should move the persistent worker to a Linux/VPS-style environment and retain the same deterministic safety gates, reconciliation, monitoring and audit trail.
+
+
+## Web Dashboard (Paper Trading)
+
+The uploaded React/Vite paper-trading dashboard is maintained under **webapp/**. It is a browser/PWA operator interface intended for free-tier cloud deployment, while **intraday_bot/** remains the authoritative trading engine.
+
+**EOD learning rule:** after each session, review the eligible universe for profitable moves, compare them with decision-time evidence, classify the miss reason, and aggregate repeated cross-symbol patterns for controlled validation. A single stock can be evidence but cannot create a stock-specific rule, forced watchlist item, or hard-coded exception. Protective capital/liquidity/risk/capacity controls remain protected. **Analysis Error Score** and **Opportunity Miss Score** remain separate.
+
+The current paper deployment uses GitHub Actions for scheduled cycles and heartbeat, with live Dhan order submission disabled. GitHub Actions scheduling is best-effort and is not treated as a persistent real-time worker.
+
+The Python runtime under **intraday_bot/** is the source of truth; the React dashboard is isolated under **webapp/** until a direct API integration is completed.
