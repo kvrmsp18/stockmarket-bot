@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 141785d60726e6b8c2e6fb65f988171b2e10dbe7
-Generated UTC: 2026-09-07T11:02:15.276812+00:00
+Commit SHA: 7172c248504d8e6b9e3e6ea0a98b03b2b8f613a0
+Generated UTC: 2026-09-27T07:15:31.008108+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -22,7 +22,7 @@ FILE INVENTORY
 .streamlit/config.toml	199 bytes
 .streamlit/secrets.toml.example	555 bytes
 Dockerfile	229 bytes
-README.md	11801 bytes
+README.md	12947 bytes
 SOURCE_RULES.md	9145 bytes
 app.py	34931 bytes
 config/risk.yaml	244 bytes
@@ -38,7 +38,7 @@ data/market_regime.json	1060 bytes
 data/monitor_status.json	1250105 bytes
 data/morning_recommendations/2026-09-04.json	5006 bytes
 data/paper_trading_journal.jsonl	814 bytes
-data/preflight_status.json	312 bytes
+data/preflight_status.json	545 bytes
 data/scheduler_heartbeat.json	351 bytes
 data/sector_intelligence.json	5351 bytes
 data/sector_membership.json	17000 bytes
@@ -929,7 +929,7 @@ CMD ["/app/start.sh"]
 
 ====================================================================
 FILE: README.md
-SIZE: 11801 bytes
+SIZE: 12947 bytes
 ====================================================================
 # NSE/BSE Intraday AI Trading Desk — Paper Trading Build
 
@@ -1139,6 +1139,17 @@ The ₹1,000 reference account is a **virtual validation account**. It does not 
 The intended free-tier design is a five-minute **scheduler/heartbeat**, not a claim that Streamlit Community Cloud is a persistent background worker. During market hours the monitor performs the configured paper cycle; outside market hours it continues heartbeat/state handling and waits for the next valid market window.
 
 For production/live operation later, the architecture should move the persistent worker to a Linux/VPS-style environment and retain the same deterministic safety gates, reconciliation, monitoring and audit trail.
+
+
+## Web Dashboard (Paper Trading)
+
+The uploaded React/Vite paper-trading dashboard is maintained under **webapp/**. It is a browser/PWA operator interface intended for free-tier cloud deployment, while **intraday_bot/** remains the authoritative trading engine.
+
+**EOD learning rule:** after each session, review the eligible universe for profitable moves, compare them with decision-time evidence, classify the miss reason, and aggregate repeated cross-symbol patterns for controlled validation. A single stock can be evidence but cannot create a stock-specific rule, forced watchlist item, or hard-coded exception. Protective capital/liquidity/risk/capacity controls remain protected. **Analysis Error Score** and **Opportunity Miss Score** remain separate.
+
+The current paper deployment uses GitHub Actions for scheduled cycles and heartbeat, with live Dhan order submission disabled. GitHub Actions scheduling is best-effort and is not treated as a persistent real-time worker.
+
+The Python runtime under **intraday_bot/** is the source of truth; the React dashboard is isolated under **webapp/** until a direct API integration is completed.
 
 ====================================================================
 FILE: SOURCE_RULES.md
@@ -42321,14 +42332,14 @@ SIZE: 814 bytes
 
 ====================================================================
 FILE: data/preflight_status.json
-SIZE: 312 bytes
+SIZE: 545 bytes
 ====================================================================
 {
-  "status": "PASSED",
-  "message": "Dhan client ID + access token and market-feed preflight passed",
-  "updated_at": "2026-09-07T14:18:31.323923+05:30",
+  "status": "FAILED",
+  "message": "DHAN_HTTP_401: {\"errorType\":\"Invalid_Authentication\",\"errorCode\":\"DH-901\",\"errorMessage\":\"Client ID or user generated access token is invalid or expired.\"} [credential_source=DHAN_ACCESS_TOKEN; client_id_configured=yes; manual_credential_configured=yes; manual_credential_length=327]",
+  "updated_at": "2026-09-25T13:56:07.873679+05:30",
   "source": "github-actions-dhan-preflight",
-  "workflow_run_id": "34102521508",
+  "workflow_run_id": "36112841521",
   "mode": "PAPER",
   "market_open": true,
   "live_order_submission": false
@@ -42341,9 +42352,9 @@ SIZE: 351 bytes
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-09-07T16:28:17.046189+05:30",
+  "updated_at": "2026-09-27T11:23:45.057572+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "34114173780",
+  "workflow_run_id": "36298508884",
   "event": "schedule",
   "market_open": false,
   "scheduled_interval_seconds": 300,
@@ -43552,10 +43563,10 @@ FILE: data/telegram_preflight_status.json
 SIZE: 250 bytes
 ====================================================================
 {
-  "updated_at": "2026-09-07T14:18:29.290809+05:30",
+  "updated_at": "2026-09-25T13:56:05.279832+05:30",
   "market_open": true,
   "source": "github-actions-telegram-preflight",
-  "workflow_run_id": "34102521508",
+  "workflow_run_id": "36112841521",
   "status": "FAILED",
   "message": "sendMessage HTTP 400: Bad Request: chat not found"
 }
@@ -59529,10 +59540,10 @@ SIZE: 461 bytes
 {
   "state": "HEARTBEAT_ONLY",
   "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
-  "updated_at": "2026-09-07T16:28:17.129203+05:30",
+  "updated_at": "2026-09-27T11:23:45.128284+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmejwal",
-  "workflow_run_id": "34114173780",
+  "hostname": "runnervmtr4k5",
+  "workflow_run_id": "36298508884",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
   "market_open": false,
