@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 7172c248504d8e6b9e3e6ea0a98b03b2b8f613a0
-Generated UTC: 2026-09-27T07:15:31.008108+00:00
+Commit SHA: 5b03de46df80ba8a9e48dccd530e258fb7695896
+Generated UTC: 2026-09-27T07:15:51.422588+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -165,6 +165,7 @@ tests/test_sector_intelligence.py	2520 bytes
 tests/test_ui_health.py	2648 bytes
 tests/test_validation_gate.py	7134 bytes
 tests/test_worker_heartbeat.py	1301 bytes
+webapp/INTEGRATION_NOTES.md	1056 bytes
 
 ====================================================================
 FILE: .devcontainer/devcontainer.json
@@ -75070,3 +75071,21 @@ def test_heartbeat_is_atomic_and_contains_liveness_fields(tmp_path, monkeypatch)
 
 def test_heartbeat_interval_is_independent_of_cycle_interval():
     assert worker.HEARTBEAT_INTERVAL < worker.CYCLE_INTERVAL
+
+====================================================================
+FILE: webapp/INTEGRATION_NOTES.md
+SIZE: 1056 bytes
+====================================================================
+# Webapp Integration Notes
+
+The React/Vite dashboard is imported from the uploaded paper-trading build.
+
+- The root Python runtime (intraday_bot/) remains authoritative for trading, risk, paper execution and EOD learning.
+- The React app is isolated under webapp/ to avoid replacing the tested Python runtime with an incompatible TypeScript server.
+- Live Dhan order submission remains disabled.
+- The intended deployment target is GitHub Actions for scheduled paper cycles plus a free cloud-hosted web frontend/PWA.
+- Direct dashboard-to-Python API integration is a separate engineering step.
+
+## Mandatory EOD learning
+
+After each market session, identify profitable moves across the eligible universe, compare them with decision-time evidence, classify the miss reason, and aggregate repeated cross-symbol failure patterns. Single-stock events are observations only and cannot create stock-specific strategy rules. Protective capital, liquidity, risk and capacity gates remain protected. Analysis Error Score and Opportunity Miss Score remain separate.
