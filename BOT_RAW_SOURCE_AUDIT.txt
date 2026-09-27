@@ -3,8 +3,8 @@ BOT_RAW_SOURCE_AUDIT.txt — COMPLETE CURRENT SOURCE AUDIT
 ====================================================================
 Repository: kvrmsp18/stockmarket-bot
 Branch: main
-Commit SHA: 7b379ea6520e97232c380fe8622289a830158669
-Generated UTC: 2026-09-27T07:16:24.043697+00:00
+Commit SHA: 909791a7b8f3c598cf50554b54b821164df1ea59
+Generated UTC: 2026-09-27T07:16:27.022057+00:00
 
 This file is generated automatically from a fresh checkout of main.
 Secrets are not read or exported. Binary files and large files are listed
@@ -168,6 +168,7 @@ tests/test_worker_heartbeat.py	1301 bytes
 webapp/INTEGRATION_NOTES.md	1056 bytes
 webapp/src/App.tsx	11 bytes
 webapp/src/index.css	11 bytes
+webapp/src/main.tsx	11 bytes
 
 ====================================================================
 FILE: .devcontainer/devcontainer.json
@@ -75100,6 +75101,12 @@ placeholder
 
 ====================================================================
 FILE: webapp/src/index.css
+SIZE: 11 bytes
+====================================================================
+placeholder
+
+====================================================================
+FILE: webapp/src/main.tsx
 SIZE: 11 bytes
 ====================================================================
 placeholder
