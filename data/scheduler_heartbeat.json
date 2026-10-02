@@ -1,11 +1,11 @@
 {
   "state": "RUNNING",
   "message": "24/7 scheduled monitor heartbeat is active",
-  "updated_at": "2026-10-02T13:58:36.602611+05:30",
+  "updated_at": "2026-10-02T20:24:42.238833+05:30",
   "source": "github-actions-scheduler",
-  "workflow_run_id": "36984225217",
+  "workflow_run_id": "37023181485",
   "event": "schedule",
-  "market_open": true,
+  "market_open": false,
   "scheduled_interval_seconds": 300,
   "paper_mode": true,
   "live_order_submission": false
