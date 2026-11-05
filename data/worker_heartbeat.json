@@ -1,14 +1,14 @@
 {
-  "state": "DEGRADED",
-  "message": "Market-cycle invocation failed; inspect preflight_status or cycle logs",
-  "updated_at": "2026-11-05T13:44:30.230089+05:30",
+  "state": "HEARTBEAT_ONLY",
+  "message": "24/7 monitor heartbeat active; NSE market is closed or cycle is not scheduled",
+  "updated_at": "2026-11-05T21:58:57.759832+05:30",
   "source": "github-actions-monitor",
-  "hostname": "runnervmnwato",
-  "workflow_run_id": "41992875275",
+  "hostname": "runnervmwuk1x",
+  "workflow_run_id": "42064865676",
   "heartbeat_interval_seconds": 300,
   "is_persistent_worker": false,
-  "market_open": true,
-  "market_cycle": true,
-  "cycle_success": false,
+  "market_open": false,
+  "market_cycle": false,
+  "cycle_success": null,
   "scheduler_based_monitor": true
 }
